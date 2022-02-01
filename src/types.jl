@@ -35,17 +35,17 @@ Not included are the weights of the linear filters of the mixture of Poisson gen
 end
 
 """
-    FHMDDMoptions
+    Options
 
 Model settings
 
 """
-@with_kw struct FHMDDMoptions{TB<:Bool,
-							  TS<:String,
-							  TF<:AbstractFloat,
-							  TVF<:Vector{<:AbstractFloat},
-							  TVI<:Vector{<:Integer},
-							  TI<:Integer}
+@with_kw struct Options{TB<:Bool,
+						TS<:String,
+						TF<:AbstractFloat,
+						TVF<:Vector{<:AbstractFloat},
+						TVI<:Vector{<:Integer},
+						TI<:Integer}
 	"number of temporal basis functions for the accumulator per s"
     a_basis_per_s::TI=10
 	"response latency of the accumulator to the clicks"
