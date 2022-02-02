@@ -10,7 +10,7 @@ INPUT
 RETURN
 -`𝚽`: A matrix whose element 𝚽[t,i] indicates the value of the i-th temporal basis in the t-th time bin
 """
-function temporal_bases_values(options::FHMDDMoptions, 𝐓::Vector{<:Integer})
+function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
     Tmax = maximum(𝐓)
     nbases = ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt))
     if options.basistype == "raised_cosine"

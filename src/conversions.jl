@@ -10,7 +10,7 @@ ARGUMENT
 RETURN
 -values of model parameters in real space
 """
-function native2real(options::FHMDDMoptions,
+function native2real(options::Options,
                      θnative::Latentθ)
 	Latentθ(Aᶜ₁₁ = [logit(θnative.Aᶜ₁₁[1]) - logit(options.q_Aᶜ₁₁)],
 			Aᶜ₂₂ = [logit(θnative.Aᶜ₂₂[1]) - logit(options.q_Aᶜ₂₂)],
@@ -18,7 +18,7 @@ function native2real(options::FHMDDMoptions,
 			k = [log(θnative.k[1]/options.q_k)],
 			λ = [θnative.λ[1]],
 			μ₀ = [θnative.μ₀[1]],
-			ϕ = [θnative.ϕ[1]],
+			ϕ = [logit(θnative.ϕ[1]) - logit(options.q_ϕ)],
 			πᶜ₁ = [logit(θnative.πᶜ₁[1]) - logit(options.q_πᶜ₁)],
 			ψ = [logit(θnative.ψ[1]) - logit(options.q_ψ)],
 			σ²ₐ = [log(θnative.σ²ₐ[1]/options.q_σ²ₐ)],
@@ -40,43 +40,18 @@ UNMODIFIED ARGUMENT
 -`θnative: values of model parameters in their native space
 """
 function native2real!(θreal::Latentθ,
-					  options::FHMDDMoptions,
+					  options::Options,
 					  θnative::Latentθ)
 	θreal.Aᶜ₁₁[1] = logit(θnative.Aᶜ₁₁[1]) - logit(options.q_Aᶜ₁₁)
 	θreal.Aᶜ₂₂[1] = logit(θnative.Aᶜ₂₂[1]) - logit(options.q_Aᶜ₂₂)
 	θreal.B[1] = logit(θnative.B[1]/2/options.q_B)
 	θreal.k[1] = log(θnative.k[1]/options.q_k)
+	θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
 	θreal.πᶜ₁[1] = logit(θnative.πᶜ₁[1]) - logit(options.q_πᶜ₁)
 	θreal.ψ[1] = logit(θnative.ψ[1]) - logit(options.q_ψ)
 	θreal.σ²ₐ[1] = log(θnative.σ²ₐ[1]/options.q_σ²ₐ)
 	θreal.σ²ᵢ[1] = log(θnative.σ²ᵢ[1]/options.q_σ²ᵢ)
 	θreal.σ²ₛ[1] = log(θnative.σ²ₛ[1]/options.q_σ²ₛ)
-	return nothing
-end
-
-"""
-    native2real!(g, θnative)
-
-Map the gradient of the parameters specifying the latent variables from native to real space
-
-MODIFIED ARGUMENT
--`g: gradient of the latent parameters in native space
-
-UNMODIFIED ARGUMENT
--`θnative`: values of the latent parameters in native space
-"""
-function native2real!(g::Latentθ,
-					  θnative::Latentθ,
- 					  θreal::Latentθ)
-	g.Aᶜ₁₁[1] *= θnative.Aᶜ₁₁[1]*(1.0 - θnative.Aᶜ₁₁[1]) # convert into real
-	g.Aᶜ₂₂[1] *= θnative.Aᶜ₂₂[1]*(1.0 - θnative.Aᶜ₂₂[1])
-	g.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
-	g.k[1] *= θnative.k[1]
-	g.πᶜ₁[1] *= θnative.πᶜ₁[1]*(1.0 - θnative.πᶜ₁[1])
-	g.ψ[1] *= θnative.ψ[1]*(1.0 - θnative.ψ[1])
-	g.σ²ₐ[1] *= θnative.σ²ₐ[1]
-	g.σ²ᵢ[1] *= θnative.σ²ᵢ[1]
-	g.σ²ₛ[1] *= θnative.σ²ₛ[1]
 	return nothing
 end
 
@@ -92,15 +67,15 @@ ARGUMENT
 RETURN
 -values of model parameters in their native space
 """
-function real2native(options::FHMDDMoptions,
+function real2native(options::Options,
                      θreal::Latentθ)
 	Latentθ(Aᶜ₁₁ = [logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))],
 			Aᶜ₂₂ = [logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))],
 			B = [2options.q_B*logistic(θreal.B[1])],
 			k = [options.q_k*exp(θreal.k[1])],
-			λ = [1.0*θreal.λ[1]],
+			λ = [1.0*θreal.λ[1]], # the multiplication by 1 is for ReverseDiff
 			μ₀ = [1.0*θreal.μ₀[1]],
-			ϕ = [1.0*θreal.ϕ[1]],
+			ϕ = [logistic(θreal.ϕ[1] + logit(options.q_ϕ))],
 			πᶜ₁ = [logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))],
 			ψ = [logistic(θreal.ψ[1] + logit(options.q_ψ))],
 			σ²ₐ = [options.q_σ²ₐ*exp(θreal.σ²ₐ[1])],
@@ -122,25 +97,30 @@ UNMODIFIED ARGUMENT
 -`θreal': values of model parameters in real space
 """
 function real2native!(θnative::Latentθ,
-					  options::FHMDDMoptions,
+					  options::Options,
 					  θreal::Latentθ)
 	θnative.Aᶜ₁₁[1] = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
 	θnative.Aᶜ₂₂[1] = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
 	θnative.B[1] = 2options.q_B*logistic(θreal.B[1])
 	θnative.k[1] = options.q_k*exp(θreal.k[1])
+	θnative.λ[1] = θreal.λ[1]
+	θnative.μ₀[1] = θreal.μ₀[1]
+	θnative.ϕ[1] = logistic(θreal.ϕ[1] + logit(options.q_ϕ))
 	θnative.πᶜ₁[1] = logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
 	θnative.ψ[1] = logistic(θreal.ψ[1] + logit(options.q_ψ))
 	θnative.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
 	θnative.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
 	θnative.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	θnative.wₕ[1] = θreal.wₕ[1]
+	return nothing
 end
 
 """
     dictionary(options)
 
-Convert an instance of `FHMDDMoptions` to a dictionary
+Convert an instance of `Options` to a dictionary
 """
-function dictionary(options::FHMDDMoptions)
+function dictionary(options::Options)
 	Dict(	"a_basis_per_s"=>options.a_basis_per_s,
 			"a_latency_s"=>options.a_latency_s,
 			"basistype"=>options.basistype,
@@ -161,6 +141,7 @@ function dictionary(options::FHMDDMoptions)
 			"q_Ac22"=>options.q_Aᶜ₂₂,
 			"q_B"=>options.q_B,
 			"q_k"=>options.q_k,
+			"q_phi"=>options.q_ϕ,
 			"q_pic1"=>options.q_πᶜ₁,
 			"q_psi"=>options.q_ψ,
 			"q_sigma2_a"=>options.q_σ²ₐ,
@@ -260,16 +241,16 @@ function dictionary(θ::Latentθ)
 end
 
 """
-    FHMDDMoptions(options::Dict)
+    Options(options::Dict)
 
-Create an instance of `FHMDDMoptions` from a Dict
+Create an instance of `Options` from a Dict
 """
-function FHMDDMoptions(options::Dict)
+function Options(options::Dict)
 	spikehistorylags = vec(convert.(Int64, options["spikehistorylags"]))
     if typeof(spikehistorylags)<:Integer
         spikehistorylags = [spikehistorylags]
     end
-    FHMDDMoptions(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
+    Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
                   a_latency_s = options["a_latency_s"],
                   basistype = options["basistype"],
                   datapath = options["datapath"],
@@ -289,25 +270,13 @@ function FHMDDMoptions(options::Dict)
 				  q_Aᶜ₂₂ = options["q_Ac22"],
 				  q_B = options["q_B"],
 				  q_k = options["q_k"],
+				  q_ϕ = options["q_phi"],
 				  q_πᶜ₁ = options["q_pic1"],
 				  q_ψ = options["q_psi"],
 				  q_σ²ₐ = options["q_sigma2_a"],
 				  q_σ²ᵢ = options["q_sigma2_i"],
 				  q_σ²ₛ = options["q_sigma2_s"],
-				  bounds_Aᶜ₁₁ =	vec(options["bounds_Ac11"]),
-				  bounds_Aᶜ₂₂ = vec(options["bounds_Ac22"]),
-				  bounds_B = 	vec(options["bounds_B"]),
-				  bounds_k = 	vec(options["bounds_k"]),
-				  bounds_λ = 	vec(options["bounds_lambda"]),
-				  bounds_μ₀ = 	vec(options["bounds_mu0"]),
-				  bounds_ϕ = 	vec(options["bounds_phi"]),
-				  bounds_πᶜ₁ = 	vec(options["bounds_pic1"]),
-				  bounds_ψ = 	vec(options["bounds_psi"]),
-				  bounds_σ²ₐ = 	vec(options["bounds_sigma2_a"]),
-				  bounds_σ²ᵢ = 	vec(options["bounds_sigma2_i"]),
-				  bounds_σ²ₛ = 	vec(options["bounds_sigma2_s"]),
-				  bounds_wₕ = 	vec(options["bounds_w_h"]),
-                  resultspath = options["resultspath"],
+				  resultspath = options["resultspath"],
                   spikehistorylags = spikehistorylags,
                   Ξ = convert(Int64, options["Xi"]))
 end

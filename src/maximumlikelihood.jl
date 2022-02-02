@@ -4,7 +4,7 @@
 Learn the parameters of the factorial hidden Markov drift-diffusion model by maximizing the likelihood of the data
 
 MODIFIED ARGUMENT
--`model`: an instance of `FHMDDM`, the factorial hidden Markov drift-diffusion model
+- a structure containing information for a factorial hidden Markov drift-diffusion model
 
 OPTIONAL ARGUMENT
 -`extended_trace`: save additional information
@@ -16,7 +16,7 @@ OPTIONAL ARGUMENT
 -`show_trace`: should a trace of the optimization algorithm's state be shown?
 -`x_tol`: threshold for determining convergence in the input vector
 """
-function maximizelikelihood!(model::FHMDDM;
+function maximizelikelihood!(model::Model;
 			                 extended_trace::Bool=true,
 			                 f_tol::AbstractFloat=1e-9,
 			                 g_tol::AbstractFloat=1e-8,
@@ -34,7 +34,7 @@ function maximizelikelihood!(model::FHMDDM;
 		end
     f(concatenatedθ) = -loglikelihood!(model, shared, concatenatedθ)
     g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)
-	lowerbounds, upperbounds = concatenatebounds(shared.indexθ, model.options)
+	# lowerbounds, upperbounds = concatenatebounds(shared.indexθ, model.options)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -43,9 +43,11 @@ function maximizelikelihood!(model::FHMDDM;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	algorithm = Fminbox(LBFGS(linesearch = LineSearches.BackTracking()))
+	# algorithm = Fminbox(LBFGS(linesearch = LineSearches.BackTracking()))
+	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
 	θ₀ = deepcopy(shared.concatenatedθ)
-	optimizationresults = Optim.optimize(f, g!, lowerbounds, upperbounds, θ₀, algorithm, Optim_options)
+	# optimizationresults = Optim.optimize(f, g!, lowerbounds, upperbounds, θ₀, algorithm, Optim_options)
+	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, maximumlikelihoodθ, shared.indexθ)
@@ -67,7 +69,7 @@ UNMODIFIED ARGUMENT
 RETURN
 -log-likelihood
 """
-function loglikelihood!(model::FHMDDM,
+function loglikelihood!(model::Model,
 						shared::Shared,
 					    concatenatedθ::Vector{<:Real})
 	if concatenatedθ != shared.concatenatedθ
@@ -133,7 +135,7 @@ end
 """
     ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)
 
-Gradient of the negative log-likelihood of the factorial hidden Markov drift-diffusion model (FHMDDM)
+Gradient of the negative log-likelihood of the factorial hidden Markov drift-diffusion model
 
 MODIFIED INPUT
 -`∇`: a vector of partial derivatives
@@ -146,7 +148,7 @@ UNMODIFIED ARGUMENT
 """
 function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 								 γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
-								 model::FHMDDM,
+								 model::Model,
 								 shared::Shared,
 								 concatenatedθ::Vector{<:AbstractFloat})
 	if concatenatedθ != shared.concatenatedθ
@@ -171,7 +173,12 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 			end
 		end
 	end
-	native2real!(latent∇, θnative, θreal)
+	latent∇.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
+	latent∇.k[1] *= θnative.k[1]
+	latent∇.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	latent∇.σ²ₐ[1] *= θnative.σ²ₐ[1]
+	latent∇.σ²ᵢ[1] *= θnative.σ²ᵢ[1]
+	latent∇.σ²ₛ[1] *= θnative.σ²ₛ[1]
 	for field in fieldnames(Latentθ)
 		index = getfield(indexθ.latentθ,field)[1]
 		if index != 0
@@ -301,25 +308,25 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 		end
 	end
 	dℓdσ²ₐ *= Δt
-	dℓdAᶜ₁₁ = ∑χᶜ[1,1]/Aᶜ[1,1] - ∑χᶜ[2,1]/Aᶜ[2,1]
-	dℓdAᶜ₂₂ = ∑χᶜ[2,2]/Aᶜ[2,2] - ∑χᶜ[1,2]/Aᶜ[1,2]
+	dℓdAᶜ₁₁ = ∑χᶜ[1,1]*Aᶜ[2,1] - ∑χᶜ[2,1]*Aᶜ[1,1]
+	dℓdAᶜ₂₂ = ∑χᶜ[2,2]*Aᶜ[1,2] - ∑χᶜ[1,2]*Aᶜ[2,2]
 	∑γᶜ₁ = sum(fb[1], dims=1)
-	dℓdπᶜ₁ = (∑γᶜ₁[1] - θnative.πᶜ₁[1])/θnative.πᶜ₁[1]/(1.0-θnative.πᶜ₁[1])
+	dℓdxπᶜ₁ = ∑γᶜ₁[1] - θnative.πᶜ₁[1]
 	γᵃ₁_oslash_πᵃ = sum(p𝐘𝑑[1] .* πᶜᵀ ./ D[1] .* b, dims=2)
 	∑_γᵃ₁_dlogπᵃdμ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdμ # similar to above, γᵃ₁⊙ d/dμ{log(πᵃ)} = γᵃ₁⊘ πᵃ⊙ d/dμ{πᵃ}
 	dℓdμ₀ = ∑_γᵃ₁_dlogπᵃdμ
 	dℓdwₕ = ∑_γᵃ₁_dlogπᵃdμ * trial.previousanswer
 	dℓdσ²ᵢ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdσ²
 	dℓdB += γᵃ₁_oslash_πᵃ ⋅ dπᵃdB
-	dℓdψ = differentiateℓwrtψ(trial.choice, fb[end], θnative.ψ[1])
+	dℓdxψ = differentiateℓ_wrt_xψ(trial.choice, f[end], θnative.ψ[1])
 	latent∇ = Latentθ(	Aᶜ₁₁ = [dℓdAᶜ₁₁],
 						Aᶜ₂₂ = [dℓdAᶜ₂₂],
 						k	 = [dℓdk],
 						λ	 = [dℓdλ],
 						μ₀	 = [dℓdμ₀],
 						ϕ	 = [dℓdϕ],
-						πᶜ₁	 = [dℓdπᶜ₁],
-						ψ	 = [dℓdψ],
+						πᶜ₁	 = [dℓdxπᶜ₁],
+						ψ	 = [dℓdxψ],
 						σ²ₐ	 = [dℓdσ²ₐ],
 						σ²ᵢ	 = [dℓdσ²ᵢ],
 						σ²ₛ	 = [dℓdσ²ₛ],
@@ -385,7 +392,7 @@ ARGUMENT
 RETURN
 -a floating-point number quantifying the partial derivative of the log-likelihood of one trial's data with respect to the lapse rate ψ
 """
-function differentiateℓwrtψ(choice::Bool, γ_end::Matrix{<:AbstractFloat}, ψ::AbstractFloat)
+function differentiateℓwrtψ(choice::Bool, γ_end::Array{<:AbstractFloat}, ψ::AbstractFloat)
 	γᵃ_end = sum(γ_end, dims=2)
 	zeroindex = cld(length(γᵃ_end), 2)
 	# γᵃ_end0_div2 = γᵃ_end[zeroindex]/2
@@ -400,6 +407,33 @@ function differentiateℓwrtψ(choice::Bool, γ_end::Matrix{<:AbstractFloat}, ψ
 end
 
 """
+	differentiateℓ_wrt_xψ(choice, γ_end, ψ)
+
+Partial derivative of the log-likelihood of the data from one trial with respect to the lapse rate ψ in real space
+
+ARGUMENT
+-`choice`: a Boolean specifying whether the choice was to the right
+-`γ_end`: a matrix of floating-point numbers representing the posterior likelihood of the latent variables at the end of the trial (i.e., last time step). Element `γ_end[i,j]` = p(aᵢ=1, cⱼ=1 ∣ 𝐘, d). Rows correspond to states of the accumulator state variable 𝐚, and columns to states of the coupling variable 𝐜.
+-`ψ`: a floating-point number specifying the lapse rate
+
+RETURN
+-a floating-point number quantifying the partial derivative of the log-likelihood of one trial's data with respect to the lapse rate ψ
+"""
+function differentiateℓ_wrt_xψ(choice::Bool, γ_end::Array{<:AbstractFloat}, ψ::AbstractFloat)
+	γᵃ_end = sum(γ_end, dims=2)
+	zeroindex = cld(length(γᵃ_end), 2)
+	# γᵃ_end0_div2 = γᵃ_end[zeroindex]/2
+	if choice
+		choiceconsistent   = sum(γᵃ_end[zeroindex+1:end])
+		choiceinconsistent = sum(γᵃ_end[1:zeroindex-1])
+	else
+		choiceconsistent   = sum(γᵃ_end[1:zeroindex-1])
+		choiceinconsistent = sum(γᵃ_end[zeroindex+1:end])
+	end
+	return (1-ψ)*(choiceconsistent*ψ/(ψ-2) + choiceinconsistent)
+end
+
+"""
 	Trialinvariant(options, θnative)
 
 Compute quantities that are used in each trial for computing gradient of the log-likelihood
@@ -408,7 +442,7 @@ ARGUMENT
 -`options`: model settings
 -`θnative`: model parameters in their native space
 """
-function Trialinvariant(options::FHMDDMoptions, θnative::Latentθ; purpose="gradient")
+function Trialinvariant(options::Options, θnative::Latentθ; purpose="gradient")
 	@unpack Δt, K, Ξ = options
 	λ = θnative.λ[1]
 	B = θnative.B[1]
@@ -549,7 +583,7 @@ UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector of concatenated parameter values
 -`indexθ`: struct indexing of each parameter in the vector of concatenated values
 """
-function sortparameters!(model::FHMDDM,
+function sortparameters!(model::Model,
 				 		 concatenatedθ::Vector{<:AbstractFloat},
 				 		 indexθ::Indexθ)
 	@unpack options, θnative, θreal, trialsets = model
@@ -585,7 +619,7 @@ RETURN
 -`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
 -`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
 """
-function concatenateparameters(model::FHMDDM)
+function concatenateparameters(model::Model)
     @unpack options, θreal, trialsets = model
 	concatenatedθ = zeros(0)
     counter = 0
@@ -648,7 +682,7 @@ INPUT
 RETURN
 -two vectors representing the lower and upper bounds of the parameters being fitted, respectively
 """
-function concatenatebounds(indexθ::Indexθ, options::FHMDDMoptions)
+function concatenatebounds(indexθ::Indexθ, options::Options)
 	lowerbounds, upperbounds = zeros(0), zeros(0)
 	for field in fieldnames(typeof(indexθ.latentθ))
 		if getfield(indexθ.latentθ, field)[1] != 0
@@ -682,7 +716,7 @@ ARGUMENT
 OUTPUT
 -an instance of the custom type `Shared`, which contains the shared quantities
 """
-function Shared(model::FHMDDM)
+function Shared(model::Model)
 	@unpack K, Ξ = model.options
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
@@ -708,7 +742,7 @@ ARGUMENT
 -`shared`: structure containing variables shared between computations of the model's log-likelihood and its gradient
 -`concatenatedθ`: newest values of the model's parameters
 """
-function update!(model::FHMDDM,
+function update!(model::Model,
 				 shared::Shared,
 				 concatenatedθ::Vector{<:Real})
 	shared.concatenatedθ .= concatenatedθ

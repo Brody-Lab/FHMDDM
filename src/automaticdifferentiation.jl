@@ -3,6 +3,33 @@
 """
 
 """
+    choiceloglikelihood!(model, concatenatedθ)
+
+Compute the log-likelihood of the choices
+
+ARGUMENT
+-`model`: an instance of FHM-DDM
+-`concatenatedθ`: a vector of concatenated parameter values
+-`indexθ`: index of each parameter after if all parameters being fitted are concatenated
+
+RETURN
+-log-likelihood
+"""
+function loglikelihoodchoices(concatenatedθ::Vector{<:Real},
+							  indexθ::Indexθ,
+							  model::Model)
+	model = sortparameters(concatenatedθ, indexθ, model)
+	@unpack options, θnative, trialsets = model
+	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
+	ℓ = map(trialsets) do trialset
+			map(trialset.trials) do trial #pmap
+				loglikelihood(θnative, trial, trialinvariant)
+			end
+		end
+	return sum(sum(ℓ))
+end
+
+"""
     loglikelihood!(concatenatedθ, indexθ, model)
 
 Computation the log-likelihood meant for automatic differentiation
@@ -20,7 +47,7 @@ RETURN
 """
 function loglikelihood(	concatenatedθ,
 					    indexθ::Indexθ,
-						model::FHMDDM)
+						model::Model)
 	model = sortparameters(concatenatedθ, indexθ, model)
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack Ξ, K = options
@@ -36,7 +63,7 @@ function loglikelihood(	concatenatedθ,
     likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
 	ℓ = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
 			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-				loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
 			end
 		end
 	return sum(sum(ℓ))
@@ -111,7 +138,7 @@ RETURN
 """
 function sortparameters(concatenatedθ,
 				 		indexθ::Indexθ,
-						model::FHMDDM)
+						model::Model)
 	T = eltype(concatenatedθ)
 	θreal = Latentθ((zeros(T,1) for field in fieldnames(Latentθ))...)
 	for field in fieldnames(Latentθ) # `Latentθ` is the type of `indexθ.latentθ`
@@ -120,25 +147,24 @@ function sortparameters(concatenatedθ,
 			getfield(θreal, field)[1] = concatenatedθ[index]
 		end
 	end
-	θnative = real2native(model.options, θreal)
 	trialsets = map(model.trialsets, indexθ.𝐮, indexθ.𝐥, indexθ.𝐫) do trialset, index𝐮, index𝐥, index𝐫
 					mpGLMs =map(trialset.mpGLMs, index𝐮, index𝐥, index𝐫) do mpGLM, index𝐮, index𝐥, index𝐫
-								MixturePoissonGLM(	Δt=mpGLM.Δt,
-													K=mpGLM.K,
-													𝚽=mpGLM.𝚽,
-													Φ=mpGLM.Φ,
-													𝐔=mpGLM.𝐔,
-													𝐗=mpGLM.𝐗,
-													𝛏=mpGLM.𝛏,
-													𝐲=mpGLM.𝐲,
-													𝐮=concatenatedθ[index𝐮],
-													𝐥=concatenatedθ[index𝐥],
-													𝐫=concatenatedθ[index𝐫])
-							end
+						MixturePoissonGLM(	Δt=mpGLM.Δt,
+											K=mpGLM.K,
+											𝚽=mpGLM.𝚽,
+											Φ=mpGLM.Φ,
+											𝐔=mpGLM.𝐔,
+											𝐗=mpGLM.𝐗,
+											𝛏=mpGLM.𝛏,
+											𝐲=mpGLM.𝐲,
+											𝐮=isempty(index𝐮) ? mpGLM.𝐮 : concatenatedθ[index𝐮],
+											𝐥=isempty(index𝐥) ? mpGLM.𝐥 : concatenatedθ[index𝐥],
+											𝐫=isempty(index𝐫) ? mpGLM.𝐫 : concatenatedθ[index𝐫])
+					end
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
-	FHMDDM(	options = model.options,
-			θnative = θnative,
+	Model(	options = model.options,
+			θnative = real2native(model.options, θreal),
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=trialsets)

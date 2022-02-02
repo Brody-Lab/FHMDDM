@@ -1,46 +1,4 @@
 """
-	initializeparameters!(model)
-
-Initialize the values of a subset of the parameters by maximizing the likelihood of only the choices.
-
-The parameters specifying the transition probability of the coupling variable are not modified. The weights of the GLM are computed by maximizing the expectation of complete-data log-likelihood across accumulator states, assuming a coupled state.
-
-MODIFIED ARGUMENT
--`model`: an instance of the factorial hidden Markov drift-diffusion model
-"""
-function initializeparameters!(model::FHMDDM)
-	@unpack θnative, θreal, options, trialsets = model
-	@unpack K, Ξ = model.options
-	maximizechoiceLL!(model)
-	θnative.πᶜ₁₁[1] = 1-θnative.ψ[1]
-	native2real!(θreal, options, θnative)
-	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
-	fb = map(trialsets) do trialset
-			map(trialset.trials) do trial #pmap
-				posteriors(θnative, trial, trialinvariant)
-			end
-		end
-	γ =	map(model.trialsets) do trialset
-			map(CartesianIndices((Ξ,K))) do index
-				zeros(trialset.ntimesteps)
-			end
-		end
-	p = [1-θnative.ψ[1], θnative.ψ[1]]
-	@inbounds for i in eachindex(fb)
-        t = 0
-        for m in eachindex(fb[i])
-            for tₘ in eachindex(fb[i][m])
-                t += 1
-                for j in eachindex(fb[i][m][tₘ])
-                    γ[i][j,:][t] .= fb[i][m][tₘ][j].*p
-                end
-            end
-        end
-    end
-	estimatefilters!(model.trialsets, γ)
-end
-
-"""
 	maximizechoiceLL!(model)
 
 Learn the parameters that maximize the log-likelihood of the behavioral choices
@@ -56,25 +14,19 @@ OPTIONAL ARGUMENT
 -`x_tol`: threshold for determining convergence in the input vector
 
 """
-function maximizechoiceLL!(model::FHMDDM;
+function maximizechoiceLL!(model::Model;
 		                 extended_trace::Bool=true,
 		                 f_tol::AbstractFloat=1e-9,
 		                 g_tol::AbstractFloat=1e-8,
 		                 iterations::Integer=1000,
-						 outer_iterations::Integer=1000,
+						 outer_iterations::Integer=10,
 		                 show_every::Integer=1,
 		                 show_trace::Bool=true,
 		                 x_tol::AbstractFloat=1e-5)
 	concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
-	@unpack K, Ξ = model.options
-	γ =	map(model.trialsets) do trialset
-			map(CartesianIndices((Ξ,K))) do index
-				zeros(trialset.ntimesteps)
-			end
-		end
     f(concatenatedθ) = -loglikelihood!(model, concatenatedθ, indexθ)
-    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, γ, model, concatenatedθ, indexθ)
-	lowerbounds, upperbounds = concatenatebounds(indexθ, model.options)
+    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, model, concatenatedθ, indexθ)
+	# lowerbounds, upperbounds = concatenatebounds(indexθ, model.options)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -83,9 +35,11 @@ function maximizechoiceLL!(model::FHMDDM;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	algorithm = Fminbox(LBFGS(linesearch = LineSearches.BackTracking()))
+	# algorithm = Fminbox(LBFGS(linesearch = LineSearches.BackTracking()))
+	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
 	θ₀ = deepcopy(concatenatedθ)
-	optimizationresults = Optim.optimize(f, g!, lowerbounds, upperbounds, θ₀, algorithm, Optim_options)
+	# optimizationresults = Optim.optimize(f, g!, lowerbounds, upperbounds, θ₀, algorithm, Optim_options)
+	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, maximumlikelihoodθ, indexθ)
@@ -103,7 +57,7 @@ RETURN
 -`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
 -`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
 """
-function concatenate_choice_related_parameters(model::FHMDDM)
+function concatenate_choice_related_parameters(model::Model)
     @unpack options, θreal, trialsets = model
 	concatenatedθ = zeros(0)
     counter = 0
@@ -128,7 +82,11 @@ function concatenate_choice_related_parameters(model::FHMDDM)
 			getfield(latentθ, field)[1] = 0
 		end
 	end
-    indexθ = Indexθ(latentθ=latentθ)
+	emptyindex = map(trialset->map(mpGLM->zeros(Int, 0), trialset.mpGLMs), model.trialsets)
+    indexθ = Indexθ(latentθ=latentθ,
+					𝐮 = emptyindex,
+					𝐥 = emptyindex,
+					𝐫 = emptyindex)
     return concatenatedθ, indexθ
 end
 
@@ -148,14 +106,14 @@ UNMODIFIED ARGUMENT
 RETURN
 -log-likelihood
 """
-function loglikelihood!(model::FHMDDM,
+function loglikelihood!(model::Model,
 					    concatenatedθ::Vector{<:Real},
 						indexθ::Indexθ)
 	sortparameters!(model, concatenatedθ, indexθ)
 	@unpack options, θnative, trialsets = model
 	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
-	ℓ = map(trialset) do trialset
-			map(trialset.trials) do trial #pmap
+	ℓ = map(trialsets) do trialset
+			map(trialset.trials) do trial
 				loglikelihood(θnative, trial, trialinvariant)
 			end
 		end
@@ -216,7 +174,6 @@ Gradient of the negative log-likelihood of the factorial hidden Markov drift-dif
 
 MODIFIED INPUT
 -`∇`: a vector of partial derivatives
--`γ`: posterior probability of the latent variables
 -`model`: a structure containing information of the factorial hidden Markov drift-diffusion model
 
 UNMODIFIED ARGUMENT
@@ -225,33 +182,38 @@ UNMODIFIED ARGUMENT
 
 """
 function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
-								 γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
-								 model::FHMDDM,
+								 model::Model,
 								 concatenatedθ::Vector{<:AbstractFloat},
 								 indexθ::Indexθ)
+	sortparameters!(model, concatenatedθ, indexθ)
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack K = options
 	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
 	gradients=map(trialsets) do trialset
-				map(trialset.trials) do trial #pmap
+				pmap(trialset.trials) do trial
 					∇loglikelihood(θnative, trial, trialinvariant)
 				end
 			end
-	gradient = gradients[1][1] # reuse this memory
+	g = gradients[1][1] # reuse this memory
 	for field in fieldnames(Latentθ)
-		partial = getfield(gradient, field)
-		for i in eachindex(output)
+		latent∂ = getfield(g, field)
+		for i in eachindex(gradients)
 			start = i==1 ? 2 : 1
 			for m in start:length(gradients[i])
-				partial[1] += getfield(gradients[i][m], field)[1]
+				latent∂[1] += getfield(gradients[i][m], field)[1]
 			end
 		end
 	end
-	native2real!(gradient, θnative, θreal)
+	g.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
+	g.k[1] *= θnative.k[1]
+	g.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	g.σ²ₐ[1] *= θnative.σ²ₐ[1]
+	g.σ²ᵢ[1] *= θnative.σ²ᵢ[1]
+	g.σ²ₛ[1] *= θnative.σ²ₛ[1]
 	for field in fieldnames(Latentθ)
 		index = getfield(indexθ.latentθ, field)[1]
 		if index != 0
-			∇[index] = -getfield(latent∇,field)[1] # note the negative sign
+			∇[index] = -getfield(g,field)[1] # note the negative sign
 		end
 	end
 end
@@ -325,10 +287,10 @@ function ∇loglikelihood(θnative::Latentθ,
 				dAᵃₜdσ² = dAᵃdσ²[i]
 				dAᵃₜdB = dAᵃdB[i]
 			end
-			if t == trials.ntimesteps
-				χᵃ_Aᵃ = sum(p𝑑.*b .* transpose(f[t-1]), dims=2) ./ D[t]
+			if t == trial.ntimesteps
+				χᵃ_Aᵃ = p𝑑.*b .* transpose(f[t-1]) ./ D[t]
 			else
-				χᵃ_Aᵃ = sum(b .* transpose(f[t-1]), dims=2) ./ D[t]
+				χᵃ_Aᵃ = b .* transpose(f[t-1]) ./ D[t]
 			end
 			χᵃ_dlogAᵃdμ = χᵃ_Aᵃ .* dAᵃₜdμ # χᵃ⊙ d/dμ{log(Aᵃ)} = χᵃ⊘ Aᵃ⊙ d/dμ{Aᵃ}
 			∑_χᵃ_dlogAᵃdμ = sum(χᵃ_dlogAᵃdμ)
@@ -360,17 +322,17 @@ function ∇loglikelihood(θnative::Latentθ,
 	dℓdwₕ = ∑_γᵃ₁_dlogπᵃdμ * trial.previousanswer
 	dℓdσ²ᵢ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdσ²
 	dℓdB += γᵃ₁_oslash_πᵃ ⋅ dπᵃdB
-	dℓdψ = differentiateℓwrtψ(trial.choice, f[end], θnative.ψ[1])
-	Latentθ(k	= [dℓdk],
+	dℓdxψ = differentiateℓ_wrt_xψ(trial.choice, f[end], θnative.ψ[1])
+	Latentθ(B	= [dℓdB],
+			k	= [dℓdk],
 			λ	= [dℓdλ],
 			μ₀	= [dℓdμ₀],
 			ϕ	= [dℓdϕ],
-			ψ	= [dℓdψ],
+			ψ	= [dℓdxψ],
 			σ²ₐ	= [dℓdσ²ₐ],
 			σ²ᵢ	= [dℓdσ²ᵢ],
 			σ²ₛ	 = [dℓdσ²ₛ],
-			wₕ	 = [dℓdwₕ],
-			B	= [dℓdB])
+			wₕ	 = [dℓdwₕ])
 end
 
 """
@@ -463,8 +425,9 @@ RETURN
 function posteriors(θnative::Latentθ,
 				    trial::Trial,
 				    trialinvariant::Trialinvariant)
-	@unpack inputtimesteps, inputindex = trial.clicks
-	@unpack Aᵃsilent, Aᶜ, Δt, K, 𝛚, Ξ, 𝛏 = trialinvariant
+	@unpack choice, clicks = trial
+	@unpack inputtimesteps, inputindex = clicks
+	@unpack Aᵃsilent, Ξ, 𝛏 = trialinvariant
 	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
 	σ = √θnative.σ²ᵢ[1]
 	πᵃ = probabilityvector(μ, σ, 𝛏)
@@ -477,18 +440,12 @@ function posteriors(θnative::Latentθ,
 		cR = sum(C[clicks.right[t]])
 		stochasticmatrix!(Aᵃ[i], cL, cR, trialinvariant, θnative)
 	end
-	D, f = forward(Aᵃ, trial.choice, inputindex, πᵃ, θnative.ψ[1], trialinvariant)
-	fb = f # reuse memory
-	p𝑑 = conditional_probability_of_choice(trial.choice, θnative.ψ[1], Ξ)
+	D, fb = forward(Aᵃ, choice, inputindex, πᵃ, θnative.ψ[1], trialinvariant)
+	b = conditional_probability_of_choice(trial.choice, θnative.ψ[1], Ξ)
 	@inbounds for t = trial.ntimesteps-1:-1:1
-		if t == trial.ntimesteps-1
-			b .*= p𝑑
-		end
-		if t < trial.ntimesteps # backward step
-			Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
-			b = transpose(Aᵃₜ₊₁) * b * Aᶜ / D[t+1]
-			fb[t] .*= b
-		end
+		Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
+		b = transpose(Aᵃₜ₊₁) * b / D[t+1]
+		fb[t] .*= b
 	end
 	return fb
 end

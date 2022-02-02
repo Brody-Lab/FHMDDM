@@ -114,13 +114,13 @@ function estimatefilters!(trialsets::Vector{<:Trialset},
                             estimatefilters(γ, mpGLM,; show_trace=show_trace)
                         end
                     end
-    Pᵤ = length(mpGLM[1][1].𝐮)
-    Pₗ = length(mpGLM[1][1].𝐥)
-    for i in eachindex(optimresults)
-        for n in eachindex(optimresults[i])
-            trialsets[i].mpGLMs[n].𝐮 .= concatentated𝐰[i][n][1:Pᵤ]
-            trialsets[i].mpGLMs[n].𝐥 .= concatentated𝐰[i][n][Pᵤ+1:Pᵤ+Pₗ]
-            trialsets[i].mpGLMs[n].𝐫 .= concatentated𝐰[i][n][Pᵤ+Pₗ+1:end]
+    Pᵤ = length(trialsets[1].mpGLMs[1].𝐮)
+    Pₗ = length(trialsets[1].mpGLMs[1].𝐥)
+    for i in eachindex(concatentatedθ)
+        for n in eachindex(concatentatedθ[i])
+            trialsets[i].mpGLMs[n].𝐮 .= concatentatedθ[i][n][1:Pᵤ]
+            trialsets[i].mpGLMs[n].𝐥 .= concatentatedθ[i][n][Pᵤ+1:Pᵤ+Pₗ]
+            trialsets[i].mpGLMs[n].𝐫 .= concatentatedθ[i][n][Pᵤ+Pₗ+1:end]
         end
     end
     return nothing
@@ -170,7 +170,7 @@ RETURN
 function negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
                              mpGLM::MixturePoissonGLM,
                              x::Vector{<:AbstractFloat})
-    @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐲 = mpGLM
+    @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
     Pᵤ = size(𝐔,2)
     Pₗ = size(𝚽,2)
     𝐮 = x[1:Pᵤ]
@@ -221,9 +221,9 @@ function ∇negativeexpectation!(∇::Vector{<:AbstractFloat},
                                x::Vector{<:AbstractFloat})
     Pᵤ = size(mpGLM.𝐔,2)
     Pₗ = size(mpGLM.𝚽,2)
-    mpGLM.𝐮 = x[1:Pᵤ]
-    mpGLM.𝐥 = x[Pᵤ+1:Pᵤ+Pₗ]
-    mpGLM.𝐫 = x[Pᵤ+Pₗ+1:end]
+    mpGLM.𝐮 .= x[1:Pᵤ]
+    mpGLM.𝐥 .= x[Pᵤ+1:Pᵤ+Pₗ]
+    mpGLM.𝐫 .= x[Pᵤ+Pₗ+1:end]
     ∇ .= ∇negativeexpectation(γ, mpGLM)
 end
 
@@ -295,7 +295,7 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
                                γ::Matrix{<:Vector{<:AbstractFloat}},
                                mpGLM::MixturePoissonGLM,
                                x::Vector{<:AbstractFloat})
-    @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐲 = mpGLM
+    @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
     Pᵤ = size(𝐔,2)
     Pₗ = size(𝚽,2)
     indices𝐮 = 1:Pᵤ

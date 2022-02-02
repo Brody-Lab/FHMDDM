@@ -17,11 +17,10 @@ function adapt(clicks::Clicks, k::T, ϕ::T) where {T<:Real}
     nclicks = length(clicks.time)
 	@assert nclicks > 0
     C = zeros(T, nclicks)
-    eᵠ = exp(ϕ)
-	C[1] = 1.0 - (1.0-eᵠ)*exp(-k*clicks.time[1])
+	C[1] = 1.0 - (1.0-ϕ)*exp(-k*clicks.time[1])
     for i = 2:nclicks
         Δt = clicks.time[i] - clicks.time[i-1]
-        C[i] = 1.0 - (1.0-eᵠ*C[i-1])*exp(-k*Δt)
+        C[i] = 1.0 - (1.0-ϕ*C[i-1])*exp(-k*Δt)
     end
     return C
 end
@@ -47,18 +46,16 @@ function ∇adapt(clicks::Clicks, k::AbstractFloat, ϕ::AbstractFloat)
 	nclicks = length(clicks.time)
 	@assert nclicks > 0
     C, dCdk, dCdϕ = zeros(nclicks), zeros(nclicks), zeros(nclicks)
-    eᵠ = exp(ϕ)
     e⁻ᵏᵈᵗ = exp(-k*clicks.time[1])
-    C[1] = 1.0 - (1.0-eᵠ)*e⁻ᵏᵈᵗ
-    dCdϕ[1] = eᵠ*e⁻ᵏᵈᵗ
+    C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
+    dCdϕ[1] = e⁻ᵏᵈᵗ
     dCdk[1] = (1.0-C[1])*clicks.time[1]
     for i = 2:nclicks
         Δt = clicks.time[i] - clicks.time[i-1]
         e⁻ᵏᵈᵗ = exp(-k*Δt)
-		eᵠ⁻ᵏᵈᵗ= eᵠ*e⁻ᵏᵈᵗ
-        C[i] = 1.0 - (1.0 - eᵠ*C[i-1])*e⁻ᵏᵈᵗ
-        dCdϕ[i] = eᵠ⁻ᵏᵈᵗ*(C[i-1] + dCdϕ[i-1])
-        dCdk[i] = eᵠ⁻ᵏᵈᵗ*dCdk[i-1] + (1.0-C[i])*Δt
+        C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
+        dCdϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dCdϕ[i-1])
+        dCdk[i] = ϕ*e⁻ᵏᵈᵗ*dCdk[i-1] + (1.0-C[i])*Δt
     end
     return C, dCdk, dCdϕ
 end

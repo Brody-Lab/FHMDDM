@@ -13,7 +13,7 @@ OPTIONAL ARGUMENT
 -`tolerance`: the smallest change in the objective value of the expectation-maximization algorithm before convergence is considered to be successful
 -`startfromgenerative`: whether the initial values of the learning process is set the values used in model sampling. This is useful for testing whether a local minimum might be an issue
 """
-function learn_𝛃_from_sample(generativemodel::FHMDDM;
+function learn_𝛃_from_sample(generativemodel::Model;
                             niterations::Integer=100,
                             startfromgenerative::Bool=false,
                             tolerance::AbstractFloat = 1e-9)
@@ -67,7 +67,7 @@ OPTIONAL ARGUMENT
 -`startfromgenerative`: whether the initial values of the learning process is set the values used in model sampling. This is useful for testing whether a local minimum might be an issue
 -`tolerance`: the smallest change in the objective value of the expectation-maximization algorithm before convergence is considered to be successful
 """
-function learn_θₐ_from_sample(generativemodel::FHMDDM;
+function learn_θₐ_from_sample(generativemodel::Model;
                               compute_posterior_with_generative::Bool=false,
                               niterations::Integer=100,
                               startfromgenerative::Bool=false,
@@ -92,9 +92,9 @@ function learn_θₐ_from_sample(generativemodel::FHMDDM;
     else
         optionsdict = merge(optionsdict, Dict("theta_0" => Dict(θ₀)))
     end
-    model = FHMDDM(data=model.data,
+    model = Model(data=model.data,
                    mpGLM=model.mpGLM,
-                   options=FHMDDMoptions(optionsdict),
+                   options=Options(optionsdict),
                    θ=θ₀)
     @unpack data, mpGLM, options, θ = model
     @unpack Aᶻ, 𝛃, πᶻ, ψ, θₐ = θ
@@ -123,7 +123,7 @@ function learn_θₐ_from_sample(generativemodel::FHMDDM;
         end
     end
     θ = θFHMDDM(Aᶻ=Aᶻ, 𝛃 =𝛃, πᶻ=πᶻ, ψ =ψ, θₐ=θₐ)
-    FHMDDM(data=data, mpGLM=mpGLM, options=options, θ=θ)
+    Model(data=data, mpGLM=mpGLM, options=options, θ=θ)
 end
 
 """
@@ -142,7 +142,7 @@ OPTIONAL ARGUMENT
 -`startfromgenerative`: whether the initial values of the learning process is set the values used in model sampling. This is useful for testing whether a local minimum might be an issue
 -`tolerance`: the smallest change in the objective value of the expectation-maximization algorithm before convergence is considered to be successful
 """
-function learn_𝛃_θₐ_from_sample(generativemodel::FHMDDM;
+function learn_𝛃_θₐ_from_sample(generativemodel::Model;
                               niterations::Integer=100,
                               startfromgenerative::Bool=false,
                               tolerance::AbstractFloat = 1e-9)
@@ -171,7 +171,7 @@ function learn_𝛃_θₐ_from_sample(generativemodel::FHMDDM;
         end
     end
     θ = θFHMDDM(Aᶻ=Aᶻ, 𝛃=regression_coefficients(mpGLM), πᶻ=πᶻ, ψ =ψ, θₐ=θₐ)
-    FHMDDM(data=data, mpGLM=mpGLM, options=options, θ=θ)
+    Model(data=data, mpGLM=mpGLM, options=options, θ=θ)
 end
 
 """
@@ -188,7 +188,7 @@ OPTIONAL ARGUMENT
 RETURN
 -an instance of the factorial hidden Markov drift-diffusion model with the parameters in 𝛃 and θₐ initialized
 """
-function initialize_𝛃_θₐ(model::FHMDDM; startfromgenerative::Bool=false)
+function initialize_𝛃_θₐ(model::Model; startfromgenerative::Bool=false)
     @unpack data, mpGLM, options, θ = model
     @unpack Aᶻ, 𝛃, πᶻ, ψ, θₐ = θ
     if !startfromgenerative
@@ -219,9 +219,9 @@ function initialize_𝛃_θₐ(model::FHMDDM; startfromgenerative::Bool=false)
     else
         optionsdict = merge(optionsdict, Dict("theta_0" => Dict(θ₀)))
     end
-    FHMDDM(data=data,
+    Model(data=data,
            mpGLM=mpGLM,
-           options=FHMDDMoptions(optionsdict),
+           options=Options(optionsdict),
            θ=θ₀)
 end
 
@@ -242,7 +242,7 @@ SAVED TO DISK
 RETURN
 -`nothing`
 """
-function assess_mpGLM_optimization(generativemodel::FHMDDM;
+function assess_mpGLM_optimization(generativemodel::Model;
                                    niterations::Integer=100,
                                    nrepeats::Integer=2,
                                    tolerance::AbstractFloat = 1e-9,
@@ -260,9 +260,9 @@ function assess_mpGLM_optimization(generativemodel::FHMDDM;
 
     for i = 1:nrepeats
         if startfromgenerative || generativeposterior
-            mpGLM = MixturePoissonGLM(generativemodel.θ.𝛃, simulateddata, FHMDDMoptions(optionsdict))
+            mpGLM = MixturePoissonGLM(generativemodel.θ.𝛃, simulateddata, Options(optionsdict))
         else
-            mpGLM = MixturePoissonGLM(simulateddata, FHMDDMoptions(optionsdict)) # initialize with random coefficients
+            mpGLM = MixturePoissonGLM(simulateddata, Options(optionsdict)) # initialize with random coefficients
         end
         𝛃₀ = regression_coefficients(mpGLM)
         θ₀ = θFHMDDM(Aᶻ= copy(generativemodel.θ.Aᶻ),
@@ -276,7 +276,7 @@ function assess_mpGLM_optimization(generativemodel::FHMDDM;
             optionsdict = merge(optionsdict, Dict("theta_0" => Dict(θ₀)))
         end
         optionsdict["resultspath"] = dirname(generativemodel.options.resultspath)*"/simulatedresults"*string(i)*".mat"
-        options = FHMDDMoptions(optionsdict)
+        options = Options(optionsdict)
 
         𝒬_𝛃_previous = 0.0
         for j = 1:niterations
@@ -315,7 +315,7 @@ function assess_mpGLM_optimization(generativemodel::FHMDDM;
                     πᶻ= copy(generativemodel.θ.πᶻ),
                     ψ = copy(generativemodel.θ.ψ),
                     θₐ= Θₐ(pulse_input_DDM.flatten(generativemodel.θ.θₐ)...))
-        simulatedmodel = FHMDDM(data=simulateddata,
+        simulatedmodel = Model(data=simulateddata,
                                 mpGLM=mpGLM,
                                 options=options,
                                 θ=θ)
@@ -343,7 +343,7 @@ SAVED TO DISK
 RETURN
 -`nothing`
 """
-function assess_θₐ_optimization(generativemodel::FHMDDM; niterations::Integer=100, nrepeats::Integer=2, tolerance::AbstractFloat = 1e-9)
+function assess_θₐ_optimization(generativemodel::Model; niterations::Integer=100, nrepeats::Integer=2, tolerance::AbstractFloat = 1e-9)
     data, p𝐚, p𝐳 = simulatedata(generativemodel)
     𝐲generative= predict_expected_spiketrain(generativemodel, p𝐚, p𝐳) # the spike rate used for the simulations
     optionsdict = Dict(generativemodel.options)
@@ -353,7 +353,7 @@ function assess_θₐ_optimization(generativemodel::FHMDDM; niterations::Integer
                 "options" => optionsdict,
                 "ygenerative" => 𝐲generative)
     matwrite(optionsdict["datapath"], dict)
-    mpGLM_generative = MixturePoissonGLM(generativemodel.θ.𝛃, data, FHMDDMoptions(optionsdict))
+    mpGLM_generative = MixturePoissonGLM(generativemodel.θ.𝛃, data, Options(optionsdict))
     for i = 1:nrepeats
         θₐ = Θₐ(generativemodel.options.θ₀.θₐ,
                 generativemodel.options.θₐisfit,
@@ -371,7 +371,7 @@ function assess_θₐ_optimization(generativemodel::FHMDDM; niterations::Integer
             optionsdict = merge(optionsdict, Dict("theta_0" => Dict(θ₀)))
         end
         optionsdict["resultspath"] = dirname(generativemodel.options.resultspath)*"/simulatedresults"*string(i)*".mat"
-        options = FHMDDMoptions(optionsdict)
+        options = Options(optionsdict)
 
         quantities = EMquantities(data, options)
         @unpack γᵃ, χᵃnb = quantities
@@ -415,7 +415,7 @@ function assess_θₐ_optimization(generativemodel::FHMDDM; niterations::Integer
                     πᶻ= generativemodel.θ.πᶻ,
                     ψ = generativemodel.θ.ψ,
                     θₐ= θₐ) # only parameters that are learned
-        simulatedmodel = FHMDDM(data=data,
+        simulatedmodel = Model(data=data,
                                 mpGLM=mpGLM_generative,
                                 options=options,
                                 θ=θ)
@@ -438,7 +438,7 @@ OPTIONAL INPUT
 RETURN
 -a scalar representing the log-likelihood of the model
 """
-function loglikelihood(model::FHMDDM;
+function loglikelihood(model::Model;
                        quantities=EMquantities(model.data, model.options))
     @unpack data, mpGLM, options, θ = model
     @unpack Aᶻ, θₐ, πᶻ, ψ = θ

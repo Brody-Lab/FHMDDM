@@ -4,7 +4,7 @@
 function forwardgradient!(∇::Vector{<:AbstractFloat},
 							concatenatedθ::Vector{<:AbstractFloat},
 							indexθ::Indexθ,
-							model::FHMDDM)
+							model::Model)
 	f(concatenatedθ) = -loglikelihood(concatenatedθ, indexθ, model)
 	∇ .= ForwardDiff.gradient(f, concatenatedθ)
 	return nothing
@@ -16,7 +16,7 @@ end
 function reversegradient!(∇::Vector{<:AbstractFloat},
 							concatenatedθ::Vector{<:AbstractFloat},
 							indexθ::Indexθ,
-							model::FHMDDM)
+							model::Model)
 	f(concatenatedθ) = -loglikelihood(concatenatedθ, indexθ, model)
 	ReverseDiff.gradient!(∇, f, concatenatedθ)
 	return nothing
@@ -25,7 +25,7 @@ end
 """
 	compute γ
 """
-function posteriors(model::FHMDDM)
+function posteriors(model::Model)
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack Ξ, K = options
 	p𝐘𝑑=map(model.trialsets) do trialset
@@ -96,7 +96,7 @@ RETURN
 """
 function loglikelihood_one_trial(concatenatedθ::Vector{<:Real},
 								indexθ::Indexθ,
-								model::FHMDDM,
+								model::Model,
 								p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}};
 								i::Integer,
 								m::Integer)
@@ -111,7 +111,7 @@ end
 """
 	compute the log-likelihood in parallel across trials
 """
-function loglikelihood_parallel(model::FHMDDM,
+function loglikelihood_parallel(model::Model,
 								p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 								trialinvariant::Trialinvariant)
 	@unpack θnative, trialsets = model
@@ -126,7 +126,7 @@ end
 """
 	compute the log-likelihood serially over trials
 """
-function loglikelihood_serial(model::FHMDDM,
+function loglikelihood_serial(model::Model,
 								p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 								trialinvariant::Trialinvariant)
 	@unpack θnative, trialsets = model

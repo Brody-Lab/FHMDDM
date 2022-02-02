@@ -1,5 +1,5 @@
 """
-    FHMDDM(datapath; fit_to_choices)
+    Model(datapath; fit_to_choices)
 
 Load a factorial hidden Markov drift diffusion model from a MATLAB file.
 
@@ -12,21 +12,21 @@ OPTIONAL ARGUMENT
 -`fit_to_choices`: whether the initial values the model parameters are learned by fitting to the choices alone
 
 RETURN
-- an instance of `FHMDDM`
+- a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function FHMDDM(datapath::String)
+function Model(datapath::String)
     dataMAT = matopen(datapath);
-    options = FHMDDMoptions(read(dataMAT, "options"))
+    options = Options(read(dataMAT, "options"))
     trialsets = vec(map(trialset->Trialset(options, trialset), read(dataMAT, "data")))
     if isfile(options.resultspath)
-        FHMDDM(options, options.resultspath, trialsets)
+        Model(options, options.resultspath, trialsets)
     else
-        FHMDDM(options, trialsets)
+        Model(options, trialsets)
     end
 end
 
 """
-    FHMDDM(options, resultspath, trialsets)
+    Model(options, resultspath, trialsets)
 
 Load a previously fitted factorial hidden Markov drift-diffusion model
 
@@ -36,9 +36,9 @@ ARGUMENT
 -`trialsets`: data used to constrain the model
 
 RETURN
--an instance of `FHMDDM`
+- a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function FHMDDM(options::FHMDDMoptions,
+function Model(options::Options,
 		 		resultspath::String,
 		 		trialsets::Vector{<:Trialset})
     resultsMAT = matopen(resultspath)
@@ -52,7 +52,7 @@ function FHMDDM(options::FHMDDMoptions,
 			trialsets[i].mpGLMs[n].𝐫 .= 𝐫[i][n]
 		end
 	end
-	FHMDDM(options=options,
+	Model(options=options,
 		   θnative=Latentθ(read(resultsMAT, "theta_native")),
 		   θreal=Latentθ(read(resultsMAT, "theta_real")),
 		   θ₀native=Latentθ(read(resultsMAT, "theta0_native")),
@@ -60,7 +60,7 @@ function FHMDDM(options::FHMDDMoptions,
 end
 
 """
-    FHMDDM(options, trialsets)
+    Model(options, trialsets)
 
 Create a factorial hidden Markov drift-diffusion model
 
@@ -69,15 +69,15 @@ ARGUMENT
 -`trialsets`: data used to constrain the model
 
 RETURN
--an instance of `FHMDDM`
+- a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function FHMDDM(options::FHMDDMoptions,
+function Model(options::Options,
 				trialsets::Vector{<:Trialset})
 	θnative = initializeparameters(options)
 	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # just making a deep copy
-	FHMDDM(options=options,
+	Model(options=options,
 		   θnative=θnative,
-		   θreal=native2real(options,θnative),
+		   θreal=native2real(options, θnative),
 		   θ₀native=θ₀native,
 		   trialsets=trialsets)
 end
@@ -90,19 +90,19 @@ Initialize the value of each model parameters in native space by sampling from a
 RETURN
 -values of model parameter in native space
 """
-function initializeparameters(options::FHMDDMoptions)
-	Latentθ(Aᶜ₁₁=options.K==1 ? [1] : rand(1),
-			Aᶜ₂₂=options.K==1 ? [1] : rand(1),
+function initializeparameters(options::Options)
+	Latentθ(Aᶜ₁₁=options.K==1 ? [1] : [1-rand()/10],
+			Aᶜ₂₂=options.K==1 ? [1] : [1-rand()/10],
 			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
-			k=options.fit_k ? 10rand(1) : [options.q_k],
+			k=options.fit_k ? rand(1) : [options.q_k],
 			λ=options.fit_λ ? [1-2rand()] : zeros(1),
 			μ₀=options.fit_μ₀ ? [1-2rand()] : zeros(1),
-			ϕ=options.fit_ϕ ? [1-2rand()] : zeros(1),
-			πᶜ₁=options.K==1 ? [1] : rand(1),
-			ψ=options.fit_ψ ? rand(1)/2 : [options.q_ψ],
-			σ²ₐ=options.fit_σ²ₐ ? 10rand(1) : [options.q_σ²ₐ],
-			σ²ᵢ=options.fit_σ²ᵢ ? 10rand(1) : [options.q_σ²ᵢ],
-			σ²ₛ=options.fit_σ²ₛ ? rand(1) : [options.q_σ²ₛ],
+			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
+			πᶜ₁=options.K==1 ? [1] : [1-rand()/10],
+			ψ=options.fit_ψ ? rand(1)/10 : [options.q_ψ],
+			σ²ₐ=options.fit_σ²ₐ ? rand(1) : [options.q_σ²ₐ],
+			σ²ᵢ=options.fit_σ²ᵢ ? rand(1) : [options.q_σ²ᵢ],
+			σ²ₛ=options.fit_σ²ₛ ? rand(1)/10 : [options.q_σ²ₛ],
 			wₕ=options.fit_wₕ ? [1-2rand()] : zeros(1))
 end
 
@@ -173,7 +173,7 @@ INPUT
 OUTPUT
 -an instance of `trialsetdata`
 """
-function Trialset(options::FHMDDMoptions, trialset::Dict)
+function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
     rawclicktimes = map(x->x["clicktimes"], rawtrials)
 
@@ -220,4 +220,47 @@ function Trialset(options::FHMDDMoptions, trialset::Dict)
 	             end
 	end
     Trialset(mpGLMs=mpGLMs, trials=trials)
+end
+
+"""
+	initializeparameters!(model)
+
+Initialize the values of a subset of the parameters by maximizing the likelihood of only the choices.
+
+The parameters specifying the transition probability of the coupling variable are not modified. The weights of the GLM are computed by maximizing the expectation of complete-data log-likelihood across accumulator states, assuming a coupled state.
+
+MODIFIED ARGUMENT
+-`model`: an instance of the factorial hidden Markov drift-diffusion model
+"""
+function initializeparameters!(model::Model)
+	@unpack θnative, θreal, options, trialsets = model
+	@unpack K, Ξ = model.options
+	θnative.πᶜ₁[1] = 1-θnative.ψ[1]
+	native2real!(θreal, options, θnative)
+	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
+	fb = map(trialsets) do trialset
+			map(trialset.trials) do trial #pmap
+				posteriors(θnative, trial, trialinvariant)
+			end
+		end
+	γ =	map(model.trialsets) do trialset
+			map(CartesianIndices((Ξ,K))) do index
+				zeros(trialset.ntimesteps)
+			end
+		end
+	p = [θnative.πᶜ₁[1]; 1.0 - θnative.πᶜ₁[1]]
+	@inbounds for i in eachindex(fb)
+        t = 0
+        for m in eachindex(fb[i])
+            for tₘ in eachindex(fb[i][m])
+                t += 1
+                for j in eachindex(fb[i][m][tₘ])
+					for k = 1:K
+                    	γ[i][j,k][t] = fb[i][m][tₘ][j]*p[k]
+					end
+                end
+            end
+        end
+    end
+	estimatefilters!(model.trialsets, γ)
 end

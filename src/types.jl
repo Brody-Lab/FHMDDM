@@ -43,7 +43,6 @@ Model settings
 @with_kw struct Options{TB<:Bool,
 						TS<:String,
 						TF<:AbstractFloat,
-						TVF<:Vector{<:AbstractFloat},
 						TVI<:Vector{<:Integer},
 						TI<:Integer}
 	"number of temporal basis functions for the accumulator per s"
@@ -86,6 +85,8 @@ Model settings
 	q_B::TF=30.0; 		@assert q_B > 0
 	"value of the adaptation change rate in native space that corresponds to zero in real space"
 	q_k::TF=1e-3; 		@assert q_k > 0
+	"value in native space of the sensitization strength parameter that corresponds to zero in real space"
+	q_ϕ::TF=1-1e-3; 	@assert q_ϕ >= 0 && q_ϕ <= 1
 	"value in native space of the prior probability of the coupling variable in coupled state that corresponds to zero in real space"
 	q_πᶜ₁::TF=1-1e-3; 	@assert q_πᶜ₁ >= 0 && q_πᶜ₁ <= 1
 	"value in native space of the behavioral lapse rate that corresponds to zero in real space"
@@ -96,32 +97,6 @@ Model settings
 	q_σ²ᵢ::TF=1e-3; 	@assert q_σ²ᵢ >= 0
 	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
 	q_σ²ₛ::TF=1e-3;	 	@assert q_σ²ₛ >= 0
-	"lower and upper bounds of the probability of remaining in the coupled state"
-	bounds_Aᶜ₁₁::TVF=[logit(1e-6)-logit(q_Aᶜ₁₁); logit(1-1e-6)-logit(q_Aᶜ₁₁)]
-	"lower and upper bounds of the probability of remaining in the coupled state"
-	bounds_Aᶜ₂₂::TVF=[logit(1e-6)-logit(q_Aᶜ₂₂); logit(1-1e-6)-logit(q_Aᶜ₂₂)]
-	"lower and upper bounds of the sticky bound height in real space"
-	bounds_B::TVF=[-Inf; Inf]
-	"lower and upper bounds of the adaptation exponential change rate in real space"
-	bounds_k::TVF=[-Inf; Inf]
-	"lower and upper bounds of the leakiness/instability parameter"
-	bounds_λ::TVF=[-Inf; Inf]
-	"lower and upper bounds of the mean of the prior probability"
-	bounds_μ₀::TVF=[-Inf; Inf]
-	"lower and upper bounds of the adaptation strength"
-	bounds_ϕ::TVF=[-Inf; Inf]
-	"lower and upper bounds of the initial probability of the coupled state in real space"
-	bounds_πᶜ₁::TVF=[logit(1e-6)-logit(q_πᶜ₁); logit(1-1e-6)-logit(q_πᶜ₁)]
-	"lower and upper bounds of the lapse rate in real space"
-	bounds_ψ::TVF=[logit(1e-6)-logit(q_ψ); logit(1-1e-6)-logit(q_ψ)]
-	"lower and upper bounds of the diffusion noise"
-	bounds_σ²ₐ::TVF=[-Inf; Inf]
-	"lower and upper bounds of the variance of the prior probability"
-	bounds_σ²ᵢ::TVF=[-Inf; Inf]
-	"lower and upper bounds of the variance of the per-click noise"
-	bounds_σ²ₛ::TVF=[-Inf; Inf]
-	"lower and upper bounds of the weight of the previous rewarded option"
-	bounds_wₕ::TVF=[-Inf; Inf]
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"the number of time bins before the current bin when the spike history is considered, one value for each regressor, such as [1, 2, ..., 9]. Note a positive lag represents a time bin before the current time bin."
@@ -237,15 +212,15 @@ A group of trials in which a population of neurons were recorded simultaneously
 end
 
 """
-	FHMDDM
+	Model
 
 A factorial hidden Markov drift-diffusion model
 """
-@with_kw struct FHMDDM{Toptions<:FHMDDMoptions,
-					   Tθ1<:Latentθ,
-					   Tθ2<:Latentθ,
-					   Tθ3<:Latentθ,
-					   VT<:Vector{<:Trialset}}
+@with_kw struct Model{Toptions<:Options,
+					Tθ1<:Latentθ,
+					Tθ2<:Latentθ,
+					Tθ3<:Latentθ,
+					VT<:Vector{<:Trialset}}
 	"settings of the model"
 	options::Toptions
 	"model parameters in their native space (the term 'space' is not meant to be mathematically rigorous. Except for the sticky bound `B`, the native space of all parameters are positive real numbers, which is a vector space. The native space of `B` is upper bounded because I am concerned a large value of `B` would result in a loss of precision in the discretization of the accumulator variable.)"

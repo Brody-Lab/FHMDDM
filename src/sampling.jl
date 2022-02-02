@@ -6,7 +6,7 @@ Compute the probability of a right choice and the expected spike rate
 The emissions consist of the behavioral choice in each trial and the spike train response of each neuron at each time step of each trial. The behavioral choice is modelled as a Bernoulli random variable, and the spike train response is modelled as a Poisson random variable. Here we compute the expectated value of these random variablees by averaging across samples of the model.
 
 ARGUMENT
--`model`: An instance of the factorial hidden Markov drift-diffusion model (FHMDDM)
+- a structure containing information for a factorial hidden Markov drift-diffusion model
 
 OPTION ARGUMENT
 -`nsamples`: number of samples over which the expectation is taken
@@ -15,7 +15,7 @@ RETURN
 -`λΔt`: expectd value of the number of spikes per `Δt` at each time step. Element λΔt[i][n][t] corresponds to the t-timestep and the n-th neuron in the i-th trialset
 -`pchoice`: estimate of the mean of the probability of a right. Element pchoice[i][m] corresponds to the m-th trial in the i-th trialset
 """
-function expectedemissions(model::FHMDDM; nsamples::Integer=100)
+function expectedemissions(model::Model; nsamples::Integer=100)
     @unpack trialsets, options, θnative = model
 	@unpack spikehistorylags = options
     pchoice = map(trialset->zeros(trialset.ntrials), trialsets)
@@ -196,14 +196,14 @@ ARGUMENT
 OUTPUT
 -`model`: an instance of FHM-DDM with generated variables
 """
-function sample(model::FHMDDM;
+function sample(model::Model;
                 datafilename::String="sample.mat",
                 resultsfilename::String="resultsofsample.mat")
     optionsdict = dictionary(model.options)
     optionsdict["datapath"] = dirname(optionsdict["datapath"])*"/"*datafilename
     optionsdict["resultspath"] = dirname(optionsdict["resultspath"])*"/"*resultsfilename
-	options = FHMDDMoptions(optionsdict)
+	options = Options(optionsdict)
 	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
     trialsets = map(trialset->sample(options.spikehistorylags, model.θnative, trialinvariant, trialset), model.trialsets)
-	FHMDDM(options, trialsets)
+	Model(options, trialsets)
 end

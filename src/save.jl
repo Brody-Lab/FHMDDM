@@ -12,7 +12,7 @@ OPTIONAL ARGUMENT
 RETURN
 -nothing
 """
-function save(model::FHMDDM,
+function save(model::Model,
               λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
               pchoice::Vector{<:Vector{<:AbstractFloat}})
     dict = Dict("theta_native"=> dictionary(model.θnative),
@@ -34,7 +34,7 @@ end
 Save the data
 
 INPUT
--`model`: a FHMDDM
+- a structure containing information for a factorial hidden Markov drift-diffusion model
 
 OPTIONAL INPUT
 -`overwritedata`: whether to overwrite previous data
@@ -42,7 +42,7 @@ OPTIONAL INPUT
 OUTPUT
 -nothing
 """
-function savedata(model::FHMDDM; overwritedata::Bool=false)
+function savedata(model::Model; overwritedata::Bool=false)
     if !isfile(model.options.datapath) || overwritedata
         dict = Dict("data" => map(trialset->Dict(trialset), model.trialsets),
                     "options" => Dict(model.options))
