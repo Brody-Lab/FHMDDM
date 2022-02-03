@@ -199,7 +199,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	Pᵤ = length(trialsets[1].mpGLMs[1].𝐮)
 	Pₗ = length(trialsets[1].mpGLMs[1].𝐥)
 	for i in eachindex(trialsets)
-		∇𝐰 = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM), trialsets[i].mpGLMs)
+		∇𝐰 = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM, mpGLM.𝐮, mpGLM.𝐥, mpGLM.𝐫), trialsets[i].mpGLMs)
 		for n in eachindex(trialsets[i].mpGLMs)
 			∇[indexθ.𝐮[i][n]] .= ∇𝐰[n][1:Pᵤ]
 			∇[indexθ.𝐥[i][n]] .= ∇𝐰[n][Pᵤ+1:Pᵤ+Pₗ]
@@ -336,77 +336,6 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 end
 
 """
-	forward(Aᵃ, inputindex, πᵃ, p𝐘d, trialinvariant)
-
-Forward pass of the forward-backward algorithm
-
-ARGUMENT
--`Aᵃ`: transition probabilities of the accumulator variable. Aᵃ[t][j,k] ≡ p(aₜ=ξⱼ ∣ aₜ₋₁=ξₖ)
-`inputindex`: index of the time steps with auditory input. For time step `t`, if the element `inputindex[t]` is nonempty, then `Aᵃ[inputindex[t][1]]` is the transition matrix for that time step. If `inputindex[t]` is empty, then the corresponding transition matrix is `Aᵃsilent`.
--`πᵃ`: a vector of floating-point numbers specifying the prior probability of each accumulator state
--`p𝐘𝑑`: likelihood of the emissions in each time bin in this trial. p𝐘𝑑[t][j,k] = ∏ₙ p(𝐲ₙ(t) ∣ 𝑎ₜ=ξⱼ, 𝑧ₜ=k) and p𝐘𝑑[end][j,k] = p(𝑑∣ 𝑎ₜ=ξⱼ, 𝑧ₜ=k) ∏ₙ p(𝐲ₙ(t) ∣ 𝑎ₜ=ξⱼ, 𝑧ₜ=k)
--`trialinvariant`: a structure containing quantities that are used in each trial
-
-RETURN
--`D`: scaling factors with element `D[t]` ≡ p(𝐘ₜ ∣ 𝐘₁, ... 𝐘ₜ₋₁)
--`f`: Forward recursion terms. `f[t][j,k]` ≡ p(aₜ=ξⱼ, zₜ=k ∣ 𝐘₁, ... 𝐘ₜ) where 𝐘 refers to all the spike trains
-
-"""
-function forward(Aᵃ::Vector{<:Matrix{<:AbstractFloat}},
- 				 inputindex::Vector{<:Vector{<:Integer}},
-				 πᵃ::Vector{<:AbstractFloat},
-				 p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
-				 trialinvariant::Trialinvariant)
-	@unpack Aᵃsilent, Aᶜᵀ, K, πᶜᵀ, Ξ, 𝛏 = trialinvariant
-	ntimesteps = length(inputindex)
-	f = map(x->zeros(Ξ,K), 1:ntimesteps)
-	D = zeros(ntimesteps)
-	f[1] = p𝐘𝑑[1] .* πᵃ .* πᶜᵀ
-	D[1] = sum(f[1])
-	f[1] /= D[1]
-	@inbounds for t = 2:ntimesteps
-		if isempty(inputindex[t])
-			Aᵃₜ = Aᵃsilent
-		else
-			i = inputindex[t][1]
-			Aᵃₜ = Aᵃ[i]
-		end
-		f[t] = Aᵃₜ * f[t-1] * Aᶜᵀ
-		f[t] .*= p𝐘𝑑[t]
-		D[t] = sum(f[t])
-		f[t] /= D[t]
-	end
-	return D,f
-end
-
-"""
-	differentiateℓwrtψ(choice, γ_end, ψ)
-
-Partial derivative of the log-likelihood of the data from one trial with respect to the lapse rate ψ
-
-ARGUMENT
--`choice`: a Boolean specifying whether the choice was to the right
--`γ_end`: a matrix of floating-point numbers representing the posterior likelihood of the latent variables at the end of the trial (i.e., last time step). Element `γ_end[i,j]` = p(aᵢ=1, cⱼ=1 ∣ 𝐘, d). Rows correspond to states of the accumulator state variable 𝐚, and columns to states of the coupling variable 𝐜.
--`ψ`: a floating-point number specifying the lapse rate
-
-RETURN
--a floating-point number quantifying the partial derivative of the log-likelihood of one trial's data with respect to the lapse rate ψ
-"""
-function differentiateℓwrtψ(choice::Bool, γ_end::Array{<:AbstractFloat}, ψ::AbstractFloat)
-	γᵃ_end = sum(γ_end, dims=2)
-	zeroindex = cld(length(γᵃ_end), 2)
-	# γᵃ_end0_div2 = γᵃ_end[zeroindex]/2
-	if choice
-		choiceconsistent   = sum(γᵃ_end[zeroindex+1:end])
-		choiceinconsistent = sum(γᵃ_end[1:zeroindex-1])
-	else
-		choiceconsistent   = sum(γᵃ_end[1:zeroindex-1])
-		choiceinconsistent = sum(γᵃ_end[zeroindex+1:end])
-	end
-	return choiceconsistent/(ψ-2) + choiceinconsistent/ψ
-end
-
-"""
 	differentiateℓ_wrt_xψ(choice, γ_end, ψ)
 
 Partial derivative of the log-likelihood of the data from one trial with respect to the lapse rate ψ in real space
@@ -486,89 +415,6 @@ function Trialinvariant(options::Options, θnative::Latentθ; purpose="gradient"
 				   K=K,
 				   Ξ=Ξ)
 	end
-end
-
-"""
-    likelihood!(p𝐘𝑑, trialset, ψ)
-
-Update the conditional likelihood of the emissions (spikes and/or behavioral choice)
-
-MODIFIED ARGUMENT
--`p𝐘𝑑`: Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
-
-UNMODIFIED ARGUMENT
--`trialsets`: data used to constrain the model
--`ψ`: lapse rate
-
-RETURN
--`nothing`
-"""
-function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:AbstractFloat}}}},
-                     trialsets::Vector{<:Trialset},
-                     ψ::Real)
-	Ξ = size(p𝐘𝑑[1][1][end],1)
-	K = size(p𝐘𝑑[1][1][end],2)
-	zeroindex = cld(Ξ,2)
-    @inbounds for i in eachindex(p𝐘𝑑)
-		N = length(trialsets[i].mpGLMs)
-		𝐩decoupled = likelihood(trialsets[i].mpGLMs[1], zeroindex, 2)
-		for n = 2:N
-			likelihood!(𝐩decoupled, trialsets[i].mpGLMs[n], zeroindex, 2)
-		end
-	    for j = 1:Ξ
-	        for k = 1:K
-	            if k == 2 || j==zeroindex
-					𝐩 = 𝐩decoupled
-				else
-					𝐩 = likelihood(trialsets[i].mpGLMs[1], j, k)
-		            for n = 2:N
-					    likelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
-		            end
-				end
-	            t = 0
-	            for m in eachindex(p𝐘𝑑[i])
-	                for tₘ in eachindex(p𝐘𝑑[i][m])
-	                    t += 1
-	                    p𝐘𝑑[i][m][tₘ][j,k] = 𝐩[t]
-	                end
-	            end
-	        end
-	    end
-		for m in eachindex(p𝐘𝑑[i])
-			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, ψ; zeroindex=zeroindex)
-		end
-    end
-    return nothing
-end
-
-"""
-    likelihood!(p𝐘ₜ𝑑, choice, ψ)
-
-Multiply against the conditional probability of a right choice given the state of the accumulator
-
-MODIFIED ARGUMENT
--`p𝐘ₜ𝑑`: A matrix whose element p𝐘ₜ𝑑[j,k] ≡ p(𝐘ₜ, 𝑑 ∣ aₜ = ξⱼ, zₜ = k) for time bin t that is the at the end of the trial
-
-UNMODIFIED ARGUMENT
--`choice`: the observed choice, either right (`choice`=true) or left.
--`ψ`: the prior probability of a lapse state
-
-OPTIONAL ARGUMENT
-- `zeroindex`: the index of the bin for which the accumulator variable equals zero
-"""
-function likelihood!(p𝐘ₜ𝑑,
-		             choice::Bool,
-		             ψ::Real;
-		             zeroindex=cld(size(p𝐘ₜ𝑑,1),2))
-    p𝐘ₜ𝑑[zeroindex,:] .*= 0.5
-    if choice
-        p𝐘ₜ𝑑[1:zeroindex-1,:] .*= ψ/2
-        p𝐘ₜ𝑑[zeroindex+1:end,:] .*= 1-ψ/2
-    else
-        p𝐘ₜ𝑑[1:zeroindex-1,:]   .*= 1-ψ/2
-        p𝐘ₜ𝑑[zeroindex+1:end,:] .*= ψ/2
-    end
-    return nothing
 end
 
 """
@@ -671,41 +517,6 @@ function concatenateparameters(model::Model)
 end
 
 """
-    concatenatebounds(options, θindices; boundtype)
-
-Concatenate lower and upper bounds of the parameters being fitted
-
-INPUT
--`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
--`options`: settings of the model
-
-RETURN
--two vectors representing the lower and upper bounds of the parameters being fitted, respectively
-"""
-function concatenatebounds(indexθ::Indexθ, options::Options)
-	lowerbounds, upperbounds = zeros(0), zeros(0)
-	for field in fieldnames(typeof(indexθ.latentθ))
-		if getfield(indexθ.latentθ, field)[1] != 0
-			field_in_options = Symbol("bounds_"*String(field))
-			bounds = getfield(options, field_in_options)
-			lowerbounds = vcat(lowerbounds, bounds[1])
-			upperbounds = vcat(upperbounds, bounds[2])
-		end
-	end
-	nweights = 0
-	for i in eachindex(indexθ.𝐮)
-		for n in eachindex(indexθ.𝐮[i])
-			nweights += length(indexθ.𝐮[i][n]) +
-				  		length(indexθ.𝐥[i][n]) +
-						length(indexθ.𝐫[i][n])
-		end
-	end
-	lowerbounds = vcat(lowerbounds, -Inf*ones(nweights))
-	upperbounds = vcat(upperbounds,  Inf*ones(nweights))
-	return lowerbounds, upperbounds
-end
-
-"""
 	Shared(model)
 
 Create variables that are shared by the computations of the log-likelihood and its gradient
@@ -718,14 +529,7 @@ OUTPUT
 """
 function Shared(model::Model)
 	@unpack K, Ξ = model.options
-	p𝐘𝑑=map(model.trialsets) do trialset
-			map(trialset.trials) do trial
-				map(1:trial.ntimesteps) do t
-					ones(Ξ,K)
-				end
-			end
-		end
-	likelihood!(p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
+	p𝐘𝑑 = likelihood(model)
 	concatenatedθ, indexθ = concatenateparameters(model)
 	Shared(	concatenatedθ=concatenatedθ,
 			indexθ=indexθ,

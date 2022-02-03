@@ -23,45 +23,6 @@ function reversegradient!(∇::Vector{<:AbstractFloat},
 end
 
 """
-	compute γ
-"""
-function posteriors(model::Model)
-	@unpack options, θnative, θreal, trialsets = model
-	@unpack Ξ, K = options
-	p𝐘𝑑=map(model.trialsets) do trialset
-	        map(trialset.trials) do trial
-	            map(1:trial.ntimesteps) do t
-	                ones(Ξ,K)
-	            end
-	        end
-	    end;
-	γ =	map(model.trialsets) do trialset
-	        map(CartesianIndices((Ξ,K))) do index
-	            zeros(trialset.ntimesteps)
-	        end
-	    end;
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
-	likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
-	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-	            pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-	                ∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
-	            end
-	        end
-	@inbounds for i in eachindex(output)
-	    t = 0
-	    for m in eachindex(output[i])
-	        for tₘ in eachindex(output[i][m][2]) # output[i][m][2] is `fb` of trial `m` in trialset `i`
-	            t += 1
-	            for jk in eachindex(output[i][m][2][tₘ])
-	                γ[i][jk][t] = output[i][m][2][tₘ][jk]
-	            end
-	        end
-	    end
-	end
-	return γ
-end
-
-"""
 """
 function ∇negativeexpectation_parallel(γ, mpGLMs)
     pmap(mpGLMs) do mpGLM

@@ -16,17 +16,20 @@ using   Distributed, # External packages that we use
 export  adapt, # module-specific functions and types in this module that we can call in the REPL without preceding with the name of the module
         approximatetransition!,
         Clicks,
+        choicelikelihood,
+        choiceposteriors,
         concatenatebounds,
         concatenateparameters,
         concatenate_choice_related_parameters,
         conditional_probability_of_choice,
         conditionedmean,
+        differentiateℓ_wrt_xψ,
         estimatefilters,
         estimatefilters!,
         expectedemissions,
         Options,
         forward,
-        𝐇negativeexpectation,
+        𝐇negativeexpectation!,
         Indexθ,
         initializeparameters,
         initializeparameters!,
@@ -72,6 +75,7 @@ include("benchmarking.jl")
 include("choicemodel.jl")
 include("conversions.jl")
 include("drift_diffusion_dynamics.jl")
+include("E_step.jl")
 include("loadmodel.jl")
 include("maximumlikelihood.jl")
 include("mixture_of_Poisson_GLM.jl")

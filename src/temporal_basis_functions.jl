@@ -24,6 +24,10 @@ function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
             Φ = ones(Tmax)
         end
     end
+    if nbases == 0
+        nbases = 1
+        Φ = ones(Tmax,1)
+    end
     𝚽 = zeros(sum(𝐓), nbases)
     k = 0
     for T in 𝐓

@@ -36,7 +36,7 @@ function expectedemissions(model::Model; nsamples::Integer=100)
             end
         end
     	pchoice[i] ./= nsamples
-        for n in eachindex(λΔt)
+        for n in eachindex(λΔt[i])
             λΔt[i][n] ./= nsamples
         end
     end

@@ -83,30 +83,6 @@ function Model(options::Options,
 end
 
 """
-	initializeparameters(options)
-
-Initialize the value of each model parameters in native space by sampling from a Uniform random variable
-
-RETURN
--values of model parameter in native space
-"""
-function initializeparameters(options::Options)
-	Latentθ(Aᶜ₁₁=options.K==1 ? [1] : [1-rand()/10],
-			Aᶜ₂₂=options.K==1 ? [1] : [1-rand()/10],
-			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
-			k=options.fit_k ? rand(1) : [options.q_k],
-			λ=options.fit_λ ? [1-2rand()] : zeros(1),
-			μ₀=options.fit_μ₀ ? [1-2rand()] : zeros(1),
-			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
-			πᶜ₁=options.K==1 ? [1] : [1-rand()/10],
-			ψ=options.fit_ψ ? rand(1)/10 : [options.q_ψ],
-			σ²ₐ=options.fit_σ²ₐ ? rand(1) : [options.q_σ²ₐ],
-			σ²ᵢ=options.fit_σ²ᵢ ? rand(1) : [options.q_σ²ᵢ],
-			σ²ₛ=options.fit_σ²ₛ ? rand(1)/10 : [options.q_σ²ₛ],
-			wₕ=options.fit_wₕ ? [1-2rand()] : zeros(1))
-end
-
-"""
     Clicks(a_latency_s, L, R, Δt, ntimesteps)
 
 Create an instance of `Clicks` to compartmentalize variables related to the times of auditory clicks in one trial
@@ -223,6 +199,30 @@ function Trialset(options::Options, trialset::Dict)
 end
 
 """
+	initializeparameters(options)
+
+Initialize the value of each model parameters in native space by sampling from a Uniform random variable
+
+RETURN
+-values of model parameter in native space
+"""
+function initializeparameters(options::Options)
+	Latentθ(Aᶜ₁₁=options.K==1 ? [1] : [1-rand()/10],
+			Aᶜ₂₂=options.K==1 ? [1] : [1-rand()/10],
+			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
+			k=options.fit_k ? rand(1) : [options.q_k],
+			λ=options.fit_λ ? [1-2rand()] : zeros(1),
+			μ₀=options.fit_μ₀ ? [1-2rand()] : zeros(1),
+			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
+			πᶜ₁=options.K==1 ? [1] : [1-rand()/10],
+			ψ=options.fit_ψ ? rand(1)/10 : [options.q_ψ],
+			σ²ₐ=options.fit_σ²ₐ ? rand(1) : [options.q_σ²ₐ],
+			σ²ᵢ=options.fit_σ²ᵢ ? rand(1) : [options.q_σ²ᵢ],
+			σ²ₛ=options.fit_σ²ₛ ? rand(1)/10 : [options.q_σ²ₛ],
+			wₕ=options.fit_wₕ ? [1-2rand()] : zeros(1))
+end
+
+"""
 	initializeparameters!(model)
 
 Initialize the values of a subset of the parameters by maximizing the likelihood of only the choices.
@@ -235,32 +235,8 @@ MODIFIED ARGUMENT
 function initializeparameters!(model::Model)
 	@unpack θnative, θreal, options, trialsets = model
 	@unpack K, Ξ = model.options
-	θnative.πᶜ₁[1] = 1-θnative.ψ[1]
 	native2real!(θreal, options, θnative)
-	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
-	fb = map(trialsets) do trialset
-			map(trialset.trials) do trial #pmap
-				posteriors(θnative, trial, trialinvariant)
-			end
-		end
-	γ =	map(model.trialsets) do trialset
-			map(CartesianIndices((Ξ,K))) do index
-				zeros(trialset.ntimesteps)
-			end
-		end
-	p = [θnative.πᶜ₁[1]; 1.0 - θnative.πᶜ₁[1]]
-	@inbounds for i in eachindex(fb)
-        t = 0
-        for m in eachindex(fb[i])
-            for tₘ in eachindex(fb[i][m])
-                t += 1
-                for j in eachindex(fb[i][m][tₘ])
-					for k = 1:K
-                    	γ[i][j,k][t] = fb[i][m][tₘ][j]*p[k]
-					end
-                end
-            end
-        end
-    end
+	γ = choiceposteriors(model)
 	estimatefilters!(model.trialsets, γ)
+	return nothing
 end

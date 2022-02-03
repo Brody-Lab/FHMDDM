@@ -15,8 +15,14 @@ function likelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, 𝐲, 𝐲! = mpGLM
     𝛌 = lambda(mpGLM, j, k)
     𝐩 = 𝛌 # reuse memory
-    for i in eachindex(𝛌)
-        𝐩[i] = (𝛌[i]*Δt)^𝐲[i] / exp(𝛌[i]*Δt) / 𝐲![i]
+    @inbounds @simd for i=1:length(𝛌)
+        if 𝐲[i]==0
+            𝐩[i] = exp(-𝛌[i]*Δt)
+        elseif 𝐲[i]==1
+            𝐩[i] = 𝛌[i]*Δt/exp(𝛌[i]*Δt)
+        else
+            𝐩[i] = (𝛌[i]*Δt)^𝐲[i] / exp(𝛌[i]*Δt) / 𝐲![i]
+        end
     end
     return 𝐩
 end
@@ -40,8 +46,14 @@ RETURN
 function likelihood!(𝐩, mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, 𝐲, 𝐲! = mpGLM
     𝛌 = lambda(mpGLM, j, k)
-    for i in eachindex(𝛌)
-        𝐩[i] *= (𝛌[i]*Δt)^𝐲[i] / exp(𝛌[i]*Δt) / 𝐲![i]
+    @inbounds @simd for i=1:length(𝛌)
+        if 𝐲[i]==0
+            𝐩[i] *= exp(-𝛌[i]*Δt)
+        elseif 𝐲[i]==1
+            𝐩[i] *= 𝛌[i]*Δt/exp(𝛌[i]*Δt)
+        else
+            𝐩[i] *= (𝛌[i]*Δt)^𝐲[i] / exp(𝛌[i]*Δt) / 𝐲![i]
+        end
     end
     return nothing
 end
@@ -169,7 +181,7 @@ RETURN
 """
 function negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
                              mpGLM::MixturePoissonGLM,
-                             x::Vector{<:AbstractFloat})
+                             x::Vector{<:Real})
     @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
     Pᵤ = size(𝐔,2)
     Pₗ = size(𝚽,2)
@@ -221,10 +233,11 @@ function ∇negativeexpectation!(∇::Vector{<:AbstractFloat},
                                x::Vector{<:AbstractFloat})
     Pᵤ = size(mpGLM.𝐔,2)
     Pₗ = size(mpGLM.𝚽,2)
-    mpGLM.𝐮 .= x[1:Pᵤ]
-    mpGLM.𝐥 .= x[Pᵤ+1:Pᵤ+Pₗ]
-    mpGLM.𝐫 .= x[Pᵤ+Pₗ+1:end]
-    ∇ .= ∇negativeexpectation(γ, mpGLM)
+    𝐮 = x[1:Pᵤ]
+    𝐥 = x[Pᵤ+1:Pᵤ+Pₗ]
+    𝐫 = x[Pᵤ+Pₗ+1:end]
+    ∇ .= ∇negativeexpectation(γ, mpGLM, 𝐮, 𝐥, 𝐫)
+    return nothing
 end
 
 """
@@ -240,8 +253,11 @@ RETURN
 -∇: the gradient
 """
 function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
-                              mpGLM::MixturePoissonGLM)
-    @unpack Δt, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲, 𝐮, 𝐥, 𝐫 = mpGLM
+                              mpGLM::MixturePoissonGLM,
+                              𝐮::Vector{<:AbstractFloat},
+                              𝐥::Vector{<:AbstractFloat},
+                              𝐫::Vector{<:AbstractFloat})
+    @unpack Δt, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
     Ξ = size(γ,1)
     zeroindex = cld(Ξ,2)
     if size(γ,2) > 1 # i.e, the coupling variable has more than one state
@@ -305,9 +321,6 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
     𝐥 = x[indices𝐥]
     𝐫 = x[indices𝐫]
     𝐔𝐮 = 𝐔*𝐮
-    𝐔ᵀ = transpose(𝐔)
-    𝚽ᵀ = transpose(𝚽)
-    T = length(𝐲)
     Ξ = size(γ,1)
     zeroindex = cld(Ξ,2)
     if size(γ,2) > 1 # i.e, the coupling variable has more than one state
@@ -317,8 +330,9 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
     end
     f₀ = softplus.(𝐔𝐮)
     f₁ = logistic.(𝐔𝐮) # first derivative
-    f₂ = f₁ .* (1 .- f₁) # second derivative
+    f₂ = f₁ .* (1.0 .- f₁) # second derivative
     tmp𝐮𝐮 = ∑γdecoupled .* (f₂.*Δt .- 𝐲.*(f₀.*f₂ .- f₁.^2)./f₀.^2)
+    T = length(𝐲)
     tmp𝐥𝐮 = zeros(T)
     tmp𝐫𝐮 = zeros(T)
     tmp𝐥𝐥 = zeros(T)
@@ -333,7 +347,7 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
         end
         f₀ = softplus.(𝐗𝐰)
         f₁ = logistic.(𝐗𝐰) # first derivative
-        f₂ = f₁ .* (1 .- f₁) # second derivative
+        f₂ = f₁ .* (1.0 .- f₁) # second derivative
         tmp = γ[i,1].*(f₂.*Δt .- 𝐲.*(f₀.*f₂ .- f₁.^2)./f₀.^2)
         if i < zeroindex
             tmp𝐥𝐥 .+= 𝛏[i]^2 .* tmp
@@ -344,6 +358,8 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
         end
         tmp𝐮𝐮 .+= tmp
     end
+    𝐔ᵀ = transpose(𝐔)
+    𝚽ᵀ = transpose(𝚽)
     𝐔ᵀ_tmp𝐥𝐮_𝚽 = 𝐔ᵀ*(tmp𝐥𝐮.*𝚽)
     𝐔ᵀ_tmp𝐫𝐮_𝚽 = 𝐔ᵀ*(tmp𝐫𝐮.*𝚽)
     𝐇 .= 0
