@@ -110,11 +110,10 @@ function loglikelihood!(model::Model,
 					    concatenatedθ::Vector{<:Real},
 						indexθ::Indexθ)
 	sortparameters!(model, concatenatedθ, indexθ)
-	@unpack options, θnative, trialsets = model
-	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
-	ℓ = map(trialsets) do trialset
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+	ℓ = map(model.trialsets) do trialset
 			map(trialset.trials) do trial
-				loglikelihood(θnative, trial, trialinvariant)
+				loglikelihood(model.θnative, trial, trialinvariant)
 			end
 		end
 	return sum(sum(ℓ))
@@ -188,7 +187,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	sortparameters!(model, concatenatedθ, indexθ)
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack K = options
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
+	trialinvariant = Trialinvariant(model; purpose="gradient")
 	gradients=map(trialsets) do trialset
 				pmap(trialset.trials) do trial
 					∇loglikelihood(θnative, trial, trialinvariant)
@@ -207,8 +206,10 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	g.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
 	g.k[1] *= θnative.k[1]
 	g.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	tmpψ = logistic(θreal.ψ[1] + logit(options.q_ψ))
+	g.ψ[1] *= (1.0-options.bound_ψ)*tmpψ*(1.0 - tmpψ)
 	g.σ²ₐ[1] *= θnative.σ²ₐ[1]
-	g.σ²ᵢ[1] *= θnative.σ²ᵢ[1]
+	g.σ²ᵢ[1] *= options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
 	g.σ²ₛ[1] *= θnative.σ²ₛ[1]
 	for field in fieldnames(Latentθ)
 		index = getfield(indexθ.latentθ, field)[1]
@@ -322,13 +323,13 @@ function ∇loglikelihood(θnative::Latentθ,
 	dℓdwₕ = ∑_γᵃ₁_dlogπᵃdμ * trial.previousanswer
 	dℓdσ²ᵢ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdσ²
 	dℓdB += γᵃ₁_oslash_πᵃ ⋅ dπᵃdB
-	dℓdxψ = differentiateℓ_wrt_xψ(trial.choice, f[end], θnative.ψ[1])
+	dℓdψ = differentiateℓ_wrt_ψ(trial.choice, f[end], θnative.ψ[1])
 	Latentθ(B	= [dℓdB],
 			k	= [dℓdk],
 			λ	= [dℓdλ],
 			μ₀	= [dℓdμ₀],
 			ϕ	= [dℓdϕ],
-			ψ	= [dℓdxψ],
+			ψ	= [dℓdψ],
 			σ²ₐ	= [dℓdσ²ₐ],
 			σ²ᵢ	= [dℓdσ²ᵢ],
 			σ²ₛ	 = [dℓdσ²ₛ],

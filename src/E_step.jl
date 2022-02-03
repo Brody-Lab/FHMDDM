@@ -11,10 +11,11 @@ RETURN
 """
 function likelihood(model::Model)
 	@unpack K, Ξ = model.options
+	T = eltype(model.trialsets[1].mpGLMs[1].𝐮)
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t
-					ones(Ξ,K)
+					ones(T,Ξ,K)
 				end
 			end
 		end
@@ -37,7 +38,7 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:AbstractFloat}}}},
+function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
                      trialsets::Vector{<:Trialset},
                      ψ::Real)
 	Ξ = size(p𝐘𝑑[1][1][end],1)
@@ -254,14 +255,6 @@ function choiceposteriors(model::Model)
 				posteriors(p𝐘𝑑, θnative, trial, trialinvariant)
 			end
 		end
-	# @inbounds for i in eachindex(fb)
-    #     for m in eachindex(fb[i])
-    #         for tₘ in eachindex(fb[i][m])
-    #             fb[i][m][tₘ] .+= 1e-4
-	# 			fb[i][m][tₘ] ./= sum(fb[i][m][tₘ])
-    #         end
-    #     end
-    # end
 	γ =	map(trialsets) do trialset
 			map(CartesianIndices((Ξ,K))) do index
 				zeros(trialset.ntimesteps)

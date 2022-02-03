@@ -97,6 +97,10 @@ Model settings
 	q_σ²ᵢ::TF=1e-3; 	@assert q_σ²ᵢ >= 0
 	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
 	q_σ²ₛ::TF=1e-3;	 	@assert q_σ²ₛ >= 0
+	"lower bound of the initial noise"
+	bound_σ²ᵢ::TF = q_σ²ᵢ/100
+	"lower bound of the lapse rate"
+	bound_ψ::TF = q_ψ/100
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"the number of time bins before the current bin when the spike history is considered, one value for each regressor, such as [1, 2, ..., 9]. Note a positive lag represents a time bin before the current time bin."

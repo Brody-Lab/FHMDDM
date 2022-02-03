@@ -15,7 +15,7 @@ function likelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, 𝐲, 𝐲! = mpGLM
     𝛌 = lambda(mpGLM, j, k)
     𝐩 = 𝛌 # reuse memory
-    @inbounds @simd for i=1:length(𝛌)
+    for i=1:length(𝛌)
         if 𝐲[i]==0
             𝐩[i] = exp(-𝛌[i]*Δt)
         elseif 𝐲[i]==1
@@ -46,7 +46,7 @@ RETURN
 function likelihood!(𝐩, mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, 𝐲, 𝐲! = mpGLM
     𝛌 = lambda(mpGLM, j, k)
-    @inbounds @simd for i=1:length(𝛌)
+    for i=1:length(𝛌)
         if 𝐲[i]==0
             𝐩[i] *= exp(-𝛌[i]*Δt)
         elseif 𝐲[i]==1

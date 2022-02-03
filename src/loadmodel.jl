@@ -233,9 +233,6 @@ MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
 """
 function initializeparameters!(model::Model)
-	@unpack θnative, θreal, options, trialsets = model
-	@unpack K, Ξ = model.options
-	native2real!(θreal, options, θnative)
 	γ = choiceposteriors(model)
 	estimatefilters!(model.trialsets, γ)
 	return nothing

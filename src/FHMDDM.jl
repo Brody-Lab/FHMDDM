@@ -23,7 +23,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         concatenate_choice_related_parameters,
         conditional_probability_of_choice,
         conditionedmean,
-        differentiateℓ_wrt_xψ,
+        differentiateℓ_wrt_ψ,
         estimatefilters,
         estimatefilters!,
         expectedemissions,

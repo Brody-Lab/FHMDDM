@@ -75,9 +75,8 @@ function loglikelihood!(model::Model,
 	if concatenatedθ != shared.concatenatedθ
 		update!(model, shared, concatenatedθ)
 	end
-	@unpack options, θnative, trialsets = model
-	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
-	ℓ = map(trialsets, shared.p𝐘𝑑) do trialset, p𝐘𝑑
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+	ℓ = map(model.trialsets, shared.p𝐘𝑑) do trialset, p𝐘𝑑
 			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
 				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
 			end
@@ -157,7 +156,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	@unpack indexθ, p𝐘𝑑 = shared
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack K = options
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
+	trialinvariant = Trialinvariant(model; purpose="gradient")
 	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
 				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
 					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
@@ -176,8 +175,10 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	latent∇.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
 	latent∇.k[1] *= θnative.k[1]
 	latent∇.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	tmpψ = logistic(θreal.ψ[1] + logit(options.q_ψ))
+	latent∇.ψ[1] *= (1.0-options.bound_ψ)*tmpψ*(1.0 - tmpψ)
 	latent∇.σ²ₐ[1] *= θnative.σ²ₐ[1]
-	latent∇.σ²ᵢ[1] *= θnative.σ²ᵢ[1]
+	latent∇.σ²ᵢ[1] *= options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
 	latent∇.σ²ₛ[1] *= θnative.σ²ₛ[1]
 	for field in fieldnames(Latentθ)
 		index = getfield(indexθ.latentθ,field)[1]
@@ -318,7 +319,7 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 	dℓdwₕ = ∑_γᵃ₁_dlogπᵃdμ * trial.previousanswer
 	dℓdσ²ᵢ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdσ²
 	dℓdB += γᵃ₁_oslash_πᵃ ⋅ dπᵃdB
-	dℓdxψ = differentiateℓ_wrt_xψ(trial.choice, f[end], θnative.ψ[1])
+	dℓdψ = differentiateℓ_wrt_ψ(trial.choice, f[end], θnative.ψ[1])
 	latent∇ = Latentθ(	Aᶜ₁₁ = [dℓdAᶜ₁₁],
 						Aᶜ₂₂ = [dℓdAᶜ₂₂],
 						k	 = [dℓdk],
@@ -326,7 +327,7 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 						μ₀	 = [dℓdμ₀],
 						ϕ	 = [dℓdϕ],
 						πᶜ₁	 = [dℓdxπᶜ₁],
-						ψ	 = [dℓdxψ],
+						ψ	 = [dℓdψ],
 						σ²ₐ	 = [dℓdσ²ₐ],
 						σ²ᵢ	 = [dℓdσ²ᵢ],
 						σ²ₛ	 = [dℓdσ²ₛ],
@@ -336,9 +337,9 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 end
 
 """
-	differentiateℓ_wrt_xψ(choice, γ_end, ψ)
+	differentiateℓ_wrt_ψ(choice, γ_end, ψ)
 
-Partial derivative of the log-likelihood of the data from one trial with respect to the lapse rate ψ in real space
+Partial derivative of the log-likelihood of the data from one trial with respect to the lapse rate ψ
 
 ARGUMENT
 -`choice`: a Boolean specifying whether the choice was to the right
@@ -348,7 +349,7 @@ ARGUMENT
 RETURN
 -a floating-point number quantifying the partial derivative of the log-likelihood of one trial's data with respect to the lapse rate ψ
 """
-function differentiateℓ_wrt_xψ(choice::Bool, γ_end::Array{<:AbstractFloat}, ψ::AbstractFloat)
+function differentiateℓ_wrt_ψ(choice::Bool, γ_end::Array{<:AbstractFloat}, ψ::AbstractFloat)
 	γᵃ_end = sum(γ_end, dims=2)
 	zeroindex = cld(length(γᵃ_end), 2)
 	# γᵃ_end0_div2 = γᵃ_end[zeroindex]/2
@@ -359,7 +360,7 @@ function differentiateℓ_wrt_xψ(choice::Bool, γ_end::Array{<:AbstractFloat}, 
 		choiceconsistent   = sum(γᵃ_end[1:zeroindex-1])
 		choiceinconsistent = sum(γᵃ_end[zeroindex+1:end])
 	end
-	return (1-ψ)*(choiceconsistent*ψ/(ψ-2) + choiceinconsistent)
+	return choiceconsistent/(ψ-2) + choiceinconsistent/ψ
 end
 
 """
@@ -368,10 +369,10 @@ end
 Compute quantities that are used in each trial for computing gradient of the log-likelihood
 
 ARGUMENT
--`options`: model settings
--`θnative`: model parameters in their native space
+-`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion model
 """
-function Trialinvariant(options::Options, θnative::Latentθ; purpose="gradient")
+function Trialinvariant(model::Model; purpose="gradient")
+	@unpack options, θnative, θreal = model
 	@unpack Δt, K, Ξ = options
 	λ = θnative.λ[1]
 	B = θnative.B[1]

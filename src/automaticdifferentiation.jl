@@ -19,11 +19,10 @@ function loglikelihoodchoices(concatenatedθ::Vector{<:Real},
 							  indexθ::Indexθ,
 							  model::Model)
 	model = sortparameters(concatenatedθ, indexθ, model)
-	@unpack options, θnative, trialsets = model
-	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
-	ℓ = map(trialsets) do trialset
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+	ℓ = map(model.trialsets) do trialset
 			map(trialset.trials) do trial #pmap
-				loglikelihood(θnative, trial, trialinvariant)
+				loglikelihood(model.θnative, trial, trialinvariant)
 			end
 		end
 	return sum(sum(ℓ))
@@ -51,7 +50,7 @@ function loglikelihood(	concatenatedθ,
 	model = sortparameters(concatenatedθ, indexθ, model)
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack Ξ, K = options
-	trialinvariant = Trialinvariant(options, θnative; purpose="loglikelihood")
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
 	T = eltype(concatenatedθ)
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
@@ -67,60 +66,6 @@ function loglikelihood(	concatenatedθ,
 			end
 		end
 	return sum(sum(ℓ))
-end
-
-
-"""
-    likelihood!(p𝐘𝑑, trialset, ψ)
-
-Update the conditional likelihood of the emissions (spikes and/or behavioral choice)
-
-MODIFIED ARGUMENT
--`p𝐘𝑑`: Condition probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
-
-UNMODIFIED ARGUMENT
--`trialsets`: data used to constrain the model
--`ψ`: lapse rate
-
-RETURN
--`nothing`
-"""
-function likelihood!(p𝐘𝑑,
-                     trialsets::Vector{<:Trialset},
-                     ψ::T) where {T<:Real}
-	Ξ = size(p𝐘𝑑[1][1][end],1)
-	K = size(p𝐘𝑑[1][1][end],2)
-	zeroindex = cld(Ξ,2)
-    @inbounds for i in eachindex(p𝐘𝑑)
-		N = length(trialsets[i].mpGLMs)
-		𝐩decoupled = ones(T, size(trialsets[i].mpGLMs[1].𝐲))
-		for n = 1:N
-			likelihood!(𝐩decoupled, trialsets[i].mpGLMs[n], zeroindex, 2)
-		end
-	    for j = 1:Ξ
-	        for k = 1:K
-	            if k == 2 || j==zeroindex
-					𝐩 = 𝐩decoupled
-				else
-					𝐩 = ones(T, size(trialsets[i].mpGLMs[1].𝐲))
-		            for n = 1:N
-					    likelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
-		            end
-				end
-	            t = 0
-	            for m in eachindex(p𝐘𝑑[i])
-	                for tₘ in eachindex(p𝐘𝑑[i][m])
-	                    t += 1
-	                    p𝐘𝑑[i][m][tₘ][j,k] = 𝐩[t]
-	                end
-	            end
-	        end
-	    end
-		for m in eachindex(p𝐘𝑑[i])
-			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, ψ; zeroindex=zeroindex)
-		end
-    end
-    return nothing
 end
 
 """
