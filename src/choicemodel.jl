@@ -108,12 +108,18 @@ RETURN
 """
 function loglikelihood!(model::Model,
 					    concatenatedθ::Vector{<:Real},
-						indexθ::Indexθ)
+						indexθ::Indexθ; useparallel=false)
 	sortparameters!(model, concatenatedθ, indexθ)
 	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
 	ℓ = map(model.trialsets) do trialset
-			map(trialset.trials) do trial
-				loglikelihood(model.θnative, trial, trialinvariant)
+			if useparallel
+				pmap(trialset.trials) do trial
+					loglikelihood(model.θnative, trial, trialinvariant)
+				end
+			else
+				map(trialset.trials) do trial
+					loglikelihood(model.θnative, trial, trialinvariant)
+				end
 			end
 		end
 	return sum(sum(ℓ))

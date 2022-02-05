@@ -22,7 +22,7 @@ function maximizelikelihood!(model::Model;
 			                 g_tol::AbstractFloat=1e-8,
 			                 iterations::Integer=1000,
 							 outer_iterations::Integer=10,
-			                 show_every::Integer=1,
+			                 show_every::Integer=10,
 			                 show_trace::Bool=true,
 			                 x_tol::AbstractFloat=1e-5)
 	shared = Shared(model)
@@ -71,21 +71,27 @@ RETURN
 """
 function loglikelihood!(model::Model,
 						shared::Shared,
-					    concatenatedθ::Vector{<:Real})
+					    concatenatedθ::Vector{<:Real}; useparallel=false)
 	if concatenatedθ != shared.concatenatedθ
 		update!(model, shared, concatenatedθ)
 	end
 	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
 	ℓ = map(model.trialsets, shared.p𝐘𝑑) do trialset, p𝐘𝑑
-			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
+			if useparallel
+				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+					loglikelihood(p𝐘𝑑, model.θnative, trial, trialinvariant)
+				end
+			else
+				map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+					loglikelihood(p𝐘𝑑, model.θnative, trial, trialinvariant)
+				end
 			end
 		end
 	return sum(sum(ℓ))
 end
 
 """
-	loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+	loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
 
 Compute the log-likelihood of the data from one trial
 
@@ -110,22 +116,22 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 	πᵃ = probabilityvector(μ, σ, 𝛏)
 	f = p𝐘𝑑[1] .* πᵃ .* πᶜᵀ
 	D = sum(f)
-	f /= D
+	f ./= D
 	ℓ = log(D)
 	T = eltype(p𝐘𝑑[1])
 	Aᵃ = zeros(T, Ξ, Ξ)
 	@inbounds for t = 2:trial.ntimesteps
 		if isempty(clicks.inputindex[t])
-			f = Aᵃsilent * f * Aᶜᵀ
+			f .= Aᵃsilent * f * Aᶜᵀ
 		else
 			cL = sum(C[clicks.left[t]])
 			cR = sum(C[clicks.right[t]])
 			stochasticmatrix!(Aᵃ, cL, cR, trialinvariant, θnative)
-			f = Aᵃ * f * Aᶜᵀ
+			f .= Aᵃ * f * Aᶜᵀ
 		end
 		f .*= p𝐘𝑑[t]
 		D = sum(f)
-		f /= D
+		f ./= D
 		ℓ += log(D)
 	end
 	return ℓ
@@ -149,7 +155,9 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 								 γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
 								 model::Model,
 								 shared::Shared,
-								 concatenatedθ::Vector{<:AbstractFloat})
+								 concatenatedθ::Vector{<:AbstractFloat};
+								 useparallel1=true,
+								 useparallel2=true)
 	if concatenatedθ != shared.concatenatedθ
 		update!(model, shared, concatenatedθ)
 	end
@@ -158,8 +166,14 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	@unpack K = options
 	trialinvariant = Trialinvariant(model; purpose="gradient")
 	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+				if useparallel1
+					pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+						∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+					end
+				else
+					map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+						∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+					end
 				end
 			end
 	latent∇ = output[1][1][1] # reuse this memory
@@ -200,7 +214,11 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	Pᵤ = length(trialsets[1].mpGLMs[1].𝐮)
 	Pₗ = length(trialsets[1].mpGLMs[1].𝐥)
 	for i in eachindex(trialsets)
-		∇𝐰 = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM, mpGLM.𝐮, mpGLM.𝐥, mpGLM.𝐫), trialsets[i].mpGLMs)
+		if useparallel2
+			∇𝐰 = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM, mpGLM.𝐮, mpGLM.𝐥, mpGLM.𝐫), trialsets[i].mpGLMs)
+		else
+			∇𝐰 = map(mpGLM->∇negativeexpectation(γ[i], mpGLM, mpGLM.𝐮, mpGLM.𝐥, mpGLM.𝐫), trialsets[i].mpGLMs)
+		end
 		for n in eachindex(trialsets[i].mpGLMs)
 			∇[indexθ.𝐮[i][n]] .= ∇𝐰[n][1:Pᵤ]
 			∇[indexθ.𝐥[i][n]] .= ∇𝐰[n][Pᵤ+1:Pᵤ+Pₗ]

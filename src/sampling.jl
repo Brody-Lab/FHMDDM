@@ -24,7 +24,7 @@ function expectedemissions(model::Model; nsamples::Integer=100)
 				zeros(trialset.ntimesteps)
 			end
 		  end
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
+	trialinvariant = Trialinvariant(model; purpose="gradient")
     for i in eachindex(trialsets)
         for s = 1:nsamples
             sampledtrialset = sample(spikehistorylags, θnative, trialinvariant, trialsets[i])
@@ -203,7 +203,7 @@ function sample(model::Model;
     optionsdict["datapath"] = dirname(optionsdict["datapath"])*"/"*datafilename
     optionsdict["resultspath"] = dirname(optionsdict["resultspath"])*"/"*resultsfilename
 	options = Options(optionsdict)
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
+	trialinvariant = Trialinvariant(model; purpose="gradient")
     trialsets = map(trialset->sample(options.spikehistorylags, model.θnative, trialinvariant, trialset), model.trialsets)
 	Model(options, trialsets)
 end

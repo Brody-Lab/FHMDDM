@@ -164,7 +164,7 @@ RETURN
 function posteriors(model::Model)
 	@unpack options, θnative, trialsets = model
 	@unpack K, Ξ = options
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
+	trialinvariant = Trialinvariant(model; purpose="gradient")
 	p𝐘𝑑 = likelihood(model)
 	fb = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
 			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
@@ -248,7 +248,7 @@ RETURN
 function choiceposteriors(model::Model)
 	@unpack options, θnative, trialsets = model
 	@unpack K, Ξ = options
-	trialinvariant = Trialinvariant(options, θnative; purpose="gradient")
+	trialinvariant = Trialinvariant(model; purpose="gradient")
 	p𝐘𝑑 = choicelikelihood(model)
 	fb = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
 			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑

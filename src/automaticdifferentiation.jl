@@ -29,7 +29,7 @@ function loglikelihoodchoices(concatenatedθ::Vector{<:Real},
 end
 
 """
-    loglikelihood!(concatenatedθ, indexθ, model)
+    loglikelihood(concatenatedθ, indexθ, model)
 
 Computation the log-likelihood meant for automatic differentiation
 
