@@ -80,7 +80,7 @@ Model settings
 	"value in native space of the transition probability of the coupling variable to remain in the coupled state that corresponds to zero in real space"
 	q_Aᶜ₁₁::TF=1-1e-3; 	@assert q_Aᶜ₁₁ >= 0 && q_Aᶜ₁₁ <= 1
 	"value in native space of the transition probability of the coupling variable to remain in the uncoupled state that corresponds to zero in real space"
-	q_Aᶜ₂₂::TF=1-1e-3; 	@assert q_Aᶜ₂₂ >= 0 && q_Aᶜ₂₂ <= 1
+	q_Aᶜ₂₂::TF= 1e-3; 	@assert q_Aᶜ₂₂ >= 0 && q_Aᶜ₂₂ <= 1
 	"value of the bound height in native space that corresponds to zero in real space"
 	q_B::TF=30.0; 		@assert q_B > 0
 	"value of the adaptation change rate in native space that corresponds to zero in real space"
@@ -98,9 +98,9 @@ Model settings
 	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
 	q_σ²ₛ::TF=1e-3;	 	@assert q_σ²ₛ >= 0
 	"lower bound of the initial noise"
-	bound_σ²ᵢ::TF = q_σ²ᵢ/100
+	bound_σ²::TF = 1e-4
 	"lower bound of the lapse rate"
-	bound_ψ::TF = q_ψ/100
+	bound_ψ::TF = 1e-4
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"the number of time bins before the current bin when the spike history is considered, one value for each regressor, such as [1, 2, ..., 9]. Note a positive lag represents a time bin before the current time bin."

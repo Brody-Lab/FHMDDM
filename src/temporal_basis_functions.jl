@@ -54,8 +54,8 @@ RETURN
 -`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis at the i-th timestep from beginning of the trial
 """
 function raisedcosinebases(nbases::Integer, nbins::Integer)
-    Δcenter = nbins / (3 + nbases)
-    centers = 2Δcenter .+ Δcenter*collect(0:nbases-1)
+    Δcenter = nbins / max(1, nbases-1)
+    centers = Δcenter*collect(0:nbases-1)
     timefromcenter = collect(1:nbins) .- transpose(centers)
     period = 4Δcenter
     (abs.(timefromcenter) .< period/2).*(cos.(timefromcenter*2π/period)*0.5 .+ 0.5)

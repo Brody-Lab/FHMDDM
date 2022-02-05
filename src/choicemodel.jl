@@ -209,14 +209,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 			end
 		end
 	end
-	g.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
-	g.k[1] *= θnative.k[1]
-	g.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
-	tmpψ = logistic(θreal.ψ[1] + logit(options.q_ψ))
-	g.ψ[1] *= (1.0-options.bound_ψ)*tmpψ*(1.0 - tmpψ)
-	g.σ²ₐ[1] *= θnative.σ²ₐ[1]
-	g.σ²ᵢ[1] *= options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
-	g.σ²ₛ[1] *= θnative.σ²ₛ[1]
+	native2real!(g, options, θnative, θreal)
 	for field in fieldnames(Latentθ)
 		index = getfield(indexθ.latentθ, field)[1]
 		if index != 0

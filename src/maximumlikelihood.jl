@@ -34,7 +34,6 @@ function maximizelikelihood!(model::Model;
 		end
     f(concatenatedθ) = -loglikelihood!(model, shared, concatenatedθ)
     g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)
-	# lowerbounds, upperbounds = concatenatebounds(shared.indexθ, model.options)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -43,10 +42,8 @@ function maximizelikelihood!(model::Model;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	# algorithm = Fminbox(LBFGS(linesearch = LineSearches.BackTracking()))
 	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
 	θ₀ = deepcopy(shared.concatenatedθ)
-	# optimizationresults = Optim.optimize(f, g!, lowerbounds, upperbounds, θ₀, algorithm, Optim_options)
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
@@ -186,14 +183,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 			end
 		end
 	end
-	latent∇.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
-	latent∇.k[1] *= θnative.k[1]
-	latent∇.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
-	tmpψ = logistic(θreal.ψ[1] + logit(options.q_ψ))
-	latent∇.ψ[1] *= (1.0-options.bound_ψ)*tmpψ*(1.0 - tmpψ)
-	latent∇.σ²ₐ[1] *= θnative.σ²ₐ[1]
-	latent∇.σ²ᵢ[1] *= options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
-	latent∇.σ²ₛ[1] *= θnative.σ²ₛ[1]
+	native2real!(latent∇, options, θnative, θreal)
 	for field in fieldnames(Latentθ)
 		index = getfield(indexθ.latentθ,field)[1]
 		if index != 0
@@ -327,10 +317,10 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 		end
 	end
 	dℓdσ²ₐ *= Δt
-	dℓdAᶜ₁₁ = ∑χᶜ[1,1]*Aᶜ[2,1] - ∑χᶜ[2,1]*Aᶜ[1,1]
-	dℓdAᶜ₂₂ = ∑χᶜ[2,2]*Aᶜ[1,2] - ∑χᶜ[1,2]*Aᶜ[2,2]
+	dℓdAᶜ₁₁ = ∑χᶜ[1,1]/Aᶜ[1,1] - ∑χᶜ[2,1]/Aᶜ[2,1]
+	dℓdAᶜ₂₂ = ∑χᶜ[2,2]/Aᶜ[2,2] - ∑χᶜ[1,2]/Aᶜ[1,2]
 	∑γᶜ₁ = sum(fb[1], dims=1)
-	dℓdxπᶜ₁ = ∑γᶜ₁[1] - θnative.πᶜ₁[1]
+	dℓdxπᶜ₁ = (∑γᶜ₁[1] - θnative.πᶜ₁[1])/θnative.πᶜ₁[1]/(1.0 - θnative.πᶜ₁[1])
 	γᵃ₁_oslash_πᵃ = sum(p𝐘𝑑[1] .* πᶜᵀ ./ D[1] .* b, dims=2)
 	∑_γᵃ₁_dlogπᵃdμ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdμ # similar to above, γᵃ₁⊙ d/dμ{log(πᵃ)} = γᵃ₁⊘ πᵃ⊙ d/dμ{πᵃ}
 	dℓdμ₀ = ∑_γᵃ₁_dlogπᵃdμ
