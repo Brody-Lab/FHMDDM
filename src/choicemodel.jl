@@ -19,26 +19,21 @@ function maximizechoiceLL!(model::Model;
 		                 f_tol::AbstractFloat=1e-9,
 		                 g_tol::AbstractFloat=1e-8,
 		                 iterations::Integer=1000,
-						 outer_iterations::Integer=10,
-		                 show_every::Integer=1,
+		                 show_every::Integer=10,
 		                 show_trace::Bool=true,
 		                 x_tol::AbstractFloat=1e-5)
 	concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
     f(concatenatedθ) = -loglikelihood!(model, concatenatedθ, indexθ)
     g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, model, concatenatedθ, indexθ)
-	# lowerbounds, upperbounds = concatenatebounds(indexθ, model.options)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
                                   iterations=iterations,
-								  outer_iterations=outer_iterations,
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	# algorithm = Fminbox(LBFGS(linesearch = LineSearches.BackTracking()))
 	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
 	θ₀ = deepcopy(concatenatedθ)
-	# optimizationresults = Optim.optimize(f, g!, lowerbounds, upperbounds, θ₀, algorithm, Optim_options)
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)

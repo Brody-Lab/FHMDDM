@@ -66,7 +66,7 @@ ARGUMENT
 -`g`: gradient
 -`options`: model settings
 -`θnative`: values of the parameters in native space
--`θreal`: values of the parameters in real space 
+-`θreal`: values of the parameters in real space
 """
 function native2real!(g::Latentθ,
 					  options::Options,
@@ -275,34 +275,36 @@ function Options(options::Dict)
         spikehistorylags = [spikehistorylags]
     end
     Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
-                  a_latency_s = options["a_latency_s"],
-                  basistype = options["basistype"],
-                  datapath = options["datapath"],
-                  Δt = options["dt"],
-                  K = convert(Int64, options["K"]),
-				  fit_B = options["fit_B"],
-				  fit_k = options["fit_k"],
-				  fit_λ = options["fit_lambda"],
-				  fit_μ₀ = options["fit_mu0"],
-				  fit_ϕ = options["fit_phi"],
-				  fit_ψ = options["fit_psi"],
-				  fit_σ²ₐ = options["fit_sigma2_a"],
-				  fit_σ²ᵢ = options["fit_sigma2_i"],
-				  fit_σ²ₛ = options["fit_sigma2_s"],
-				  fit_wₕ = options["fit_w_h"],
-				  q_Aᶜ₁₁ = options["q_Ac11"],
-				  q_Aᶜ₂₂ = options["q_Ac22"],
-				  q_B = options["q_B"],
-				  q_k = options["q_k"],
-				  q_ϕ = options["q_phi"],
-				  q_πᶜ₁ = options["q_pic1"],
-				  q_ψ = options["q_psi"],
-				  q_σ²ₐ = options["q_sigma2_a"],
-				  q_σ²ᵢ = options["q_sigma2_i"],
-				  q_σ²ₛ = options["q_sigma2_s"],
-				  resultspath = options["resultspath"],
-                  spikehistorylags = spikehistorylags,
-                  Ξ = convert(Int64, options["Xi"]))
+			a_latency_s = options["a_latency_s"],
+			basistype = options["basistype"],
+			bound_σ² = options["bound_sigma2"],
+			bound_ψ = options["bound_phi"],
+			datapath = options["datapath"],
+			Δt = options["dt"],
+			K = convert(Int64, options["K"]),
+			fit_B = options["fit_B"],
+			fit_k = options["fit_k"],
+			fit_λ = options["fit_lambda"],
+			fit_μ₀ = options["fit_mu0"],
+			fit_ϕ = options["fit_phi"],
+			fit_ψ = options["fit_psi"],
+			fit_σ²ₐ = options["fit_sigma2_a"],
+			fit_σ²ᵢ = options["fit_sigma2_i"],
+			fit_σ²ₛ = options["fit_sigma2_s"],
+			fit_wₕ = options["fit_w_h"],
+			q_Aᶜ₁₁ = options["q_Ac11"],
+			q_Aᶜ₂₂ = options["q_Ac22"],
+			q_B = options["q_B"],
+			q_k = options["q_k"],
+			q_ϕ = options["q_phi"],
+			q_πᶜ₁ = options["q_pic1"],
+			q_ψ = options["q_psi"],
+			q_σ²ₐ = options["q_sigma2_a"],
+			q_σ²ᵢ = options["q_sigma2_i"],
+			q_σ²ₛ = options["q_sigma2_s"],
+			resultspath = options["resultspath"],
+			spikehistorylags = spikehistorylags,
+			Ξ = convert(Int64, options["Xi"]))
 end
 
 """

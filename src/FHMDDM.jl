@@ -59,6 +59,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         real2native!,
         Shared,
         sample,
+        sampleemissions,
         save,
         savedata,
         sortparameters,

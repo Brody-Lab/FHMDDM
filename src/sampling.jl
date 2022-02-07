@@ -27,12 +27,12 @@ function expectedemissions(model::Model; nsamples::Integer=100)
 	trialinvariant = Trialinvariant(model; purpose="gradient")
     for i in eachindex(trialsets)
         for s = 1:nsamples
-            sampledtrialset = sample(spikehistorylags, θnative, trialinvariant, trialsets[i])
-			for m in eachindex(sampledtrialset.trials)
-				pchoice[i][m] += sampledtrialset.trials[m].choice
+            choices, 𝐘 = sampleemissions(spikehistorylags, θnative, trialinvariant, trialsets[i])
+			for m in eachindex(choices)
+				pchoice[i][m] += choices[m]
 			end
-            for n in eachindex(sampledtrialset.mpGLMs)
-                λΔt[i][n] .+= sampledtrialset.mpGLMs[n].𝐲
+            for n in eachindex(𝐘)
+                λΔt[i][n] .+= 𝐘[n]
             end
         end
     	pchoice[i] ./= nsamples
@@ -41,6 +41,90 @@ function expectedemissions(model::Model; nsamples::Integer=100)
         end
     end
     return λΔt, pchoice
+end
+
+"""
+	sampleemissions(spikehistorylags, θnative, trialinvariant, trialset)
+
+Generate emission variables for one trialset
+
+ARGUMENT
+-`spikehistorylags`: a vector indicating the lags of the autorregressive terms
+-`θnative`: a structure containing parameters of the model in native space
+-`trialinvariant`: quantities used across trials
+-`trialset`: a structure containing the data of one trialset
+
+OUTPUT
+-`choices`: a sample of the choice in each trial
+-`𝐘`: a sample of the spike train response of each neuron in each timestep
+"""
+function sampleemissions(spikehistorylags::Vector{<:Integer},
+		                θnative::Latentθ,
+						trialinvariant::Trialinvariant,
+		                trialset::Trialset)
+    trials =pmap(trialset.trials) do trial
+				sample(θnative, trial, trialinvariant)
+			end
+	𝐘 =map(trialset.mpGLMs) do mpGLM
+			sampleemissions(mpGLM, spikehistorylags, trials)
+		end
+	choices = map(trial->trial.choice, trials)
+	return choices, 𝐘
+end
+
+"""
+	sampleemissions(mpGLM, spikehistorylags, trials)
+
+Generate one sample from the mixture of Poisson generalized linear model (GLM) of a neuron
+
+ARGUMENT
+-`mpGLM`: the fitted mixture of Poisson GLM of a neuron
+-`spikehistorylags`: a vector indicating the lags of the autorregressive terms
+-`trials`: a vector of structures, one of which contains the generated states of the accumulator and coupling variable of one trial
+
+RETURN
+-`𝐲̂`: a sample of the spike train response for each timestep
+"""
+function sampleemissions(mpGLM::MixturePoissonGLM,
+                		spikehistorylags::Vector{<:Integer},
+                		trials::Vector{<:Trial})
+	@unpack Δt, K, 𝐮, 𝐥, 𝐫, 𝚽, 𝛏, 𝐲 = mpGLM
+    nspikehistorylags = length(spikehistorylags)
+    if nspikehistorylags>0
+        𝑙ₘᵢₙ= spikehistorylags[1]
+        𝑙ₘₐₓ = spikehistorylags[end]
+    end
+    𝐔 = copy(mpGLM.𝐔)
+    𝐔[:, 1:nspikehistorylags] .= 0.
+    𝚽𝐥 = 𝚽*𝐥
+    𝚽𝐫 = 𝚽*𝐫
+    𝐲̂ = similar(𝐲)
+    t = 0
+    for m in eachindex(trials)
+        for tₘ in 1:trials[m].ntimesteps
+            t += 1
+            if nspikehistorylags>0 && tₘ > 𝑙ₘᵢₙ
+                𝑙 = min(𝑙ₘₐₓ, tₘ-1)
+                𝐔[t,1:𝑙-𝑙ₘᵢₙ+1] = 𝐲̂[t-𝑙ₘᵢₙ:-1:t-𝑙]
+            end
+            j = trials[m].a[tₘ]
+            k = trials[m].c[tₘ]
+            if k == 1 || K == 1
+                if 𝛏[j] < 0
+                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + 𝛏[j]*𝚽𝐥[t]
+                elseif 𝛏[j] > 0
+                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + 𝛏[j]*𝚽𝐫[t]
+                else
+                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
+                end
+            else
+                𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
+            end
+            λ = softplus(𝐰ᵀ𝐱)
+            𝐲̂[t] = rand(Poisson(λ*Δt))
+        end
+    end
+	return 𝐲̂
 end
 
 """
@@ -64,7 +148,7 @@ function sample(spikehistorylags::Vector{<:Integer},
     trials =pmap(trialset.trials) do trial
 				sample(θnative, trial, trialinvariant)
 			end
-    mpGLMs =pmap(trialset.mpGLMs) do mpGLM
+	mpGLMs =map(trialset.mpGLMs) do mpGLM
 				sample(mpGLM, spikehistorylags, trials)
 			end
 	Trialset(mpGLMs=mpGLMs, trials=trials)
@@ -136,52 +220,17 @@ RETURN
 function sample(mpGLM::MixturePoissonGLM,
                 spikehistorylags::Vector{<:Integer},
                 trials::Vector{<:Trial})
-    @unpack Δt, K, 𝐮, 𝐥, 𝐫, 𝚽, 𝛏, 𝐲 = mpGLM
-    nspikehistorylags = length(spikehistorylags)
-    if nspikehistorylags>0
-        𝑙ₘᵢₙ= spikehistorylags[1]
-        𝑙ₘₐₓ = spikehistorylags[end]
-    end
-    𝐔 = copy(mpGLM.𝐔)
-    𝐔[:, 1:nspikehistorylags] .= 0.
-    𝚽𝐥 = 𝚽*𝐥
-    𝚽𝐫 = 𝚽*𝐫
-    𝐲̂ = similar(𝐲)
-    t = 0
-    for m in eachindex(trials)
-        for tₘ in 1:trials[m].ntimesteps
-            t += 1
-            if nspikehistorylags>0 && tₘ > 𝑙ₘᵢₙ
-                𝑙 = min(𝑙ₘₐₓ, tₘ-1)
-                𝐔[t,1:𝑙-𝑙ₘᵢₙ+1] = 𝐲̂[t-𝑙ₘᵢₙ:-1:t-𝑙]
-            end
-            j = trials[m].a[tₘ]
-            k = trials[m].c[tₘ]
-            if k == 1 || K == 1
-                if 𝛏[j] < 0
-                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + 𝛏[j]*𝚽𝐥[t]
-                elseif 𝛏[j] > 0
-                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + 𝛏[j]*𝚽𝐫[t]
-                else
-                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
-                end
-            else
-                𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
-            end
-            λ = softplus(𝐰ᵀ𝐱)
-            𝐲̂[t] = rand(Poisson(λ*Δt))
-        end
-    end
-    MixturePoissonGLM(Δt=Δt,
+    𝐲̂ = sampleemissions(mpGLM, spikehistorylags, trials)
+    MixturePoissonGLM(Δt=mpGLM.Δt,
                       K=mpGLM.K,
 					  𝐗=mpGLM.𝐗,
-                      𝐔=𝐔,
-                      𝐮=𝐮,
-                      𝐥=𝐥,
-                      𝐫=𝐫,
-                      𝚽=𝚽,
+                      𝐔=mpGLM.𝐔,
+                      𝐮=mpGLM.𝐮,
+                      𝐥=mpGLM.𝐥,
+                      𝐫=mpGLM.𝐫,
+                      𝚽=mpGLM.𝚽,
                       Φ=mpGLM.Φ,
-                      𝛏=𝛏,
+                      𝛏=mpGLM.𝛏,
                       𝐲=𝐲̂)
 end
 

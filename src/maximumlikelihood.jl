@@ -21,7 +21,6 @@ function maximizelikelihood!(model::Model;
 			                 f_tol::AbstractFloat=1e-9,
 			                 g_tol::AbstractFloat=1e-8,
 			                 iterations::Integer=1000,
-							 outer_iterations::Integer=10,
 			                 show_every::Integer=10,
 			                 show_trace::Bool=true,
 			                 x_tol::AbstractFloat=1e-5)
@@ -38,7 +37,6 @@ function maximizelikelihood!(model::Model;
 								  f_tol=f_tol,
                                   g_tol=g_tol,
                                   iterations=iterations,
-								  outer_iterations=outer_iterations,
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
