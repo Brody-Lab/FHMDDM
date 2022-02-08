@@ -19,7 +19,7 @@ OPTIONAL ARGUMENT
 function maximizelikelihood!(model::Model;
 							 algorithm=LBFGS(linesearch = LineSearches.BackTracking()),
 			                 extended_trace::Bool=true,
-			                 f_tol::AbstractFloat=1e-9,
+			                 f_tol::AbstractFloat=1e-8,
 			                 g_tol::AbstractFloat=1e-8,
 			                 iterations::Integer=1000,
 			                 show_every::Integer=10,
