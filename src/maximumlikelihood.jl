@@ -17,6 +17,7 @@ OPTIONAL ARGUMENT
 -`x_tol`: threshold for determining convergence in the input vector
 """
 function maximizelikelihood!(model::Model;
+							 algorithm=LBFGS(linesearch = LineSearches.BackTracking()),
 			                 extended_trace::Bool=true,
 			                 f_tol::AbstractFloat=1e-9,
 			                 g_tol::AbstractFloat=1e-8,
@@ -40,7 +41,7 @@ function maximizelikelihood!(model::Model;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
+	# algorithm = LBFGS(linesearch = LineSearches.BackTracking())
 	θ₀ = deepcopy(shared.concatenatedθ)
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)

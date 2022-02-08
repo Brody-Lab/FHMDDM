@@ -278,7 +278,7 @@ function Options(options::Dict)
 			a_latency_s = options["a_latency_s"],
 			basistype = options["basistype"],
 			bound_σ² = options["bound_sigma2"],
-			bound_ψ = options["bound_phi"],
+			bound_ψ = options["bound_psi"],
 			datapath = options["datapath"],
 			Δt = options["dt"],
 			K = convert(Int64, options["K"]),
