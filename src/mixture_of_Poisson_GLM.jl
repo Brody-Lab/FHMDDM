@@ -180,7 +180,8 @@ OUTPUT
 """
 function rectifya(a::Real)
     # softplus(a+log(exp(1)-1.0))
-    0.2 + 4.5 *logistic(a + logit(8.0/45.0))
+    # 0.2 + 4.5 *logistic(a + logit(8.0/45.0))
+    a+1.0
 end
 
 """
@@ -196,8 +197,9 @@ OUTPUT
 """
 function drectifya(a::Real)
     # logistic(a+log(exp(1)-1.0))
-    logistica = logistic(a + logit(8.0/45.0))
-    4.5*logistica*(1.0-logistica)
+    # logistica = logistic(a + logit(8.0/45.0))
+    # 4.5*logistica*(1.0-logistica)
+    1.0
 end
 
 """

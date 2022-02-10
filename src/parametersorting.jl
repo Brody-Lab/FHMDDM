@@ -56,7 +56,9 @@ function sortparameters(concatenatedθ,
 	θreal = Latentθ((zeros(T,1) for field in fieldnames(Latentθ))...)
 	for field in fieldnames(Latentθ) # `Latentθ` is the type of `indexθ.latentθ`
 		index = getfield(indexθ.latentθ, field)[1]
-		if index != 0 # an index of 0 indicates that the parameter is not being fit
+		if index == 0 # an index of 0 indicates that the parameter is not being fit
+			getfield(θreal, field)[1] = getfield(model.θreal, field)[1]
+		else
 			getfield(θreal, field)[1] = concatenatedθ[index]
 		end
 	end
