@@ -18,35 +18,10 @@ function save(model::Model,
     dict = Dict("theta_native"=> dictionary(model.θnative),
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
-                "u"=>map(trialset->map(mpGLM->mpGLM.𝐮, trialset.mpGLMs), model.trialsets),
-                "l"=>map(trialset->map(mpGLM->mpGLM.𝐥, trialset.mpGLMs), model.trialsets),
-                "r"=>map(trialset->map(mpGLM->mpGLM.𝐫, trialset.mpGLMs), model.trialsets),
+                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
                 "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
                 "pchoice" => pchoice,
                 "lambdaDeltat" => λΔt)
     matwrite(model.options.resultspath, dict)
-    return nothing
-end
-
-"""
-    savedata(model)
-
-Save the data
-
-INPUT
-- a structure containing information for a factorial hidden Markov drift-diffusion model
-
-OPTIONAL INPUT
--`overwritedata`: whether to overwrite previous data
-
-OUTPUT
--nothing
-"""
-function savedata(model::Model; overwritedata::Bool=false)
-    if !isfile(model.options.datapath) || overwritedata
-        dict = Dict("data" => map(trialset->Dict(trialset), model.trialsets),
-                    "options" => Dict(model.options))
-        matwrite(model.options.datapath, dict)
-    end
     return nothing
 end

@@ -42,14 +42,13 @@ function Model(options::Options,
 		 		resultspath::String,
 		 		trialsets::Vector{<:Trialset})
     resultsMAT = matopen(resultspath)
-	𝐮 = read(resultsMAT, "u")
-	𝐥 = read(resultsMAT, "l")
-	𝐫 = read(resultsMAT, "r")
+	glmθ = read(resultsMAT, "glmtheta")
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
-			trialsets[i].mpGLMs[n].𝐮 .= 𝐮[i][n]
-			trialsets[i].mpGLMs[n].𝐥 .= 𝐥[i][n]
-			trialsets[i].mpGLMs[n].𝐫 .= 𝐫[i][n]
+			trialsets[i].mpGLMs[n].𝐮 .= glmθ[i][n]["u"]
+			trialsets[i].mpGLMs[n].𝐯 .= glmθ[i][n]["v"]
+			trialsets[i].mpGLMs[n].a .= glmθ[i][n]["a"]
+			trialsets[i].mpGLMs[n].b .= glmθ[i][n]["b"]
 		end
 	end
 	Model(options=options,
@@ -186,13 +185,17 @@ function Trialset(options::Options, trialset::Dict)
 	if all(isempty.(𝐔ₕ))
 		𝐗 = hcat(𝐔ₑ,𝚽)
 		mpGLMs = map(𝐘) do 𝐲
-					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, 𝐔=𝐔ₑ, 𝛏=𝛏normalized, 𝐗=𝐗, 𝐲=𝐲)
+					θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(size(𝐔ₑ,2)),
+							 𝐯 = 1.0 .- 2.0.*rand(size(𝚽,2)))
+					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, θ=θ, 𝐔=𝐔ₑ, 𝛏=𝛏normalized, 𝐗=𝐗, 𝐲=𝐲)
 				 end
 	else
 		mpGLMs = map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
 					𝐔 = hcat(𝐔ₕ, 𝐔ₑ)
 					𝐗 = hcat(𝐔, 𝚽)
-					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, 𝐔=𝐔, 𝐗=𝐗, 𝛏=𝛏normalized, 𝐲=𝐲)
+					θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(size(𝐔,2)),
+							 𝐯 = 1.0 .- 2.0.*rand(size(𝚽,2)))
+					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, θ=θ, 𝐔=𝐔, 𝐗=𝐗, 𝛏=𝛏normalized, 𝐲=𝐲)
 	             end
 	end
     Trialset(mpGLMs=mpGLMs, trials=trials)

@@ -11,7 +11,7 @@ RETURN
 """
 function likelihood(model::Model)
 	@unpack K, Ξ = model.options
-	T = eltype(model.trialsets[1].mpGLMs[1].𝐮)
+	T = eltype(model.trialsets[1].mpGLMs[1].θ.𝐮)
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t

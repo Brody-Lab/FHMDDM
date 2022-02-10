@@ -41,52 +41,6 @@ function maximizechoiceLL!(model::Model;
 end
 
 """
-    concatenate_choice_related_parameters(model)
-
-Concatenate values of parameters being fitted into a vector of floating point numbers
-
-ARGUMENT
--`model`: the factorial hidden Markov drift-diffusion model
-
-RETURN
--`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
--`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
-"""
-function concatenate_choice_related_parameters(model::Model)
-    @unpack options, θreal, trialsets = model
-	concatenatedθ = zeros(0)
-    counter = 0
-	latentθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
-	tofit = true
-	for field in fieldnames(Latentθ)
-		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-			tofit = false
-		else
-			options_field = Symbol("fit_"*String(field))
-			if hasfield(typeof(options), options_field)
-				tofit = getfield(options, options_field)
-			else
-				error("Unrecognized field: "*String(field))
-			end
-		end
-		if tofit
-			counter += 1
-			getfield(latentθ, field)[1] = counter
-			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
-		else
-			getfield(latentθ, field)[1] = 0
-		end
-	end
-	emptyindex = map(trialset->map(mpGLM->zeros(Int, 0), trialset.mpGLMs), model.trialsets)
-    indexθ = Indexθ(latentθ=latentθ,
-					𝐮 = emptyindex,
-					𝐥 = emptyindex,
-					𝐫 = emptyindex)
-    return concatenatedθ, indexθ
-end
-
-
-"""
     loglikelihood!(model, concatenatedθ)
 
 Compute the log-likelihood of the choices
@@ -165,6 +119,32 @@ function loglikelihood(θnative::Latentθ,
 		ℓ += log(D)
 	end
 	return ℓ
+end
+
+"""
+    choiceloglikelihood!(model, concatenatedθ)
+
+Compute the log-likelihood of the choices in a way that is compatible with ForwardDiff
+
+ARGUMENT
+-`model`: an instance of FHM-DDM
+-`concatenatedθ`: a vector of concatenated parameter values
+-`indexθ`: index of each parameter after if all parameters being fitted are concatenated
+
+RETURN
+-log-likelihood
+"""
+function loglikelihoodchoices(concatenatedθ::Vector{<:Real},
+							  indexθ::Indexθ,
+							  model::Model)
+	model = sortparameters(concatenatedθ, indexθ, model)
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+	ℓ = map(model.trialsets) do trialset
+			map(trialset.trials) do trial #pmap
+				loglikelihood(model.θnative, trial, trialinvariant)
+			end
+		end
+	return sum(sum(ℓ))
 end
 
 """

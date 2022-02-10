@@ -160,6 +160,19 @@ Spike trains are not included. In sampled data, the generatives values of the la
 end
 
 """
+	GLMθ
+"""
+@with_kw struct GLMθ{TVR<:Vector{<:Real}}
+	"regression coefficients of the accumulator-independent regressors"
+    𝐮::TVR
+    "Time-varying weighte. Element 𝐯[i] corresponds to the weight of the i-th temporal basis"
+    𝐯::TVR
+    "The exponent `e^a` specifies the ratio of right to left weight"
+	a::TVR= 1.0 .- 2.0.*rand(eltype(𝐮), 1)
+	"Parameter specifying how the accumulator is nonlinearly transformed before inputted into the generalized linear model"
+	b::TVR=1.0 .- 2.0.*rand(eltype(𝐮), 1)
+end
+"""
     MixturePoissonGLM
 
 Mixture of Poisson generalized linear model
@@ -167,7 +180,7 @@ Mixture of Poisson generalized linear model
 @with_kw struct MixturePoissonGLM{TF<:AbstractFloat,
                                   TI<:Integer,
                                   TVF<:Vector{<:AbstractFloat},
-								  TVR,
+								  Tθ<:GLMθ,
                                   TMF<:Matrix{<:AbstractFloat}}
     "size of the time bin"
     Δt::TF
@@ -179,12 +192,8 @@ Mixture of Poisson generalized linear model
     𝚽::TMF
     "Temporal bases"
     Φ::TMF
-	"regression coefficients of the accumulator-independent regressors"
-    𝐮::TVR=10.0 .- 20.0.*rand(size(𝐔,2))
-    "Time-varying weight of the left-favoring evidence. Element 𝐥[i] corresponds to the weight of the i-th temporal basis"
-    𝐥::TVR=10.0 .- 20.0.*rand(size(𝚽,2))
-    "Time-varying weight of the right-favoring evidence. Element 𝐫[i] corresponds to the weight of the i-th temporal basis"
-    𝐫::TVR=10.0 .- 20.0.*rand(size(𝚽,2))
+	"parameters"
+	θ::Tθ
 	"full design matrix"
 	𝐗::TMF
 	"Normalized values of the accumulator"
@@ -193,8 +202,6 @@ Mixture of Poisson generalized linear model
     𝐲::TVF
     "factorial of the response variable"
     𝐲!::TVF = factorial.(𝐲)
-    "log of the factorial of `y`"
-    log_𝐲!::TVF = loggamma.(𝐲.+1)
 end
 
 """
@@ -243,15 +250,11 @@ end
 Index of each model parameter if all values that were being fitted were concatenated into a vector
 """
 @with_kw struct Indexθ{L<:Latentθ,
-                       VVVI<:Vector{<:Vector{<:Vector{<:Integer}}}}
+					   VVG<:Vector{<:Vector{<:GLMθ}}}
+	"parameters specifying the mixture of Poisson generalized linear model"
+	glmθ::VVG
 	"parameters specifying the latent variables"
 	latentθ::L
-    "time-varying weights of state-independent inputs to each neuron's GLM, including event timing and spike history terms"
-    𝐮::VVVI=[[zeros(Int64,0)]]
-    "time-varying weights of accumulated evidence in left-favoring states of the accumulator and in the coupled state"
-    𝐥::VVVI=[[zeros(Int64,0)]]
-    "time-varying weights of accumulated evidence in right-favoring states of the accumulator and in the coupled state"
-    𝐫::VVVI=[[zeros(Int64,0)]]
 end
 
 """

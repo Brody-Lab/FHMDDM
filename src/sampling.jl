@@ -88,7 +88,8 @@ RETURN
 function sampleemissions(mpGLM::MixturePoissonGLM,
                 		spikehistorylags::Vector{<:Integer},
                 		trials::Vector{<:Trial})
-	@unpack Δt, K, 𝐮, 𝐥, 𝐫, 𝚽, 𝛏, 𝐲 = mpGLM
+	@unpack Δt, K, 𝚽, 𝛏, 𝐲 = mpGLM
+	@unpack 𝐮, 𝐯, a, b = mpGLM.θ
     nspikehistorylags = length(spikehistorylags)
     if nspikehistorylags>0
         𝑙ₘᵢₙ= spikehistorylags[1]
@@ -96,9 +97,11 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
     end
     𝐔 = copy(mpGLM.𝐔)
     𝐔[:, 1:nspikehistorylags] .= 0.
-    𝚽𝐥 = 𝚽*𝐥
-    𝚽𝐫 = 𝚽*𝐫
+	eᵃ = exp(a[1])
+    𝚽𝐯 = 𝚽*𝐯
     𝐲̂ = similar(𝐲)
+	f𝛏 = map(ξ->transformaccumulator(b[1], ξ), 𝛏)
+	zeroindex = (length(𝛏)+1)/2
     t = 0
     for m in eachindex(trials)
         for tₘ in 1:trials[m].ntimesteps
@@ -109,11 +112,11 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
             end
             j = trials[m].a[tₘ]
             k = trials[m].c[tₘ]
-            if k == 1 || K == 1
-                if 𝛏[j] < 0
-                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + 𝛏[j]*𝚽𝐥[t]
-                elseif 𝛏[j] > 0
-                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + 𝛏[j]*𝚽𝐫[t]
+            if k == 1
+                if j < zeroindex
+                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + f𝛏[j]*𝚽𝐯[t]
+                elseif j > zeroindex
+                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + eᵃ*f𝛏[j]*𝚽𝐯[t]
                 else
                     𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
                 end
@@ -221,15 +224,17 @@ function sample(mpGLM::MixturePoissonGLM,
                 spikehistorylags::Vector{<:Integer},
                 trials::Vector{<:Trial})
     𝐲̂ = sampleemissions(mpGLM, spikehistorylags, trials)
+	θ = GLMθ(𝐮 = copy(mpGLM.θ.𝐮),
+			𝐯 = copy(mpGLM.θ.𝐯),
+			a = copy(mpGLM.θ.a),
+			b = copy(mpGLM.θ.b))
     MixturePoissonGLM(Δt=mpGLM.Δt,
                       K=mpGLM.K,
 					  𝐗=mpGLM.𝐗,
                       𝐔=mpGLM.𝐔,
-                      𝐮=mpGLM.𝐮,
-                      𝐥=mpGLM.𝐥,
-                      𝐫=mpGLM.𝐫,
                       𝚽=mpGLM.𝚽,
                       Φ=mpGLM.Φ,
+					  θ=θ,
                       𝛏=mpGLM.𝛏,
                       𝐲=𝐲̂)
 end

@@ -19,7 +19,7 @@ OPTIONAL ARGUMENT
 function maximizelikelihood!(model::Model;
 							 algorithm=LBFGS(linesearch = LineSearches.BackTracking()),
 			                 extended_trace::Bool=true,
-			                 f_tol::AbstractFloat=1e-8,
+			                 f_tol::AbstractFloat=1e-9,
 			                 g_tol::AbstractFloat=1e-8,
 			                 iterations::Integer=1000,
 			                 show_every::Integer=10,
@@ -134,6 +134,43 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 end
 
 """
+    loglikelihood(concatenatedθ, indexθ, model)
+
+Compute the log-likelihood in a way that is compatible with ForwardDiff
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: a vector of concatenated parameter values
+-`indexθ`: struct indexing of each parameter in the vector of concatenated values
+-`model`: an instance of FHM-DDM
+
+RETURN
+-log-likelihood
+"""
+function loglikelihood(	concatenatedθ::Vector{<:Real},
+					    indexθ::Indexθ,
+						model::Model)
+	model = sortparameters(concatenatedθ, indexθ, model)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack Ξ, K = options
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+	T = eltype(concatenatedθ)
+	p𝐘𝑑=map(model.trialsets) do trialset
+			map(trialset.trials) do trial
+				map(1:trial.ntimesteps) do t
+					ones(T,Ξ,K)
+				end
+			end
+		end
+    likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
+	ℓ = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
+			map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
+			end
+		end
+	return sum(sum(ℓ))
+end
+
+"""
     ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)
 
 Gradient of the negative log-likelihood of the factorial hidden Markov drift-diffusion model
@@ -151,9 +188,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 								 γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
 								 model::Model,
 								 shared::Shared,
-								 concatenatedθ::Vector{<:AbstractFloat};
-								 useparallel1=true,
-								 useparallel2=true)
+								 concatenatedθ::Vector{<:AbstractFloat})
 	if concatenatedθ != shared.concatenatedθ
 		update!(model, shared, concatenatedθ)
 	end
@@ -162,14 +197,8 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	@unpack K = options
 	trialinvariant = Trialinvariant(model; purpose="gradient")
 	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-				if useparallel1
-					pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-						∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
-					end
-				else
-					map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-						∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
-					end
+				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
 				end
 			end
 	latent∇ = output[1][1][1] # reuse this memory
@@ -200,18 +229,15 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
             end
         end
     end
-	Pᵤ = length(trialsets[1].mpGLMs[1].𝐮)
-	Pₗ = length(trialsets[1].mpGLMs[1].𝐥)
+	Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
+	Pᵥ = length(trialsets[1].mpGLMs[1].θ.𝐯)
 	for i in eachindex(trialsets)
-		if useparallel2
-			∇𝐰 = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM, mpGLM.𝐮, mpGLM.𝐥, mpGLM.𝐫), trialsets[i].mpGLMs)
-		else
-			∇𝐰 = map(mpGLM->∇negativeexpectation(γ[i], mpGLM, mpGLM.𝐮, mpGLM.𝐥, mpGLM.𝐫), trialsets[i].mpGLMs)
-		end
+		∇glm = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM), trialsets[i].mpGLMs)
 		for n in eachindex(trialsets[i].mpGLMs)
-			∇[indexθ.𝐮[i][n]] .= ∇𝐰[n][1:Pᵤ]
-			∇[indexθ.𝐥[i][n]] .= ∇𝐰[n][Pᵤ+1:Pᵤ+Pₗ]
-			∇[indexθ.𝐫[i][n]] .= ∇𝐰[n][Pᵤ+Pₗ+1:end]
+			∇[indexθ.glmθ[i][n].𝐮] .= ∇glm[n][1:Pᵤ]
+			∇[indexθ.glmθ[i][n].𝐯] .= ∇glm[n][Pᵤ+1:Pᵤ+Pᵥ]
+			∇[indexθ.glmθ[i][n].a] .= ∇glm[n][Pᵤ+Pᵥ+1]
+			∇[indexθ.glmθ[i][n].b] .= ∇glm[n][Pᵤ+Pᵥ+2]
 		end
 	end
 	return nothing
@@ -423,105 +449,6 @@ function Trialinvariant(model::Model; purpose="gradient")
 				   K=K,
 				   Ξ=Ξ)
 	end
-end
-
-"""
-	sortparameters!(model, concatenatedθ, indexθ)
-
-Sort a vector of concatenated parameter values and convert the values from real space to native space
-
-MODIFIED ARGUMENT
--`model`: a factorial hidden Markov drift-diffusion model
-
-UNMODIFIED ARGUMENT
--`concatenatedθ`: a vector of concatenated parameter values
--`indexθ`: struct indexing of each parameter in the vector of concatenated values
-"""
-function sortparameters!(model::Model,
-				 		 concatenatedθ::Vector{<:AbstractFloat},
-				 		 indexθ::Indexθ)
-	@unpack options, θnative, θreal, trialsets = model
-	for field in fieldnames(Latentθ) # `Latentθ` is the type of `indexθ.latentθ`
-		index = getfield(indexθ.latentθ, field)[1]
-		if index != 0 # an index of 0 indicates that the parameter is not being fit
-			getfield(θreal, field)[1] = concatenatedθ[index]
-		end
-	end
-	for field in (:𝐮, :𝐥, :𝐫)
-		index = getfield(indexθ, field)
-		for i in eachindex(index)
-			for n in eachindex(index[i])
-				if !isempty(index[i][n])
-					getfield(trialsets[i].mpGLMs[n], field) .= concatenatedθ[index[i][n]]
-				end
-			end
-		end
-	end
-	real2native!(θnative, options, θreal)
-	return nothing
-end
-
-"""
-    concatenateparameters(model)
-
-Concatenate values of parameters being fitted into a vector of floating point numbers
-
-ARGUMENT
--`model`: the factorial hidden Markov drift-diffusion model
-
-RETURN
--`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
--`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
-"""
-function concatenateparameters(model::Model)
-    @unpack options, θreal, trialsets = model
-	concatenatedθ = zeros(0)
-    counter = 0
-	latentθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
-	tofit = true
-	for field in fieldnames(Latentθ)
-		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-			tofit = options.K == 2
-		else
-			options_field = Symbol("fit_"*String(field))
-			if hasfield(typeof(options), options_field)
-				tofit = getfield(options, options_field)
-			else
-				error("Unrecognized field: "*String(field))
-			end
-		end
-		if tofit
-			counter += 1
-			getfield(latentθ, field)[1] = counter
-			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
-		else
-			getfield(latentθ, field)[1] = 0
-		end
-	end
-    𝐮 = map(trialset->map(mpGLM->zeros(Int, length(mpGLM.𝐮)), trialset.mpGLMs), trialsets)
-    𝐥 = map(trialset->map(mpGLM->zeros(Int, length(mpGLM.𝐥)), trialset.mpGLMs), trialsets)
-    𝐫 = map(trialset->map(mpGLM->zeros(Int, length(mpGLM.𝐫)), trialset.mpGLMs), trialsets)
-    for i in eachindex(trialsets)
-        for n in eachindex(trialsets[i].mpGLMs)
-            concatenatedθ = vcat(concatenatedθ, trialsets[i].mpGLMs[n].𝐮)
-            p = length(trialsets[i].mpGLMs[n].𝐮)
-            𝐮[i][n] = collect(counter+1:counter+p)
-            counter += p
-            concatenatedθ = vcat(concatenatedθ, trialsets[i].mpGLMs[n].𝐥)
-            p = length(trialsets[i].mpGLMs[n].𝐥)
-            𝐥[i][n] = collect(counter+1:counter+p)
-            counter += p
-            concatenatedθ = vcat(concatenatedθ, trialsets[i].mpGLMs[n].𝐫)
-            p = length(trialsets[i].mpGLMs[n].𝐫)
-            𝐫[i][n] = collect(counter+1:counter+p)
-            counter += p
-        end
-    end
-    indexθ = Indexθ(latentθ=latentθ,
-					𝐮=𝐮,
-					𝐥=𝐥,
-					𝐫=𝐫)
-    return concatenatedθ, indexθ
 end
 
 """

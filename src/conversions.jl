@@ -226,7 +226,7 @@ function dictionary(clicks::Clicks)
 end
 
 """
-    dictionary(θ::MixturePoissonGLM)
+    dictionary(mpGLM::MixturePoissonGLM)
 
 Convert into a dictionary a mixture of Poisson generalized linear model
 """
@@ -234,13 +234,23 @@ function dictionary(mpGLM::MixturePoissonGLM)
     Dict("dt"=>mpGLM.Δt,
          "K"=>mpGLM.K,
          "U"=>mpGLM.𝐔,
-         "u"=>mpGLM.𝐮,
-         "l"=>mpGLM.𝐥,
-         "r"=>mpGLM.𝐫,
+         "theta"=>dictionary(mpGLM.θ),
          "bfPhi"=>mpGLM.𝚽,
          "Phi"=>mpGLM.Φ,
          "xi"=>mpGLM.𝛏,
          "y"=>mpGLM.𝐲)
+end
+
+"""
+    dictionary(θ::GLMθ)
+
+Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
+"""
+function dictionary(θ::GLMθ)
+    Dict("u"=>θ.𝐮,
+         "v"=>θ.𝐯,
+         "a"=>θ.a,
+         "b"=>θ.b)
 end
 
 """
@@ -316,13 +326,23 @@ function MixturePoissonGLM(mpGLM::Dict)
     MixturePoissonGLM(Δt=mpGLM["dt"],
                       K=convert(Int, mpGLM["K"]),
                       𝐔=mpGLM["U"],
-                      𝐮=vec(mpGLM["u"]),
-                      𝐥=vec(mpGLM["l"]),
-                      𝐫=vec(mpGLM["r"]),
+                      θ=GLMθ(mpGLM["theta"]),
                       Φ=mpGLM["Phi"],
                       𝚽=mpGLM["bfPhi"],
                       𝛏=vec(mpGLM["xi"]),
                       𝐲=vec(mpGLM["y"]))
+end
+
+"""
+    GLMθ(dict)
+
+Convert a dictionary into an instance of `GLMθ`
+"""
+function GLMθ(θ::Dict)
+    GLMθ(𝐮=vec(mpGLM["u"]),
+         𝐯=vec(mpGLM["v"]),
+         a=vec(mpGLM["a"]),
+         b=vec(mpGLM["b"]),)
 end
 
 """

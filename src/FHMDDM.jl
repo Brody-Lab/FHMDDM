@@ -24,19 +24,22 @@ export  adapt, # module-specific functions and types in this module that we can 
         conditional_probability_of_choice,
         conditionedmean,
         differentiateℓ_wrt_ψ,
+        drectifya,
+        dtransformaccumulator,
         estimatefilters,
         estimatefilters!,
         expectedemissions,
         Options,
         forward,
+        GLMθ,
         𝐇negativeexpectation!,
         Indexθ,
         initializeparameters,
         initializeparameters!,
         Latentθ,
-        lambda,
         likelihood,
         likelihood!,
+        linearpredictor,
         loglikelihood,
         loglikelihood!,
         loglikelihoodchoices,
@@ -57,21 +60,21 @@ export  adapt, # module-specific functions and types in this module that we can 
         probabilityvector!,
         real2native,
         real2native!,
+        rectifya,
         Shared,
         sample,
         sampleemissions,
         save,
-        savedata,
         sortparameters,
         sortparameters!,
         stochasticmatrix!,
         temporal_bases_values,
+        transformaccumulator,
         Trial,
         Trialinvariant,
         Trialset,
         update!
 include("types.jl") # This list contains files that in which functions and types are specified. The file "types.jl" has to be listed first, but the order of the other files does not matter.
-include("automaticdifferentiation.jl")
 include("benchmarking.jl")
 include("choicemodel.jl")
 include("conversions.jl")
@@ -80,9 +83,9 @@ include("E_step.jl")
 include("loadmodel.jl")
 include("maximumlikelihood.jl")
 include("mixture_of_Poisson_GLM.jl")
+include("parametersorting.jl")
 include("temporal_basis_functions.jl")
 include("sampling.jl")
 include("save.jl")
-#include("testing.jl")
 
 end # module
