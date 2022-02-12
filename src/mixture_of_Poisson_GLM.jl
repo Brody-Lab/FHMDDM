@@ -141,7 +141,7 @@ function dtransformaccumulator(b::Real, ξ::AbstractFloat)
     if ξ == -1.0 || ξ == 0.0 || ξ == 1.0 || b > 709.0 # 709 is close to which exp returns Inf for a 64-bit floating point number
         0.0
     elseif abs(b) < 1e-6
-        (-ξ^2-ξ)/2
+        ξ < 0 ? (-ξ^2-ξ)/2 : (ξ^2-ξ)/2
     elseif ξ < 0
         eᵇ = exp(b)
         eᵇm1 = expm1(b)
@@ -217,11 +217,15 @@ RETURN
 -nothing
 """
 function estimatefilters!(trialsets::Vector{<:Trialset},
-                          γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}};
+                          γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
+                          options::Options;
                           show_trace::Bool=true)
     concatentatedθ = map(trialsets, γ) do trialset, γ
                         pmap(trialset.mpGLMs) do mpGLM
-                            estimatefilters(γ, mpGLM,; show_trace=show_trace)
+                            estimatefilters(γ, mpGLM;
+                                            fit_a=options.fit_a,
+                                            fit_b=options.fit_b,
+                                            show_trace=show_trace)
                         end
                     end
     Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
@@ -230,15 +234,20 @@ function estimatefilters!(trialsets::Vector{<:Trialset},
         for n in eachindex(concatentatedθ[i])
             trialsets[i].mpGLMs[n].θ.𝐮 .= concatentatedθ[i][n][1:Pᵤ]
             trialsets[i].mpGLMs[n].θ.𝐯 .= concatentatedθ[i][n][Pᵤ+1:Pᵤ+Pᵥ]
-            trialsets[i].mpGLMs[n].θ.a .= concatentatedθ[i][n][Pᵤ+Pᵥ+1]
-            trialsets[i].mpGLMs[n].θ.b .= concatentatedθ[i][n][Pᵤ+Pᵥ+2]
+            counter = Pᵤ+Pᵥ
+            if options.fit_a
+                trialsets[i].mpGLMs[n].θ.a .= concatentatedθ[i][n][counter+=1]
+            end
+            if options.fit_b
+                trialsets[i].mpGLMs[n].θ.b .= concatentatedθ[i][n][counter+=1]
+            end
         end
     end
     return nothing
 end
 
 """
-    estimatefilters(γ, mpGLM; show_trace)
+    estimatefilters(γ, mpGLM)
 
 Estimate the filters of the Poisson mixture GLM of one neuron
 
@@ -248,20 +257,26 @@ ARGUMENT
 
 OPTIONAL ARGUMENT
 -`show_trace`: whether to show information about each step of the optimization
+-`fit_a`: whether to fit the asymmetric scaling factor
+-`fit_b`: whether to fit the nonlinearity factor
 
 RETURN
 -weights concatenated into a single vector
 """
 function estimatefilters(γ::Matrix{<:Vector{<:AbstractFloat}},
                          mpGLM::MixturePoissonGLM;
-                         show_trace::Bool=true)
+                         show_trace::Bool=true,
+                         fit_a::Bool=true,
+                         fit_b::Bool=true)
     @unpack 𝐮, 𝐯, a, b = mpGLM.θ
-    x₀ = vcat(𝐮, 𝐯, a, b)
-    f(x) = negativeexpectation(γ, mpGLM, x)
-    g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x)
+    x₀ = vcat(𝐮, 𝐯)
+    fit_a && (x₀ = vcat(x₀, a))
+    fit_b && (x₀ = vcat(x₀, b))
+    f(x) = negativeexpectation(γ, mpGLM, x; fit_a=fit_a, fit_b=fit_b)
+    g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x; fit_a=fit_a, fit_b=fit_b)
     # h!(𝐇, x) = 𝐇negativeexpectation!(𝐇, γ, mpGLM, x)
     # results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace))
-    results = Optim.optimize(f, g!, x₀, LBFGS(), Optim.Options(show_trace=show_trace, iterations=200))
+    results = Optim.optimize(f, g!, x₀, LBFGS(), Optim.Options(show_trace=show_trace))
     show_trace && println("The model converged: ", Optim.converged(results))
     return Optim.minimizer(results)
 end
@@ -281,14 +296,17 @@ RETURN
 """
 function negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
                              mpGLM::MixturePoissonGLM,
-                             x::Vector{<:Real})
+                             x::Vector{<:Real};
+                             fit_a::Bool=true,
+                             fit_b::Bool=true)
     @unpack Δt, K, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
     Pᵤ = size(𝐔,2)
     Pᵥ = size(𝚽,2)
     𝐮 = x[1:Pᵤ]
     𝐯 = x[Pᵤ+1:Pᵤ+Pᵥ]
-    a = x[Pᵤ+Pᵥ+1]
-    b = x[Pᵤ+Pᵥ+2]
+    counter = Pᵤ+Pᵥ
+    a = fit_a ? x[counter+=1] : mpGLM.θ.a[1]
+    b = fit_b ? x[counter+=1] : mpGLM.θ.b[1]
     fa = rectifya(a)
     𝐔𝐮 = 𝐔*𝐮
     T = length(𝐔𝐮)
@@ -339,17 +357,20 @@ UNMODIFIED ARGUMENT
 RETURN
 -nothing
 """
-function ∇negativeexpectation!(∇::Vector{<:AbstractFloat},
-                               γ::Matrix{<:Vector{<:AbstractFloat}},
-                               mpGLM::MixturePoissonGLM,
-                               x::Vector{<:AbstractFloat})
+function ∇negativeexpectation!( ∇::Vector{<:AbstractFloat},
+                                γ::Matrix{<:Vector{<:AbstractFloat}},
+                                mpGLM::MixturePoissonGLM,
+                                x::Vector{<:AbstractFloat};
+                                fit_a::Bool=true,
+                                fit_b::Bool=true)
     Pᵤ = size(mpGLM.𝐔,2)
     Pᵥ = size(mpGLM.𝚽,2)
     mpGLM.θ.𝐮 .= x[1:Pᵤ]
     mpGLM.θ.𝐯 .= x[Pᵤ+1:Pᵤ+Pᵥ]
-    mpGLM.θ.a[1] = x[Pᵤ+Pᵥ+1]
-    mpGLM.θ.b[1] = x[Pᵤ+Pᵥ+2]
-    ∇ .= ∇negativeexpectation(γ, mpGLM)
+    counter = Pᵤ+Pᵥ
+    fit_a && (mpGLM.θ.a[1] = x[counter+=1])
+    fit_b && (mpGLM.θ.b[1] = x[counter+=1])
+    ∇ .= ∇negativeexpectation(γ, mpGLM;fit_a=fit_a, fit_b=fit_b)
     return nothing
 end
 
@@ -366,7 +387,9 @@ RETURN
 -∇: the gradient
 """
 function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
-                              mpGLM::MixturePoissonGLM)
+                              mpGLM::MixturePoissonGLM;
+                              fit_a::Bool=true,
+                              fit_b::Bool=true)
     @unpack Δt, K, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
     @unpack 𝐮, 𝐯, a, b = mpGLM.θ
     Ξ = size(γ,1)
@@ -374,7 +397,8 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
     𝐔𝐮 = 𝐔*𝐮
     fa = rectifya(a[1])
     T = length(𝐲)
-    ∑𝐮, ∑left, ∑right, ∑b = zeros(T), zeros(T), zeros(T), zeros(T)
+    ∑𝐮, ∑left, ∑right = zeros(T), zeros(T), zeros(T)
+    fit_b && (∑b = zeros(T))
     𝛈 = 𝐔𝐮 # reuse memory
     for t in eachindex(𝛈)
         𝛈[t] = differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
@@ -402,10 +426,10 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
                 dfξ = dtransformaccumulator(b[1], 𝛏[i])
                 if i < zeroindex
                     ∑left .+= fξ.*ζ
-                    ∑b .+= dfξ.*ζ
+                    fit_b && (∑b .+= dfξ.*ζ)
                 elseif i > zeroindex
                     ∑right .+= fξ.*ζ
-                    ∑b .+= fa.*dfξ.*ζ
+                    fit_b && (∑b .+= fa.*dfξ.*ζ)
                 end
             end
         end
@@ -415,11 +439,16 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
     𝐯ᵀ𝚽ᵀ = transpose(𝚽*𝐯)
     Pᵤ = length(𝐮)
     Pᵥ = length(𝐯)
-    ∇ = zeros(Pᵤ+Pᵥ+2)
+    ∇ = zeros(Pᵤ+Pᵥ+fit_a+fit_b)
     ∇[1:Pᵤ] = transpose(𝐔)*∑𝐮
     ∇[Pᵤ+1:Pᵤ+Pᵥ] = transpose(𝚽)*∑𝐯
-    ∇[Pᵤ+Pᵥ+1] = drectifya(a[1])*(𝐯ᵀ𝚽ᵀ*∑right) # the parentheses avoid unnecessary memory allocation
-    ∇[Pᵤ+Pᵥ+2] = 𝐯ᵀ𝚽ᵀ*∑b
+    counter = Pᵤ+Pᵥ
+    if fit_a
+        ∇[counter+=1] = drectifya(a[1])*(𝐯ᵀ𝚽ᵀ*∑right) # the parentheses avoid unnecessary memory allocation
+    end
+    if fit_b
+        ∇[counter+=1] = 𝐯ᵀ𝚽ᵀ*∑b
+    end
     return ∇
 end
 

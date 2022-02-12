@@ -57,8 +57,12 @@ Model settings
     Δt::TF=1e-2
 	"number of states of the coupling variable"
     K::TI = 2; 			@assert K == 1 || K == 2
+	"whether to fit the left-right scaling factor"
+	fit_a::TB=true
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
+	"whether to fit the nonlinearity factor"
+	fit_b::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=true
 	"whether to fit the parameter specifying leak or instability"
@@ -168,9 +172,9 @@ end
     "Time-varying weighte. Element 𝐯[i] corresponds to the weight of the i-th temporal basis"
     𝐯::TVR
     "The exponent `e^a` specifies the ratio of right to left weight"
-	a::TVR= 1.0 .- 2.0.*rand(eltype(𝐮), 1)
+	a::TVR= zeros(eltype(𝐮),1)
 	"Parameter specifying how the accumulator is nonlinearly transformed before inputted into the generalized linear model"
-	b::TVR=1.0 .- 2.0.*rand(eltype(𝐮), 1)
+	b::TVR=0.001*ones(eltype(𝐮), 1)
 end
 """
     MixturePoissonGLM

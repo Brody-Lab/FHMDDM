@@ -49,39 +49,14 @@ UNMODIFIED ARGUMENT
 RETURN
 -`model`: the model with new parameter values
 """
-function sortparameters(concatenatedθ,
+function sortparameters(concatenatedθ::Vector{<:Real},
 				 		indexθ::Indexθ,
 						model::Model)
-	T = eltype(concatenatedθ)
-	θreal = Latentθ((zeros(T,1) for field in fieldnames(Latentθ))...)
-	for field in fieldnames(Latentθ) # `Latentθ` is the type of `indexθ.latentθ`
-		index = getfield(indexθ.latentθ, field)[1]
-		if index == 0 # an index of 0 indicates that the parameter is not being fit
-			getfield(θreal, field)[1] = getfield(model.θreal, field)[1]
-		else
-			getfield(θreal, field)[1] = concatenatedθ[index]
-		end
-	end
-	trialsets = map(model.trialsets, indexθ.glmθ) do trialset, glmθ
-					mpGLMs =map(trialset.mpGLMs, glmθ) do mpGLM, glmθ
-						if all(glmθ.𝐮 .== 0)
-							mpGLM
-						else
-							θ = GLMθ(𝐮=concatenatedθ[glmθ.𝐮],
-									𝐯=concatenatedθ[glmθ.𝐯],
-									a=concatenatedθ[glmθ.a],
-									b=concatenatedθ[glmθ.b])
-							MixturePoissonGLM(	Δt=mpGLM.Δt,
-												K=mpGLM.K,
-												𝚽=mpGLM.𝚽,
-												Φ=mpGLM.Φ,
-												𝐔=mpGLM.𝐔,
-												𝐗=mpGLM.𝐗,
-												𝛏=mpGLM.𝛏,
-												𝐲=mpGLM.𝐲,
-												θ=θ)
-						end
-					end
+	θreal = Latentθ(concatenatedθ, indexθ.latentθ, model.θreal)
+	trialsets = map(model.trialsets, indexθ.glmθ) do trialset, glmθindex
+					mpGLMs =map(trialset.mpGLMs, glmθindex) do mpGLM, glmθindex
+								MixturePoissonGLM(concatenatedθ, glmθindex, mpGLM)
+							end
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
 	Model(	options = model.options,
@@ -89,6 +64,73 @@ function sortparameters(concatenatedθ,
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=trialsets)
+end
+
+"""
+	Latentθ(concatenatedθ, index, old)
+
+Create a structure containing the parameters for the latent variable with updated values
+
+ARGUMENT
+-`concatenatedθ`: a vector of new parameter values
+-`index`: index of each parameter in the vector of values
+-`old`: structure with old parameter values
+
+OUTPUT
+-`new`: a structure with updated parameter values
+"""
+function Latentθ(concatenatedθ::Vector{T},
+				index::Latentθ,
+				old::Latentθ) where {T<:Real}
+	new = Latentθ((similar(getfield(old, field), T) for field in fieldnames(Latentθ))...)
+	for field in fieldnames(Latentθ)
+		if getfield(index, field)[1] == 0
+			getfield(new, field)[1] = getfield(old, field)[1]
+		else
+			getfield(new, field)[1] = concatenatedθ[getfield(index, field)[1]]
+		end
+	end
+	new
+end
+
+"""
+	MixturePoissonGLM(concatenatedθ, glmθindex, mpGLM)
+
+Create a structure for a mixture of Poisson GLM with updated parameters
+
+ARGUMENT
+-`concatenatedθ`: a vector of new parameter values
+-`glmθindex`: index of each parameter in the vector of values
+-`mpGLM`: a structure containing information on the mixture of Poisson GLM for one neuron
+
+OUTPUT
+-a new structure for the mixture of Poisson GLM of a neuron with new parameter values
+"""
+function MixturePoissonGLM(concatenatedθ::Vector{T},
+						   glmθindex::GLMθ,
+						   mpGLM::MixturePoissonGLM) where {T<:Real}
+	glmθ = GLMθ((similar(getfield(mpGLM.θ, field), T) for field in fieldnames(GLMθ))...) # instantiate a GLMθ whose fields are uninitialized arrays with element type T
+	for field in fieldnames(GLMθ)
+		oldparameters = getfield(mpGLM.θ, field)
+		newparameters = getfield(glmθ, field)
+		indices = getfield(glmθindex, field)
+		for i in eachindex(oldparameters)
+			if indices[i] == 0
+				newparameters[i] = oldparameters[i]
+			else
+				newparameters[i] = concatenatedθ[indices[i]]
+			end
+		end
+	end
+	MixturePoissonGLM(	Δt=mpGLM.Δt,
+						K=mpGLM.K,
+						𝚽=mpGLM.𝚽,
+						Φ=mpGLM.Φ,
+						𝐔=mpGLM.𝐔,
+						𝐗=mpGLM.𝐗,
+						𝛏=mpGLM.𝛏,
+						𝐲=mpGLM.𝐲,
+						θ=glmθ)
 end
 
 """
@@ -130,21 +172,23 @@ function concatenateparameters(model::Model)
 	end
 	glmθ = 	map(model.trialsets) do trialset
 				map(trialset.mpGLMs) do mpGLM
-					GLMθ(𝐮 = zeros(Int64, length(mpGLM.θ.𝐮)),
-						 𝐯 = zeros(Int64, length(mpGLM.θ.𝐯)),
-						 a = zeros(Int64, length(mpGLM.θ.a)),
-						 b = zeros(Int64, length(mpGLM.θ.b)))
+					GLMθ((zeros(Int64, length(getfield(mpGLM.θ, field))) for field in fieldnames(GLMθ))...)
 				end
 			end
     for i in eachindex(trialsets)
         for n in eachindex(trialsets[i].mpGLMs)
 			@unpack θ = trialsets[i].mpGLMs[n]
 			for field in fieldnames(GLMθ)
-				parameters = getfield(θ, field)
-				concatenatedθ = vcat(concatenatedθ, parameters)
-	            p = length(parameters)
-				getfield(glmθ[i][n], field) .= counter+1:counter+p
-	            counter += p
+				if (field == :a && !options.fit_a) ||
+				   (field == :b && !options.fit_b)
+					getfield(glmθ[i][n], field) .= 0
+				else
+					parameters = getfield(θ, field)
+					p = length(parameters)
+					concatenatedθ = vcat(concatenatedθ, parameters)
+					getfield(glmθ[i][n], field) .= counter+1:counter+p
+					counter += p
+				end
 			end
         end
     end
@@ -191,10 +235,7 @@ function concatenate_choice_related_parameters(model::Model)
 	end
 	glmθ = 	map(model.trialsets) do trialset
 				map(trialset.mpGLMs) do mpGLM
-					GLMθ(𝐮 = zeros(Int64, length(mpGLM.θ.𝐮)),
-						 𝐯 = zeros(Int64, length(mpGLM.θ.𝐯)),
-						 a = zeros(Int64, length(mpGLM.θ.a)),
-						 b = zeros(Int64, length(mpGLM.θ.b)))
+					GLMθ((zeros(Int64, length(getfield(mpGLM.θ, field))) for field in fieldnames(GLMθ))...)
 				end
 			end
     indexθ = Indexθ(latentθ=latentθ, glmθ=glmθ)

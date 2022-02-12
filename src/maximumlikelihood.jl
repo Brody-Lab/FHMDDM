@@ -232,12 +232,13 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
 	Pᵥ = length(trialsets[1].mpGLMs[1].θ.𝐯)
 	for i in eachindex(trialsets)
-		∇glm = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM), trialsets[i].mpGLMs)
+		∇glm = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM;fit_a=options.fit_a, fit_b=options.fit_b), trialsets[i].mpGLMs)
 		for n in eachindex(trialsets[i].mpGLMs)
 			∇[indexθ.glmθ[i][n].𝐮] .= ∇glm[n][1:Pᵤ]
 			∇[indexθ.glmθ[i][n].𝐯] .= ∇glm[n][Pᵤ+1:Pᵤ+Pᵥ]
-			∇[indexθ.glmθ[i][n].a] .= ∇glm[n][Pᵤ+Pᵥ+1]
-			∇[indexθ.glmθ[i][n].b] .= ∇glm[n][Pᵤ+Pᵥ+2]
+			counter = Pᵤ+Pᵥ
+			options.fit_a && (∇[indexθ.glmθ[i][n].a] .= ∇glm[n][counter+=1])
+			options.fit_b && (∇[indexθ.glmθ[i][n].b] .= ∇glm[n][counter+=1])
 		end
 	end
 	return nothing

@@ -237,6 +237,6 @@ MODIFIED ARGUMENT
 """
 function initializeparameters!(model::Model)
 	γ = choiceposteriors(model)
-	estimatefilters!(model.trialsets, γ)
+	estimatefilters!(model.trialsets, γ, model.options)
 	return nothing
 end
