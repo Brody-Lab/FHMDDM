@@ -55,11 +55,11 @@ RETURN
 """
 function raisedcosinebases(nbases::Integer, nbins::Integer)
     # begins at 0, ends at 0
-    Δcenter = (nbins-1) / (nbases+3)
-    centers = collect(1+2Δcenter:Δcenter:nbins-2Δcenter)
+    # Δcenter = (nbins-1) / (nbases+3)
+    # centers = collect(1+2Δcenter:Δcenter:nbins-2Δcenter)
     #begins at 0, ends at peak
-    # Δcenter = (nbins-1) / nbases
-    # centers = collect(1+Δcenter:Δcenter:nbins)
+    Δcenter = (nbins-1) / nbases
+    centers = collect(1+Δcenter:Δcenter:nbins)
     # begins at peak, ends at peak
     # Δcenter = (nbins-1) / max(1,nbases-1)
     # centers = collect(1:Δcenter:nbins)

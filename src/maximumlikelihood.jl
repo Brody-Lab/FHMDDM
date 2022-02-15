@@ -41,7 +41,7 @@ function maximizelikelihood!(model::Model;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	# algorithm = LBFGS(linesearch = LineSearches.BackTracking())
+	algorithm = LBFGS(alphaguess = InitialHagerZhang(α0=1.0), linesearch = HagerZhang())
 	θ₀ = deepcopy(shared.concatenatedθ)
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
@@ -292,11 +292,17 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 	fb = f # reuse memory
 	b = ones(Ξ,K)
 	Aᶜreshaped = reshape(Aᶜ, 1, 1, K, K)
-	λΔt = θnative.λ[1]*Δt
-	expλΔt = exp(λΔt)
-	dμdΔc = (expλΔt - 1.0)/λΔt
-	η = (expλΔt - dμdΔc)/θnative.λ[1]
-	𝛏ᵀΔtexpλΔt = transpose(𝛏)*Δt*expλΔt
+	if θnative.λ[1] == 0.0
+		dμdΔc = 1.0
+		η = 0.0
+		𝛏ᵀΔtexpλΔt = zeros(1, length(𝛏))
+	else
+		λΔt = θnative.λ[1]*Δt
+		expλΔt = exp(λΔt)
+		dμdΔc = (expλΔt - 1.0)/λΔt
+		η = (expλΔt - dμdΔc)/θnative.λ[1]
+		𝛏ᵀΔtexpλΔt = transpose(𝛏)*Δt*expλΔt
+	end
 	@inbounds for t = trial.ntimesteps:-1:1
 		if t < trial.ntimesteps # backward step
 			Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]

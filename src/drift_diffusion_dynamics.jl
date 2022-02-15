@@ -146,7 +146,7 @@ ARGUMENT
 -`𝛏`: values of the accumulator variable in the previous time step
 """
 function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, 𝛏)
-    if λ==1.0
+    if λ==0.0
 		𝛏 .+ Δc
 	else
 		λΔt = λ*Δt

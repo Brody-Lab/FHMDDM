@@ -122,7 +122,7 @@ function loglikelihood(θnative::Latentθ,
 end
 
 """
-    choiceloglikelihood!(model, concatenatedθ)
+    loglikelihoodchoices!(model, concatenatedθ)
 
 Compute the log-likelihood of the choices in a way that is compatible with ForwardDiff
 
@@ -235,11 +235,17 @@ function ∇loglikelihood(θnative::Latentθ,
 	end
 	D, f = forward(Aᵃ, trial.choice, inputindex, πᵃ, θnative.ψ[1], trialinvariant)
 	b = ones(Ξ)
-	λΔt = θnative.λ[1]*Δt
-	expλΔt = exp(λΔt)
-	dμdΔc = (expλΔt - 1.0)/λΔt
-	η = (expλΔt - dμdΔc)/θnative.λ[1]
-	𝛏ᵀΔtexpλΔt = transpose(𝛏)*Δt*expλΔt
+	if θnative.λ[1] == 0.0
+		dμdΔc = 1.0
+		η = 0.0
+		𝛏ᵀΔtexpλΔt = zeros(1, length(𝛏))
+	else
+		λΔt = θnative.λ[1]*Δt
+		expλΔt = exp(λΔt)
+		dμdΔc = (expλΔt - 1.0)/λΔt
+		η = (expλΔt - dμdΔc)/θnative.λ[1]
+		𝛏ᵀΔtexpλΔt = transpose(𝛏)*Δt*expλΔt
+	end
 	p𝑑 = conditional_probability_of_choice(choice, θnative.ψ[1], Ξ)
 	@inbounds for t = trial.ntimesteps:-1:1
 		if t == trial.ntimesteps-1
