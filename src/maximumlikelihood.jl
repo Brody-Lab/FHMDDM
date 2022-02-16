@@ -47,7 +47,7 @@ function maximizelikelihood!(model::Model;
 								  store_trace=store_trace,
                                   x_tol=x_tol)
 	θ₀ = deepcopy(shared.concatenatedθ)
-	optimizationresults = Optim.optimize(f, g!, θ₀, LBFGS(), Optim_options)
+	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, maximumlikelihoodθ, shared.indexθ)
@@ -305,7 +305,7 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 		expλΔt = exp(λΔt)
 		dμdΔc = (expλΔt - 1.0)/λΔt
 		η = (expλΔt - dμdΔc)/θnative.λ[1]
-		𝛏ᵀΔtexpλΔt = transpose(𝛏)*Δt*expλΔt
+		𝛏ᵀΔtexpλΔt = transpose(𝛏).*Δt.*expλΔt
 	end
 	@inbounds for t = trial.ntimesteps:-1:1
 		if t < trial.ntimesteps # backward step

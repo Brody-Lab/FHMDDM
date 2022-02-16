@@ -276,7 +276,7 @@ function estimatefilters(γ::Matrix{<:Vector{<:AbstractFloat}},
     g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x; fit_a=fit_a, fit_b=fit_b)
     # h!(𝐇, x) = 𝐇negativeexpectation!(𝐇, γ, mpGLM, x)
     # results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace))
-    results = Optim.optimize(f, g!, x₀, LBFGS(), Optim.Options(show_trace=show_trace))
+    results = Optim.optimize(f, g!, x₀, LBFGS(linesearch = LineSearches.BackTracking()), Optim.Options(show_trace=show_trace))
     show_trace && println("The model converged: ", Optim.converged(results))
     return Optim.minimizer(results)
 end
