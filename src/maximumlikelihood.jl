@@ -15,6 +15,9 @@ OPTIONAL ARGUMENT
 -`show_every`: trace output is printed every `show_every`th iteration.
 -`show_trace`: should a trace of the optimization algorithm's state be shown?
 -`x_tol`: threshold for determining convergence in the input vector
+
+RETURN
+`optimizationresults`: results of the optimization
 """
 function maximizelikelihood!(model::Model;
 							 algorithm=LBFGS(linesearch = LineSearches.BackTracking()),
@@ -24,6 +27,7 @@ function maximizelikelihood!(model::Model;
 			                 iterations::Integer=1000,
 			                 show_every::Integer=10,
 			                 show_trace::Bool=true,
+							 store_trace::Bool=false, # takes lots of memory!
 			                 x_tol::AbstractFloat=1e-5)
 	shared = Shared(model)
 	@unpack K, Ξ = model.options
@@ -40,14 +44,14 @@ function maximizelikelihood!(model::Model;
                                   iterations=iterations,
                                   show_every=show_every,
                                   show_trace=show_trace,
+								  store_trace=store_trace,
                                   x_tol=x_tol)
-	algorithm = LBFGS(alphaguess = InitialHagerZhang(α0=1.0), linesearch = HagerZhang())
 	θ₀ = deepcopy(shared.concatenatedθ)
-	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
+	optimizationresults = Optim.optimize(f, g!, θ₀, LBFGS(), Optim_options)
     println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, maximumlikelihoodθ, shared.indexθ)
-    return nothing
+    return optimizationresults
 end
 
 """
