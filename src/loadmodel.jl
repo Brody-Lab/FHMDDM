@@ -42,13 +42,13 @@ function Model(options::Options,
 		 		resultspath::String,
 		 		trialsets::Vector{<:Trialset})
     resultsMAT = matopen(resultspath)
-	glmθ = read(resultsMAT, "glmtheta")
+	glmθ = read(resultsMAT, "thetaglm")
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
-			trialsets[i].mpGLMs[n].𝐮 .= glmθ[i][n]["u"]
-			trialsets[i].mpGLMs[n].𝐯 .= glmθ[i][n]["v"]
-			trialsets[i].mpGLMs[n].a .= glmθ[i][n]["a"]
-			trialsets[i].mpGLMs[n].b .= glmθ[i][n]["b"]
+			trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[i][n]["u"]
+			trialsets[i].mpGLMs[n].θ.𝐯 .= glmθ[i][n]["v"]
+			trialsets[i].mpGLMs[n].θ.a .= glmθ[i][n]["a"]
+			trialsets[i].mpGLMs[n].θ.b .= glmθ[i][n]["b"]
 		end
 	end
 	Model(options=options,
@@ -151,17 +151,14 @@ OUTPUT
 function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
     rawclicktimes = map(x->x["clicktimes"], rawtrials)
-
-    L = map(x->vec(x["L"]), rawclicktimes)
-    isscalar = map(x->typeof(x),L).==Float64
-    L[isscalar] = map(x->[x], L[isscalar])
-    L = convert(Array{Array{Float64,1},1},L)
-
-    R = map(x->vec(x["R"]), rawclicktimes)
-    isscalar = map(x->typeof(x),R).==Float64
-    R[isscalar] = map(x->[x], R[isscalar])
-    R = convert(Array{Array{Float64,1},1},R)
-
+    L = map(rawclicktimes) do x
+			leftclicks = x["L"]
+			typeof(leftclicks)<:AbstractFloat ? [leftclicks] : vec(leftclicks)
+		end
+	R = map(rawclicktimes) do x
+			rightclicks = x["R"]
+			typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
+		end
     ntimesteps = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
     choice = map(x->x["choice"], rawtrials)
 	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
@@ -175,7 +172,7 @@ function Trialset(options::Options, trialset::Dict)
              end
 
     units = vec(trialset["units"])
-    𝐘 = map(x->vec(x["y"]), units)
+    𝐘 = map(x->convert.(Int64, vec(x["y"])), units)
     @assert sum(ntimesteps) == length(𝐘[1])
     𝐔ₕ = map(x->x["Xautoreg"], units)
     𝐔ₑ = trialset["Xtiming"]

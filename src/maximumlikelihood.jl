@@ -17,17 +17,18 @@ OPTIONAL ARGUMENT
 -`x_tol`: threshold for determining convergence in the input vector
 
 RETURN
-`optimizationresults`: results of the optimization
+`losess`: value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
+`gradientnorms`: 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
 """
 function maximizelikelihood!(model::Model;
 							 algorithm=LBFGS(linesearch = LineSearches.BackTracking()),
-			                 extended_trace::Bool=true,
+			                 extended_trace::Bool=false,
 			                 f_tol::AbstractFloat=1e-9,
 			                 g_tol::AbstractFloat=1e-8,
 			                 iterations::Integer=1000,
 			                 show_every::Integer=10,
 			                 show_trace::Bool=true,
-							 store_trace::Bool=false, # takes lots of memory!
+							 store_trace::Bool=true,
 			                 x_tol::AbstractFloat=1e-5)
 	shared = Shared(model)
 	@unpack K, Ξ = model.options
@@ -46,12 +47,20 @@ function maximizelikelihood!(model::Model;
                                   show_trace=show_trace,
 								  store_trace=store_trace,
                                   x_tol=x_tol)
-	θ₀ = deepcopy(shared.concatenatedθ)
+	θ₀ = copy(shared.concatenatedθ)
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
-    println(optimizationresults)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, maximumlikelihoodθ, shared.indexθ)
-    return optimizationresults
+	println(optimizationresults)
+	losses, gradientnorms = fill(NaN, iterations+1), fill(NaN, iterations+1)
+	if store_trace
+		traces = Optim.trace(optimizationresults)
+		for i in eachindex(traces)
+			gradientnorms[i] = traces[i].g_norm
+			losses[i] = traces[i].value
+		end
+	end
+    return losses, gradientnorms
 end
 
 """

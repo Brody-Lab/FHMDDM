@@ -467,7 +467,7 @@ ARGUMENT
 RETURN
 -the derivative with respect to the linear predictor
 """
-function differentiate_negative_loglikelihood(Δt::AbstractFloat, xw::Real, y::AbstractFloat)
+function differentiate_negative_loglikelihood(Δt::AbstractFloat, xw::Real, y::Integer)
     if y == 0
         xw < -100 ? 0.0 : logistic(xw)*Δt
     elseif y == 1

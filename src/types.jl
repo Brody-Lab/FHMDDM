@@ -184,6 +184,7 @@ Mixture of Poisson generalized linear model
 @with_kw struct MixturePoissonGLM{TF<:AbstractFloat,
                                   TI<:Integer,
                                   TVF<:Vector{<:AbstractFloat},
+								  TVI<:Vector{<:Integer},
 								  Tθ<:GLMθ,
                                   TMF<:Matrix{<:AbstractFloat}}
     "size of the time bin"
@@ -203,9 +204,9 @@ Mixture of Poisson generalized linear model
 	"Normalized values of the accumulator"
     𝛏::TVF
     "response variable"
-    𝐲::TVF
+    𝐲::TVI
     "factorial of the response variable"
-    𝐲!::TVF = factorial.(𝐲)
+    𝐲!::TVI = factorial.(𝐲)
 end
 
 """

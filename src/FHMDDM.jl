@@ -47,6 +47,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         Model,
         maximizechoiceLL!,
         maximizelikelihood!,
+        maximizeposterior!,
         ∇adapt,
         ∇loglikelihood,
         ∇negativeloglikelihood!,
@@ -82,6 +83,7 @@ include("drift_diffusion_dynamics.jl")
 include("E_step.jl")
 include("loadmodel.jl")
 include("maximumlikelihood.jl")
+include("maximumaposteriori.jl")
 include("mixture_of_Poisson_GLM.jl")
 include("parametersorting.jl")
 include("temporal_basis_functions.jl")
