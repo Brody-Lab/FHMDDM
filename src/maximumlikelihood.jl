@@ -1,35 +1,45 @@
 """
-    maximizelikelihood!(model)
+    maximizelikelihood!(model, optimizer)
 
-Learn the parameters of the factorial hidden Markov drift-diffusion model by maximizing the likelihood of the data
+Optimize the parameters of the factorial hidden Markov drift-diffusion model using a first-order optimizer in Optim
 
 MODIFIED ARGUMENT
 - a structure containing information for a factorial hidden Markov drift-diffusion model
+
+UNMODIFIED ARGUMENT
+-`optimizer`: an optimizer implemented by Optim.jl. The limited memory quasi-Newton algorithm `LBFGS()` does pretty well, and when using L-BFGS the `HagerZhang()` line search seems to do better than `BackTracking()`
 
 OPTIONAL ARGUMENT
 -`extended_trace`: save additional information
 -`f_tol`: threshold for determining convergence in the objective value
 -`g_tol`: threshold for determining convergence in the gradient
--`iterations`: number of inner iterations that will be run before the algorithm gives up
--`outer_iterations`: number of outer iterations that will be run before the algorithm gives up
+-`iterations`: number of inner iterations that will be run before the optimizer gives up
 -`show_every`: trace output is printed every `show_every`th iteration.
--`show_trace`: should a trace of the optimization algorithm's state be shown?
+-`show_trace`: should a trace of the optimizer's state be shown?
 -`x_tol`: threshold for determining convergence in the input vector
 
 RETURN
-`losess`: value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
+`losses`: value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
 `gradientnorms`: 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Optim
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_02_18_test/data.mat"
+julia> model = Model(datapath)
+julia> losses, gradientnorms = maximizelikelihood!(model, LBFGS(linesearch = LineSearches.BackTracking()))
+```
 """
-function maximizelikelihood!(model::Model;
-							 algorithm=LBFGS(linesearch = LineSearches.BackTracking()),
+function maximizelikelihood!(model::Model,
+							 optimizer::Optim.FirstOrderOptimizer;
 			                 extended_trace::Bool=false,
-			                 f_tol::AbstractFloat=1e-9,
+			                 f_tol::AbstractFloat=0.0,
 			                 g_tol::AbstractFloat=1e-8,
 			                 iterations::Integer=1000,
 			                 show_every::Integer=10,
 			                 show_trace::Bool=true,
 							 store_trace::Bool=true,
-			                 x_tol::AbstractFloat=1e-5)
+			                 x_tol::AbstractFloat=0.0)
 	shared = Shared(model)
 	@unpack K, Ξ = model.options
 	γ =	map(model.trialsets) do trialset
@@ -48,7 +58,7 @@ function maximizelikelihood!(model::Model;
 								  store_trace=store_trace,
                                   x_tol=x_tol)
 	θ₀ = copy(shared.concatenatedθ)
-	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
+	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, maximumlikelihoodθ, shared.indexθ)
 	println(optimizationresults)
@@ -60,6 +70,69 @@ function maximizelikelihood!(model::Model;
 			losses[i] = traces[i].value
 		end
 	end
+    return losses, gradientnorms
+end
+
+"""
+    maximizelikelihood!(model, optimizer)
+
+Optimize the parameters of the factorial hidden Markov drift-diffusion model using an algorithm implemented by Flux.jl
+
+MODIFIED ARGUMENT
+- a structure containing information for a factorial hidden Markov drift-diffusion model
+
+UNMODIFIED ARGUMENT
+-`optimizer`: optimization algorithm implemented by Flux.jl
+
+OPTIONAL ARGUMENT
+-`iterations`: number of inner iterations that will be run before the optimizer gives up
+
+RETURN
+`losses`: a vector of floating-point numbers indicating the value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
+`gradientnorms`: a vector of floating-point numbers indicating the 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> import Flux
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_02_18_test/data.mat"
+julia> model = Model(datapath)
+julia> losses, gradientnorms = maximizelikelihood!(model, Flux.ADAM())
+```
+"""
+function maximizelikelihood!(model::Model,
+							optimizer::Flux.Optimise.AbstractOptimiser;
+							iterations::Integer = 3000)
+	shared = Shared(model)
+	@unpack K, Ξ = model.options
+	γ =	map(model.trialsets) do trialset
+		map(CartesianIndices((Ξ,K))) do index
+			zeros(trialset.ntimesteps)
+		end
+	end
+	θ = copy(shared.concatenatedθ)
+	∇ = similar(θ)
+	local x, min_err, min_θ
+	min_err = typemax(eltype(θ)) #dummy variables
+	min_θ = copy(θ)
+	losses, gradientnorms = fill(NaN, iterations+1), fill(NaN, iterations+1)
+	optimizationtime = 0.0
+	for i = 1:iterations
+		iterationtime = @timed begin
+			x = -loglikelihood!(model, shared, θ)
+			∇negativeloglikelihood!(∇, γ, model, shared, θ)
+			losses[i] = x
+			gradientnorms[i] = norm(∇)
+			if x < min_err  # found a better solution
+				min_err = x
+				min_θ = copy(θ)
+			end
+			Flux.update!(optimizer, θ, ∇)
+		end
+		optimizationtime += iterationtime[2]
+		println("iteration=", i, ", loss= ", losses[i], ", gradient norm= ", gradientnorms[i], ", time(s)= ", optimizationtime)
+	end
+	sortparameters!(model, min_θ, shared.indexθ)
     return losses, gradientnorms
 end
 

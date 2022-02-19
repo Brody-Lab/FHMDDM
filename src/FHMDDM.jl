@@ -1,6 +1,6 @@
 module FHMDDM
 
-using   Distributed, # External packages that we use
+using   Distributed, # packages whose name and exported function is in scope
         Distributions,
         ForwardDiff,
         LinearAlgebra,
@@ -9,10 +9,9 @@ using   Distributed, # External packages that we use
         Optim,
         Parameters,
         Random,
-        ReverseDiff,
         SpecialFunctions,
         StatsFuns
-
+import  Flux # packages whose name but not its exported function is in scope
 export  adapt, # module-specific functions and types in this module that we can call in the REPL without preceding with the name of the module
         approximatetransition!,
         Clicks,
