@@ -31,6 +31,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         Options,
         forward,
         GLMθ,
+        Hessian,
         𝐇negativeexpectation!,
         Indexθ,
         initializeparameters,
