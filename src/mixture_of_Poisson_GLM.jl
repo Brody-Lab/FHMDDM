@@ -101,7 +101,7 @@ ARGUMENT
 RETURN
 -transformed value of the accumulator
 """
-function transformaccumulator(b::Real, ξ::AbstractFloat)
+function transformaccumulator(b::Real, ξ::Real)
     if b == 0.0
         ξ
     else
@@ -137,7 +137,7 @@ ARGUMENT
 RETURN
 -transformed value of the accumulator
 """
-function dtransformaccumulator(b::Real, ξ::AbstractFloat)
+function dtransformaccumulator(b::Real, ξ::Real)
     if ξ == -1.0 || ξ == 0.0 || ξ == 1.0 || b > 709.0 # 709 is close to which exp returns Inf for a 64-bit floating point number
         0.0
     elseif abs(b) < 1e-6
@@ -357,10 +357,10 @@ UNMODIFIED ARGUMENT
 RETURN
 -nothing
 """
-function ∇negativeexpectation!( ∇::Vector{<:AbstractFloat},
-                                γ::Matrix{<:Vector{<:AbstractFloat}},
+function ∇negativeexpectation!( ∇::Vector{<:Real},
+                                γ::Matrix{<:Vector{<:Real}},
                                 mpGLM::MixturePoissonGLM,
-                                x::Vector{<:AbstractFloat};
+                                x::Vector{<:Real};
                                 fit_a::Bool=true,
                                 fit_b::Bool=true)
     Pᵤ = size(mpGLM.𝐔,2)
@@ -386,10 +386,10 @@ ARGUMENT
 RETURN
 -∇: the gradient
 """
-function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
+function ∇negativeexpectation(γ::Matrix{<:Vector{type}},
                               mpGLM::MixturePoissonGLM;
                               fit_a::Bool=true,
-                              fit_b::Bool=true)
+                              fit_b::Bool=true) where {type<:Real}
     @unpack Δt, K, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
     @unpack 𝐮, 𝐯, a, b = mpGLM.θ
     Ξ = size(γ,1)
@@ -397,8 +397,8 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
     𝐔𝐮 = 𝐔*𝐮
     fa = rectifya(a[1])
     T = length(𝐲)
-    ∑𝐮, ∑left, ∑right = zeros(T), zeros(T), zeros(T)
-    fit_b && (∑b = zeros(T))
+    ∑𝐮, ∑left, ∑right = zeros(type, T), zeros(type, T), zeros(type, T)
+    fit_b && (∑b = zeros(type, T))
     𝛈 = 𝐔𝐮 # reuse memory
     for t in eachindex(𝛈)
         𝛈[t] = differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
@@ -439,7 +439,7 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
     𝐯ᵀ𝚽ᵀ = transpose(𝚽*𝐯)
     Pᵤ = length(𝐮)
     Pᵥ = length(𝐯)
-    ∇ = zeros(Pᵤ+Pᵥ+fit_a+fit_b)
+    ∇ = zeros(type, Pᵤ+Pᵥ+fit_a+fit_b)
     ∇[1:Pᵤ] = transpose(𝐔)*∑𝐮
     ∇[Pᵤ+1:Pᵤ+Pᵥ] = transpose(𝚽)*∑𝐯
     counter = Pᵤ+Pᵥ

@@ -91,7 +91,7 @@ UNMODIFIED ARGUMENT
 OPTIONAL ARGUMENT
 - `zeroindex`: the index of the bin for which the accumulator variable equals zero
 """
-function likelihood!(p𝐘ₜ𝑑,
+function likelihood!(p𝐘ₜ𝑑::Matrix{<:Real},
 		             choice::Bool,
 		             ψ::Real;
 		             zeroindex=cld(size(p𝐘ₜ𝑑,1),2))
@@ -123,15 +123,15 @@ RETURN
 -`f`: Forward recursion terms. `f[t][j,k]` ≡ p(aₜ=ξⱼ, zₜ=k ∣ 𝐘₁, ... 𝐘ₜ) where 𝐘 refers to all the spike trains
 
 """
-function forward(Aᵃ::Vector{<:Matrix{<:AbstractFloat}},
+function forward(Aᵃ::Vector{<:Matrix{type}},
  				 inputindex::Vector{<:Vector{<:Integer}},
-				 πᵃ::Vector{<:AbstractFloat},
-				 p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
-				 trialinvariant::Trialinvariant)
+				 πᵃ::Vector{<:Real},
+				 p𝐘𝑑::Vector{<:Matrix{<:Real}},
+				 trialinvariant::Trialinvariant) where {type<:Real}
 	@unpack Aᵃsilent, Aᶜᵀ, K, πᶜᵀ, Ξ, 𝛏 = trialinvariant
 	ntimesteps = length(inputindex)
-	f = map(x->zeros(Ξ,K), 1:ntimesteps)
-	D = zeros(ntimesteps)
+	f = map(x->zeros(type,Ξ,K), 1:ntimesteps)
+	D = zeros(type,ntimesteps)
 	f[1] = p𝐘𝑑[1] .* πᵃ .* πᶜᵀ
 	D[1] = sum(f[1])
 	f[1] /= D[1]
@@ -171,9 +171,10 @@ function posteriors(model::Model)
 				posteriors(p𝐘𝑑, θnative, trial, trialinvariant)
 			end
 		end
+	type = typeof(fb[1][1][1][1,1])
 	γ =	map(trialsets) do trialset
 			map(CartesianIndices((Ξ,K))) do index
-				zeros(trialset.ntimesteps)
+				zeros(type, trialset.ntimesteps)
 			end
 		end
 	@inbounds for i in eachindex(fb)
@@ -204,10 +205,10 @@ ARGUMENT
 RETURN
 -`fb`: joint posterior probabilities of the accumulator and coupling variables at each time step conditioned on the emissions at all time steps in the trial. Element `fb[t][j,k]` represent the posterior probability at the t-th timestep: p(aₜⱼ=1, cₜₖ=1 ∣ 𝐘, 𝑑)
 """
-function posteriors(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
+function posteriors(p𝐘𝑑::Vector{<:Matrix{type}},
 					θnative::Latentθ,
 					trial::Trial,
-					trialinvariant::Trialinvariant)
+					trialinvariant::Trialinvariant) where {type<:Real}
 	@unpack clicks = trial
 	@unpack inputtimesteps, inputindex = clicks
 	@unpack Aᵃsilent, Aᶜ, K, Ξ, 𝛏 = trialinvariant
@@ -215,7 +216,7 @@ function posteriors(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 	σ = √θnative.σ²ᵢ[1]
 	πᵃ = probabilityvector(μ, σ, 𝛏)
 	n_steps_with_input = length(clicks.inputtimesteps)
-	Aᵃ = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
+	Aᵃ = map(x->zeros(type,Ξ,Ξ), clicks.inputtimesteps)
 	C = adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	for i in 1:n_steps_with_input
 		t = clicks.inputtimesteps[i]
@@ -224,7 +225,7 @@ function posteriors(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 		stochasticmatrix!(Aᵃ[i], cL, cR, trialinvariant, θnative)
 	end
 	D, fb = forward(Aᵃ, inputindex, πᵃ, p𝐘𝑑, trialinvariant)
-	b = ones(Ξ,K)
+	b = ones(type,Ξ,K)
 	@inbounds for t = trial.ntimesteps-1:-1:1
 		Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
 		b .*= p𝐘𝑑[t+1]

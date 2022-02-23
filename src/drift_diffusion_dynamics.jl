@@ -13,7 +13,8 @@ ARGUMENT
 RETURN
 -`C`: the post-adaptation input magnitude of each click. It is a vector of floats that has the same size as field `time` in the argument `clicks`
 """
-function adapt(clicks::Clicks, k::T, ϕ::T) where {T<:Real}
+function adapt(clicks::Clicks, k::T1, ϕ::T2) where {T1<:Real, T2<:Real}
+	T = T1<:T2 ? T2 : T1
     nclicks = length(clicks.time)
 	@assert nclicks > 0
     C = zeros(T, nclicks)
@@ -30,8 +31,6 @@ end
 
 Adapt the clicks and compute the first-order partial derivative of the adapted strengths with respect to the parameters
 
-It
-
 ARGUMENT
 -`clicks`: structure containing information about the auditory clicks in one trial. Stereoclick excluded.
 -`k`: exponential change of the adaptation dynamics
@@ -42,10 +41,11 @@ RETURN
 -`dCdk`: first-order partial derivative of `C` with respect to `k`
 -`dCdϕ`: first-order partial derivative of `C` with respect to `ϕ`
 """
-function ∇adapt(clicks::Clicks, k::AbstractFloat, ϕ::AbstractFloat)
+function ∇adapt(clicks::Clicks, k::T1, ϕ::T2) where {T1<:Real, T2<:Real}
+	T = T1<:T2 ? T2 : T1
 	nclicks = length(clicks.time)
 	@assert nclicks > 0
-    C, dCdk, dCdϕ = zeros(nclicks), zeros(nclicks), zeros(nclicks)
+    C, dCdk, dCdϕ = zeros(T, nclicks), zeros(T, nclicks), zeros(T, nclicks)
     e⁻ᵏᵈᵗ = exp(-k*clicks.time[1])
     C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
     dCdϕ[1] = e⁻ᵏᵈᵗ
@@ -76,10 +76,10 @@ UNMODIFIED ARGUMENT
 RETURN
 -nothing
 """
-function stochasticmatrix!(A,
-                           𝛍,
-                           σ::T,
-                           𝛏) where {T<:Real}
+function stochasticmatrix!(A::Matrix{T},
+                           𝛍::Vector{<:Real},
+                           σ::Real,
+                           𝛏::Vector{<:Real}) where {T<:Real}
 	Ξ = length(𝛏)
 	Ξ_1 = Ξ-1
 	σ_Δξ = σ/(𝛏[2]-𝛏[1])
@@ -122,7 +122,7 @@ UNMODIFIED ARGUMENT
 -`trialinvariant`: structure containing quantities used for computations for each trial
 -`θnative`: model parameters in native space
 """
-function stochasticmatrix!(A,
+function stochasticmatrix!(A::Matrix{<:Real},
                            cL::Real,
 						   cR::Real,
 						   trialinvariant::Trialinvariant,
@@ -145,8 +145,8 @@ ARGUMENT
 -`λ`: leak or instability
 -`𝛏`: values of the accumulator variable in the previous time step
 """
-function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, 𝛏)
-    if λ==0.0
+function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::T, 𝛏::Vector{<:Real}) where {T<:Real}
+    if λ==zero(T)
 		𝛏 .+ Δc
 	else
 		λΔt = λ*Δt
@@ -173,14 +173,14 @@ UNMODIFIED ARGUMENT
 -`𝛚`: temporary quantity used to compute the partial derivative with respect to the bound parameter (in real space)
 -`𝛏`: value of the accumulator variable in the previous time step
 """
-function stochasticmatrix!(	A::Matrix{<:AbstractFloat},
-							∂μ::Matrix{<:AbstractFloat},
-							∂σ²::Matrix{<:AbstractFloat},
-							∂B::Matrix{<:AbstractFloat},
-							𝛍::Vector{<:AbstractFloat},
-							σ::AbstractFloat,
-							Ω::Matrix{<:AbstractFloat},
-							𝛏::Vector{<:AbstractFloat})
+function stochasticmatrix!(	A::Matrix{T},
+							∂μ::Matrix{<:Real},
+							∂σ²::Matrix{<:Real},
+							∂B::Matrix{<:Real},
+							𝛍::Vector{<:Real},
+							σ::Real,
+							Ω::Matrix{<:Real},
+							𝛏::Vector{<:Real}) where {T<:Real}
 	Ξ = length(𝛏)
 	Ξ_1 = Ξ-1
 	B = 𝛏[end]*(Ξ-2)/Ξ_1
@@ -189,7 +189,7 @@ function stochasticmatrix!(	A::Matrix{<:AbstractFloat},
     σ2Δξ = 2σ*Δξ
     A[1,1] = 1.0
     A[Ξ,Ξ] = 1.0
-	ΔΦ = zeros(Ξ_1)
+	ΔΦ = zeros(T, Ξ_1)
     @inbounds for j = 2:Ξ_1
         𝐳 = (𝛏 .- 𝛍[j])./σ
         Δf = diff(normpdf.(𝐳))
@@ -237,10 +237,10 @@ UNMODIFIED ARGUMENT
 -`trialinvariant`: structure containing quantities used for computations for each trial
 -`θnative`: model parameters in native space
 """
-function stochasticmatrix!(	A::Matrix{<:AbstractFloat},
-							∂μ::Matrix{<:AbstractFloat},
-							∂σ²::Matrix{<:AbstractFloat},
-							∂B::Matrix{<:AbstractFloat},
+function stochasticmatrix!(	A::Matrix{<:Real},
+							∂μ::Matrix{<:Real},
+							∂σ²::Matrix{<:Real},
+							∂B::Matrix{<:Real},
 							cL::Real,
 							cR::Real,
 							trialinvariant::Trialinvariant,
@@ -329,14 +329,14 @@ RETURN
 -`Φ`: cumulative distribution function evaluated at z-scored values of the accumulator
 -`𝐳`: z-scored value of the accumulator
 """
-function probabilityvector!(π::Vector{<:AbstractFloat},
-							∂μ::Vector{<:AbstractFloat},
-							∂σ²::Vector{<:AbstractFloat},
-							∂B::Vector{<:AbstractFloat},
-							μ::AbstractFloat,
-							𝛚::Vector{<:AbstractFloat},
-							σ::AbstractFloat,
-							𝛏::Vector{<:AbstractFloat})
+function probabilityvector!(π::Vector{T},
+							∂μ::Vector{<:Real},
+							∂σ²::Vector{<:Real},
+							∂B::Vector{<:Real},
+							μ::Real,
+							𝛚::Vector{<:Real},
+							σ::Real,
+							𝛏::Vector{<:Real}) where {T<:Real}
     Ξ = length(𝛏)
     Ξ_1 = Ξ-1
 	B = 𝛏[end]*(Ξ-2)/Ξ_1
@@ -348,7 +348,7 @@ function probabilityvector!(π::Vector{<:AbstractFloat},
     Δf = diff(f)
     Φ = normcdf.(𝐳)
     C = normccdf.(𝐳) # complementary cumulative distribution function
-    ΔΦ = zeros(Ξ_1)
+    ΔΦ = zeros(T, Ξ_1)
     for i = 1:Ξ_1
         if μ <= 𝛏[i]
             ΔΦ[i] = C[i] - C[i+1]

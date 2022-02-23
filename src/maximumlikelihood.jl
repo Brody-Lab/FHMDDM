@@ -331,6 +331,92 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 end
 
 """
+    ∇negativeloglikelihood(γ, model, shared, concatenatedθ)
+
+Gradient of the negative log-likelihood implemented to be compatible with ForwardDiff
+
+MODIFIED INPUT
+-`γ`: posterior probability of the latent variables
+-`model`: a structure containing information of the factorial hidden Markov drift-diffusion model
+-`shared`: structure containing variables shared between computations of the model's log-likelihood and its gradient
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: parameter values concatenated into a vetor
+"""
+function ∇negativeloglikelihood(concatenatedθ::Vector{T},
+								indexθ::Indexθ,
+								model::Model) where {T<:Real}
+	model = sortparameters(concatenatedθ, indexθ, model)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack Ξ, K = options
+	trialinvariant = Trialinvariant(model; purpose="gradient")
+	p𝐘𝑑=map(model.trialsets) do trialset
+			map(trialset.trials) do trial
+				map(1:trial.ntimesteps) do t
+					ones(T,Ξ,K)
+				end
+			end
+		end
+    likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack K = options
+	trialinvariant = Trialinvariant(model; purpose="gradient")
+	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
+				map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑 #pmap
+					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+				end
+			end
+	latent∇ = output[1][1][1] # reuse this memory
+	for field in fieldnames(Latentθ)
+		latent∂ = getfield(latent∇, field)
+		for i in eachindex(output)
+			start = i==1 ? 2 : 1
+			for m in start:length(output[i])
+				latent∂[1] += getfield(output[i][m][1], field)[1] #output[i][m][1] are the partial derivatives
+			end
+		end
+	end
+	native2real!(latent∇, options, θnative, θreal)
+	∇ = similar(concatenatedθ)
+	for field in fieldnames(Latentθ)
+		index = getfield(indexθ.latentθ,field)[1]
+		if index != 0
+			∇[index] = -getfield(latent∇,field)[1] # note the negative sign
+		end
+	end
+	@unpack K, Ξ = model.options
+	γ =	map(model.trialsets) do trialset
+			map(CartesianIndices((Ξ,K))) do index
+				zeros(T, trialset.ntimesteps)
+			end
+		end
+	@inbounds for i in eachindex(output)
+        t = 0
+        for m in eachindex(output[i])
+            for tₘ in eachindex(output[i][m][2]) # output[i][m][2] is `fb` of trial `m` in trialset `i`
+                t += 1
+                for jk in eachindex(output[i][m][2][tₘ])
+                    γ[i][jk][t] = output[i][m][2][tₘ][jk]
+                end
+            end
+        end
+    end
+	Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
+	Pᵥ = length(trialsets[1].mpGLMs[1].θ.𝐯)
+	for i in eachindex(trialsets)
+		∇glm = map(mpGLM->∇negativeexpectation(γ[i], mpGLM;fit_a=options.fit_a, fit_b=options.fit_b), trialsets[i].mpGLMs) #pmap
+		for n in eachindex(trialsets[i].mpGLMs)
+			∇[indexθ.glmθ[i][n].𝐮] .= ∇glm[n][1:Pᵤ]
+			∇[indexθ.glmθ[i][n].𝐯] .= ∇glm[n][Pᵤ+1:Pᵤ+Pᵥ]
+			counter = Pᵤ+Pᵥ
+			options.fit_a && (∇[indexθ.glmθ[i][n].a] .= ∇glm[n][counter+=1])
+			options.fit_b && (∇[indexθ.glmθ[i][n].b] .= ∇glm[n][counter+=1])
+		end
+	end
+	return ∇
+end
+
+"""
 	∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
 
 Compute quantities needed for the gradient of the log-likelihood of the data observed in one trial
@@ -345,26 +431,26 @@ RETURN
 -`latent∇`: gradient of the log-likelihood of the data observed in one trial with respect to the parameters specifying the latent variables
 -`fb`: joint posterior probabilities of the accumulator and coupling variables
 """
-function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
+function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 						trialinvariant::Trialinvariant,
 						θnative::Latentθ,
-						trial::Trial)
+						trial::Trial) where {T<:Real}
 	@unpack clicks = trial
 	@unpack inputtimesteps, inputindex = clicks
 	@unpack Aᵃsilent, dAᵃsilentdμ, dAᵃsilentdσ², dAᵃsilentdB, Aᶜ, Aᶜᵀ, Δt, K, 𝛚, πᶜᵀ, Ξ, 𝛏 = trialinvariant
 	dℓdk, dℓdλ, dℓdϕ, dℓdσ²ₐ, dℓdσ²ₛ, dℓdB = 0., 0., 0., 0., 0., 0.
-	∑χᶜ = zeros(K,K)
+	∑χᶜ = zeros(T, K,K)
 	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
 	σ = √θnative.σ²ᵢ[1]
-	πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
+	πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB = zeros(T, Ξ), zeros(T, Ξ), zeros(T, Ξ), zeros(T, Ξ)
 	probabilityvector!(πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB, μ, 𝛚, σ, 𝛏)
 	n_steps_with_input = length(clicks.inputtimesteps)
-	Aᵃ = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdμ = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdσ² = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdB = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	Δc = zeros(n_steps_with_input)
-	∑c = zeros(n_steps_with_input)
+	Aᵃ = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
+	dAᵃdμ = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
+	dAᵃdσ² = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
+	dAᵃdB = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
+	Δc = zeros(T, n_steps_with_input)
+	∑c = zeros(T, n_steps_with_input)
 	C, dCdk, dCdϕ = ∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	for i in 1:n_steps_with_input
 		t = clicks.inputtimesteps[i]
@@ -376,12 +462,12 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:AbstractFloat}},
 	end
 	D, f = forward(Aᵃ, inputindex, πᵃ, p𝐘𝑑, trialinvariant)
 	fb = f # reuse memory
-	b = ones(Ξ,K)
+	b = ones(T, Ξ,K)
 	Aᶜreshaped = reshape(Aᶜ, 1, 1, K, K)
 	if θnative.λ[1] == 0.0
 		dμdΔc = 1.0
 		η = 0.0
-		𝛏ᵀΔtexpλΔt = zeros(1, length(𝛏))
+		𝛏ᵀΔtexpλΔt = zeros(T, 1, length(𝛏))
 	else
 		λΔt = θnative.λ[1]*Δt
 		expλΔt = exp(λΔt)
@@ -475,10 +561,9 @@ ARGUMENT
 RETURN
 -a floating-point number quantifying the partial derivative of the log-likelihood of one trial's data with respect to the lapse rate ψ
 """
-function differentiateℓ_wrt_ψ(choice::Bool, γ_end::Array{<:AbstractFloat}, ψ::AbstractFloat)
+function differentiateℓ_wrt_ψ(choice::Bool, γ_end::Matrix{<:Real}, ψ::Real)
 	γᵃ_end = sum(γ_end, dims=2)
 	zeroindex = cld(length(γᵃ_end), 2)
-	# γᵃ_end0_div2 = γᵃ_end[zeroindex]/2
 	if choice
 		choiceconsistent   = sum(γᵃ_end[zeroindex+1:end])
 		choiceinconsistent = sum(γᵃ_end[1:zeroindex-1])
@@ -511,13 +596,14 @@ function Trialinvariant(model::Model; purpose="gradient")
 	𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 	𝛍 = conditionedmean(0.0, Δt, θnative.λ[1], 𝛏)
 	σ = √(θnative.σ²ₐ[1]*Δt)
-	Aᵃsilent = zeros(eltype(𝛍),Ξ,Ξ)
+	T = eltype(𝛍)
+	Aᵃsilent = zeros(T,Ξ,Ξ)
 	if purpose=="gradient"
 		𝛚 = (2collect(1:Ξ) .- Ξ .- 1)/2
 		Ω = 𝛚 .- transpose(𝛚).*exp.(λ.*Δt)
-		dAᵃsilentdμ = zeros(Ξ,Ξ)
-		dAᵃsilentdσ² = zeros(Ξ,Ξ)
-		dAᵃsilentdB = zeros(Ξ,Ξ)
+		dAᵃsilentdμ = zeros(T,Ξ,Ξ)
+		dAᵃsilentdσ² = zeros(T,Ξ,Ξ)
+		dAᵃsilentdB = zeros(T,Ξ,Ξ)
 		stochasticmatrix!(Aᵃsilent, dAᵃsilentdμ, dAᵃsilentdσ², dAᵃsilentdB, 𝛍, σ, Ω, 𝛏)
 		Trialinvariant( Aᵃsilent=Aᵃsilent,
 					Aᶜ=Aᶜ,

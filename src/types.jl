@@ -270,32 +270,30 @@ A collection of hyperparameters and temporary quantities that are fixed across t
 """
 @with_kw struct Trialinvariant{	TI<:Integer,
 								VF<:Vector{<:AbstractFloat},
-								VR,
-								MF<:Matrix{<:AbstractFloat},
-								MR1,
-								MR2,
-								MR3,
+								VR<:Vector{<:Real},
+								MR<:Matrix{<:Real},
+								MR2<:Matrix{<:Real},
 							   	F<:AbstractFloat}
 	"transition matrix of the accumulator variable in the absence of input"
-	Aᵃsilent::MR1
+	Aᵃsilent::MR
 	"transition matrix of the coupling variable"
-	Aᶜ::MF=zeros(1,1)
+	Aᶜ::MR2=zeros(1,1)
 	"transpose of the transition matrix of the coupling variable"
-	Aᶜᵀ::MR2
+	Aᶜᵀ::MR
 	"derivitive with respect to the means of the transition matrix of the accumulator variable in the absence of input"
-	dAᵃsilentdμ::MF=zeros(1,1)
+	dAᵃsilentdμ::MR2=zeros(1,1)
 	"derivitive with respect to the variance of the transition matrix of the accumulator variable in the absence of input"
-	dAᵃsilentdσ²::MF=zeros(1,1)
+	dAᵃsilentdσ²::MR2=zeros(1,1)
 	"derivitive with respect to the bound of the transition matrix of the accumulator variable in the absence of input"
-	dAᵃsilentdB::MF=zeros(1,1)
+	dAᵃsilentdB::MR2=zeros(1,1)
 	"time step, in seconds"
 	Δt::F
 	"an intermediate term used for computing the derivative with respect to the bound for the first time bin"
 	𝛚::VF=zeros(1)
 	"an intermediate term used for computing the derivative with respect to the bound for subsequent time bins"
-	Ω::MF=zeros(1,1)
+	Ω::MR2=zeros(1,1)
 	"prior probability of the coupling variable "
-	πᶜᵀ::MR3
+	πᶜᵀ::MR
 	"discrete values of the accumulation variable"
 	𝛏::VR
 	"Number of coupling states"
