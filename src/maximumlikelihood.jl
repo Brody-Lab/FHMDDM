@@ -561,7 +561,7 @@ ARGUMENT
 RETURN
 -a floating-point number quantifying the partial derivative of the log-likelihood of one trial's data with respect to the lapse rate ψ
 """
-function differentiateℓ_wrt_ψ(choice::Bool, γ_end::Matrix{<:Real}, ψ::Real)
+function differentiateℓ_wrt_ψ(choice::Bool, γ_end::Array{<:Real}, ψ::Real)
 	γᵃ_end = sum(γ_end, dims=2)
 	zeroindex = cld(length(γᵃ_end), 2)
 	if choice

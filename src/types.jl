@@ -105,6 +105,8 @@ Model settings
 	bound_σ²::TF = 1e-4
 	"lower bound of the lapse rate"
 	bound_ψ::TF = 1e-4
+	"lower bound of the probabilities for the coupling variable"
+	bound_z::TF = 1e-4
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"the number of time bins before the current bin when the spike history is considered, one value for each regressor, such as [1, 2, ..., 9]. Note a positive lag represents a time bin before the current time bin."

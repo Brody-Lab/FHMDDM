@@ -10,6 +10,7 @@ RETURN
 -nothing
 """
 function save(model::Model,
+              fbz::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
               gradientnorms::Vector{<:AbstractFloat},
               losses::Vector{<:AbstractFloat},
               λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
@@ -19,6 +20,7 @@ function save(model::Model,
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
                 "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
+                "fbz"=>fbz,
                 "gradientnorms"=>gradientnorms,
                 "losses"=>losses,
                 "pchoice" => pchoice,

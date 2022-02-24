@@ -56,6 +56,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         native2real,
         native2real!,
         negativeexpectation,
+        posteriorcoupled,
         posteriors,
         probabilityvector,
         probabilityvector!,
