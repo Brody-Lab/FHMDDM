@@ -86,10 +86,11 @@ RETURN
 -`𝐲̂`: a sample of the spike train response for each timestep
 """
 function sampleemissions(mpGLM::MixturePoissonGLM,
-                		spikehistorylags::Vector{<:Integer},
-                		trials::Vector{<:Trial})
+                		spikehistorylags::Vector{integertype},
+                		trials::Vector{<:Trial}) where {integertype<:Integer}
 	@unpack Δt, K, 𝚽, 𝛏, 𝐲 = mpGLM
 	@unpack 𝐮, 𝐯, a, b = mpGLM.θ
+	max_spikes_per_step = floor(Δt/1e-3)
     nspikehistorylags = length(spikehistorylags)
     if nspikehistorylags>0
         𝑙ₘᵢₙ= spikehistorylags[1]
@@ -124,7 +125,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
                 𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
             end
             λ = softplus(𝐰ᵀ𝐱)
-            𝐲̂[t] = rand(Poisson(λ*Δt))
+            𝐲̂[t] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
         end
     end
 	return 𝐲̂
