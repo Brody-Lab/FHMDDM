@@ -284,10 +284,13 @@ end
 Create an instance of `Options` from a Dict
 """
 function Options(options::Dict)
-	spikehistorylags = vec(convert.(Int64, options["spikehistorylags"]))
-    if typeof(spikehistorylags)<:Integer
-        spikehistorylags = [spikehistorylags]
-    end
+	spikehistorylags=options["spikehistorylags"]
+	if typeof(spikehistorylags)<:Number
+		spikehistorylags = [spikehistorylags]
+	else
+		spikehistorylags = vec(spikehistorylags)
+	end
+	spikehistorylags = convert.(Int64, spikehistorylags)
     Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
 			a_latency_s = options["a_latency_s"],
 			basistype = options["basistype"],
