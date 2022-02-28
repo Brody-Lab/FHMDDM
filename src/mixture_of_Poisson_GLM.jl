@@ -222,10 +222,7 @@ function estimatefilters!(trialsets::Vector{<:Trialset},
                           show_trace::Bool=true)
     concatentatedθ = map(trialsets, γ) do trialset, γ
                         pmap(trialset.mpGLMs) do mpGLM
-                            estimatefilters(γ, mpGLM;
-                                            fit_a=options.fit_a,
-                                            fit_b=options.fit_b,
-                                            show_trace=show_trace)
+                            estimatefilters(γ, mpGLM; show_trace=show_trace)
                         end
                     end
     Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
@@ -234,13 +231,6 @@ function estimatefilters!(trialsets::Vector{<:Trialset},
         for n in eachindex(concatentatedθ[i])
             trialsets[i].mpGLMs[n].θ.𝐮 .= concatentatedθ[i][n][1:Pᵤ]
             trialsets[i].mpGLMs[n].θ.𝐯 .= concatentatedθ[i][n][Pᵤ+1:Pᵤ+Pᵥ]
-            counter = Pᵤ+Pᵥ
-            if options.fit_a
-                trialsets[i].mpGLMs[n].θ.a .= concatentatedθ[i][n][counter+=1]
-            end
-            if options.fit_b
-                trialsets[i].mpGLMs[n].θ.b .= concatentatedθ[i][n][counter+=1]
-            end
         end
     end
     return nothing
@@ -265,18 +255,13 @@ RETURN
 """
 function estimatefilters(γ::Matrix{<:Vector{<:AbstractFloat}},
                          mpGLM::MixturePoissonGLM;
-                         show_trace::Bool=true,
-                         fit_a::Bool=true,
-                         fit_b::Bool=true)
-    @unpack 𝐮, 𝐯, a, b = mpGLM.θ
+                         show_trace::Bool=true)
+    @unpack 𝐮, 𝐯 = mpGLM.θ
     x₀ = vcat(𝐮, 𝐯)
-    fit_a && (x₀ = vcat(x₀, a))
-    fit_b && (x₀ = vcat(x₀, b))
-    f(x) = negativeexpectation(γ, mpGLM, x; fit_a=fit_a, fit_b=fit_b)
-    g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x; fit_a=fit_a, fit_b=fit_b)
-    # h!(𝐇, x) = 𝐇negativeexpectation!(𝐇, γ, mpGLM, x)
-    # results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace))
-    results = Optim.optimize(f, g!, x₀, LBFGS(linesearch = LineSearches.BackTracking()), Optim.Options(show_trace=show_trace))
+    f(x) = negativeexpectation(γ, mpGLM, x)
+    g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x)
+    h!(𝐇, x) = 𝐇negativeexpectation!(𝐇, γ, mpGLM, x)
+    results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace))
     show_trace && println("The model converged: ", Optim.converged(results))
     return Optim.minimizer(results)
 end
@@ -296,35 +281,23 @@ RETURN
 """
 function negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
                              mpGLM::MixturePoissonGLM,
-                             x::Vector{<:Real};
-                             fit_a::Bool=true,
-                             fit_b::Bool=true)
+                             x::Vector{<:Real})
     @unpack Δt, K, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
     Pᵤ = size(𝐔,2)
     Pᵥ = size(𝚽,2)
     𝐮 = x[1:Pᵤ]
     𝐯 = x[Pᵤ+1:Pᵤ+Pᵥ]
-    counter = Pᵤ+Pᵥ
-    a = fit_a ? x[counter+=1] : mpGLM.θ.a[1]
-    b = fit_b ? x[counter+=1] : mpGLM.θ.b[1]
-    fa = rectifya(a)
     𝐔𝐮 = 𝐔*𝐮
     T = length(𝐔𝐮)
     Ξ = size(γ,1)
-    zeroindex = (Ξ+1)/2
+    zeroindex = cld(Ξ,2)
     neg𝒬 = 0.0
     for k = 1:K
         for i = 1:Ξ
             if k == 2 || i == zeroindex
                 𝐗𝐰 = 𝐔𝐮
             else
-                fξ = transformaccumulator(b, 𝛏[i])
-                if i < zeroindex
-                    𝐰 = vcat(𝐮, fξ.*𝐯)
-                else
-                    𝐰 = vcat(𝐮, fa.*fξ.*𝐯)
-                end
-                𝐗𝐰 = 𝐗*𝐰
+                𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐯)
             end
             for t = 1:T
                 λ = softplus(𝐗𝐰[t])
@@ -360,17 +333,41 @@ RETURN
 function ∇negativeexpectation!( ∇::Vector{<:Real},
                                 γ::Matrix{<:Vector{<:Real}},
                                 mpGLM::MixturePoissonGLM,
-                                x::Vector{<:Real};
-                                fit_a::Bool=true,
-                                fit_b::Bool=true)
+                                x::Vector{<:type}) where {type<:Real}
+    @unpack Δt, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
     Pᵤ = size(mpGLM.𝐔,2)
     Pᵥ = size(mpGLM.𝚽,2)
-    mpGLM.θ.𝐮 .= x[1:Pᵤ]
-    mpGLM.θ.𝐯 .= x[Pᵤ+1:Pᵤ+Pᵥ]
-    counter = Pᵤ+Pᵥ
-    fit_a && (mpGLM.θ.a[1] = x[counter+=1])
-    fit_b && (mpGLM.θ.b[1] = x[counter+=1])
-    ∇ .= ∇negativeexpectation(γ, mpGLM;fit_a=fit_a, fit_b=fit_b)
+    𝐮 = x[1:Pᵤ]
+    𝐯 = x[Pᵤ+1:Pᵤ+Pᵥ]
+    Ξ = size(γ,1)
+    zeroindex = cld(Ξ,2)
+    𝐔𝐮 = 𝐔*𝐮
+    T = length(𝐲)
+    if size(γ,2) > 1 # i.e, the coupling variable has more than one state
+        ∑γdecoupled = γ[zeroindex,1] .+ sum(γ[:,2])
+    else
+        ∑γdecoupled = γ[zeroindex,1]
+    end
+    ∑𝐮 = 𝐔𝐮
+    for t in eachindex(∑𝐮)
+        ∑𝐮[t] = ∑γdecoupled[t]*differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
+    end
+    ∑𝐯 = zeros(type, T)
+    for i = 1:Ξ
+        if i == zeroindex
+            continue
+        end
+        𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐯)
+        dnegℓ = 𝐗𝐰
+        for t in eachindex(dnegℓ)
+            dnegℓ[t] = differentiate_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
+        end
+        ζ = γ[i,1] .* dnegℓ
+        ∑𝐮 .+= ζ
+        ∑𝐯 .+= 𝛏[i].*ζ
+    end
+    ∇[1:Pᵤ] = transpose(𝐔)*∑𝐮
+    ∇[Pᵤ+1:Pᵤ+Pᵥ] = transpose(𝚽)*∑𝐯
     return nothing
 end
 
@@ -393,7 +390,7 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{type}},
     @unpack Δt, K, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
     @unpack 𝐮, 𝐯, a, b = mpGLM.θ
     Ξ = size(γ,1)
-    zeroindex = cld(Ξ,2)
+    zeroindex = (Ξ+1)/2
     𝐔𝐮 = 𝐔*𝐮
     fa = rectifya(a[1])
     T = length(𝐲)
@@ -423,13 +420,12 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{type}},
             ζ = γ[i,k] .* dnegℓ
             ∑𝐮 .+= ζ
             if k == 1 &&  i != zeroindex
-                dfξ = dtransformaccumulator(b[1], 𝛏[i])
                 if i < zeroindex
                     ∑left .+= fξ.*ζ
-                    fit_b && (∑b .+= dfξ.*ζ)
+                    fit_b && (∑b .+= dtransformaccumulator(b[1], 𝛏[i]).*ζ)
                 elseif i > zeroindex
                     ∑right .+= fξ.*ζ
-                    fit_b && (∑b .+= fa.*dfξ.*ζ)
+                    fit_b && (∑b .+= fa.*dtransformaccumulator(b[1], 𝛏[i]).*ζ)
                 end
             end
         end
@@ -468,12 +464,14 @@ RETURN
 -the derivative with respect to the linear predictor
 """
 function differentiate_negative_loglikelihood(Δt::AbstractFloat, xw::Real, y::Integer)
-    if y == 0
-        xw < -100 ? 0.0 : logistic(xw)*Δt
-    elseif y == 1
-        xw < -100 ? -1.0 : logistic(xw)*(Δt - 1.0/softplus(xw))
+    if y > 0
+        if xw > -100.0
+            logistic(xw)*(Δt - y/softplus(xw))
+        else
+            logistic(xw)*Δt - y # the limit of logistic(x)/softplus(x) as x goes to -∞ is 1
+        end
     else
-        xw < -100 ? -y : logistic(xw)*(Δt - y/softplus(xw))
+        logistic(xw)*Δt
     end
 end
 
@@ -499,14 +497,11 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
                                x::Vector{<:AbstractFloat})
     @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
     Pᵤ = size(𝐔,2)
-    Pₗ = size(𝚽,2)
+    Pᵥ = size(𝚽,2)
     indices𝐮 = 1:Pᵤ
-    indices𝐥 = Pᵤ+1:Pᵤ+Pₗ
-    indices𝐫 = Pᵤ+Pₗ+1:Pᵤ+2Pₗ
+    indices𝐯 = Pᵤ+1:Pᵤ+Pᵥ
     𝐮 = x[indices𝐮]
-    𝐥 = x[indices𝐥]
-    𝐫 = x[indices𝐫]
-    𝐔𝐮 = 𝐔*𝐮
+    𝐯 = x[indices𝐯]
     Ξ = size(γ,1)
     zeroindex = cld(Ξ,2)
     if size(γ,2) > 1 # i.e, the coupling variable has more than one state
@@ -514,47 +509,60 @@ function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
     else
         ∑γdecoupled = γ[zeroindex,1]
     end
-    f₀ = softplus.(𝐔𝐮)
-    f₁ = logistic.(𝐔𝐮) # first derivative
-    f₂ = f₁ .* (1.0 .- f₁) # second derivative
-    tmp𝐮𝐮 = ∑γdecoupled .* (f₂.*Δt .- 𝐲.*(f₀.*f₂ .- f₁.^2)./f₀.^2)
     T = length(𝐲)
-    tmp𝐥𝐮 = zeros(T)
-    tmp𝐫𝐮 = zeros(T)
-    tmp𝐥𝐥 = zeros(T)
-    tmp𝐫𝐫 = zeros(T)
+    ∑𝐮𝐯, ∑𝐯𝐯 = zeros(T), zeros(T)
+    𝐔𝐮 = 𝐔*𝐮
+    ∑𝐮𝐮 = 𝐔𝐮
+    for t in eachindex(∑𝐮𝐮)
+        ∑𝐮𝐮[t] = ∑γdecoupled[t]*differentiate_twice_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
+    end
     for i = 1:Ξ
-        if i < zeroindex
-            𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐥)
-        elseif i > zeroindex
-            𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐫)
-        else
+        if i == zeroindex
             continue
         end
-        f₀ = softplus.(𝐗𝐰)
-        f₁ = logistic.(𝐗𝐰) # first derivative
-        f₂ = f₁ .* (1.0 .- f₁) # second derivative
-        tmp = γ[i,1].*(f₂.*Δt .- 𝐲.*(f₀.*f₂ .- f₁.^2)./f₀.^2)
-        if i < zeroindex
-            tmp𝐥𝐥 .+= 𝛏[i]^2 .* tmp
-            tmp𝐥𝐮 .+= 𝛏[i].*tmp
-        elseif i > zeroindex
-            tmp𝐫𝐫 .+= 𝛏[i]^2 .* tmp
-            tmp𝐫𝐮 .+= 𝛏[i].*tmp
+        𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐯)
+        d²negℓ = 𝐗𝐰
+        for t in eachindex(d²negℓ)
+            d²negℓ[t] = differentiate_twice_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
         end
-        tmp𝐮𝐮 .+= tmp
+        ζ = γ[i,1] .* d²negℓ
+        ∑𝐮𝐮 .+= ζ
+        ∑𝐯𝐯 .+= 𝛏[i]^2 .* ζ
+        ∑𝐮𝐯 .+= 𝛏[i].*ζ
     end
     𝐔ᵀ = transpose(𝐔)
     𝚽ᵀ = transpose(𝚽)
-    𝐔ᵀ_tmp𝐥𝐮_𝚽 = 𝐔ᵀ*(tmp𝐥𝐮.*𝚽)
-    𝐔ᵀ_tmp𝐫𝐮_𝚽 = 𝐔ᵀ*(tmp𝐫𝐮.*𝚽)
-    𝐇 .= 0
-    𝐇[indices𝐮, indices𝐮] = 𝐔ᵀ*(tmp𝐮𝐮.*𝐔)
-    𝐇[indices𝐥, indices𝐥] = 𝚽ᵀ*(tmp𝐥𝐥.*𝚽)
-    𝐇[indices𝐫, indices𝐫] = 𝚽ᵀ*(tmp𝐫𝐫.*𝚽)
-    𝐇[indices𝐮, indices𝐥] = 𝐔ᵀ_tmp𝐥𝐮_𝚽
-    𝐇[indices𝐮, indices𝐫] = 𝐔ᵀ_tmp𝐫𝐮_𝚽
-    𝐇[indices𝐥, indices𝐮] = transpose(𝐔ᵀ_tmp𝐥𝐮_𝚽)
-    𝐇[indices𝐫, indices𝐮] = transpose(𝐔ᵀ_tmp𝐫𝐮_𝚽)
+    𝐔ᵀ_∑𝐮𝐯_𝚽 = 𝐔ᵀ*(∑𝐮𝐯.*𝚽)
+    # 𝐇 .= 0
+    𝐇[indices𝐮, indices𝐮] = 𝐔ᵀ*(∑𝐮𝐮.*𝐔)
+    𝐇[indices𝐯, indices𝐯] = 𝚽ᵀ*(∑𝐯𝐯.*𝚽)
+    𝐇[indices𝐮, indices𝐯] = 𝐔ᵀ_∑𝐮𝐯_𝚽
+    𝐇[indices𝐯, indices𝐮] = transpose(𝐔ᵀ_∑𝐮𝐯_𝚽)
     return nothing
+end
+
+"""
+    differentiate_twice_negative_loglikelihood
+
+Second derivative the negative of the log-likelihood of a Poisson GLM with respect to the linear predictor
+
+The Poisson GLM is assumed to have a a softplus nonlinearity
+
+ARGUMENT
+-`Δt`: duration of time step
+-`xw`: linear predictor at one time step
+-`y`: observation at that time step
+
+RETURN
+-the derivative with respect to the linear predictor
+"""
+function differentiate_twice_negative_loglikelihood(Δt::AbstractFloat, xw::Real, y::Integer)
+    f₁ = logistic(xw) # first derivative of softplus(xw) with respect to xw
+    f₂ = f₁*(1.0-f₁) # second derivative
+    if y > 0 && xw > -50.0
+        f₀ = softplus(xw)
+        f₂*Δt - y*(f₀*f₂ - f₁^2)/f₀^2 # the limit of the second term is 0 as xw goes to -∞
+    else
+        f₂*Δt
+    end
 end

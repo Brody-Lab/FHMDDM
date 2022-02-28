@@ -174,9 +174,9 @@ end
     "Time-varying weighte. Element 𝐯[i] corresponds to the weight of the i-th temporal basis"
     𝐯::TVR
     "The exponent `e^a` specifies the ratio of right to left weight"
-	a::TVR= zeros(eltype(𝐮),1)
+	a::TVR=zeros(eltype(𝐮),1)
 	"Parameter specifying how the accumulator is nonlinearly transformed before inputted into the generalized linear model"
-	b::TVR=0.001*ones(eltype(𝐮), 1)
+	b::TVR=zeros(eltype(𝐮),1)
 end
 """
     MixturePoissonGLM

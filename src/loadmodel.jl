@@ -237,3 +237,21 @@ function initializeparameters!(model::Model)
 	estimatefilters!(model.trialsets, γ, model.options)
 	return nothing
 end
+
+"""
+	do_not_fit_ψ(model)
+
+Set the option of whether to behavioral lapse rate to be false. This is an ad-hoc measure
+
+RETURN
+-`model`: an instance of the factorial hidden Markov drift-diffusion model
+"""
+function do_not_fit_ψ(model::Model)
+	options = dictionary(model.options)
+	options["fit_psi"] = false
+	Model(options=Options(options),
+		   θnative=model.θnative,
+		   θreal=model.θreal,
+		   θ₀native=model.θ₀native,
+		   trialsets=model.trialsets)
+end

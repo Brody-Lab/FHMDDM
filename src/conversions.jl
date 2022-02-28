@@ -160,7 +160,7 @@ function dictionary(options::Options)
 	Dict(	"a_basis_per_s"=>options.a_basis_per_s,
 			"a_latency_s"=>options.a_latency_s,
 			"basistype"=>options.basistype,
-			"bound_psi"=>options.bound_psi,
+			"bound_psi"=>options.bound_ψ,
 			"bound_sigma2"=>options.bound_σ²,
 			"bound_z"=>options.bound_z,
 			"datapath"=>options.datapath,
