@@ -12,18 +12,22 @@ RETURN
 """
 function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
     Tmax = maximum(𝐓)
-    nbases = ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt))
-    @assert nbases > 0
-    if options.basistype == "raised_cosine"
-        Φ = raisedcosinebases(nbases, Tmax)
-    elseif options.basistype == "Chebyshev_polynomial"
-        Φ = chebyshevbases(nbases, Tmax)
-    elseif options.basistype == "stretched_raised_cosine"
-        Φ = stretched_raised_cosines(nbases, Tmax)
-    elseif options.basistype == "none"
-        Φ = ones(Tmax)
+    if options.basistype == "none"
+        Φ = ones(Tmax,1)
+        nbases = 1
     else
-        error("unrecognized type for temporal basis function: ", options.basistype)
+        nbases = ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt))
+        @assert nbases > 0
+        if options.basistype == "raised_cosine"
+            Φ = raisedcosinebases(nbases, Tmax)
+        elseif options.basistype == "Chebyshev_polynomial"
+            Φ = chebyshevbases(nbases, Tmax)
+        elseif options.basistype == "stretched_raised_cosine"
+            Φ = stretched_raised_cosines(nbases, Tmax)
+        elseif options.basistype == "none"
+        else
+            error("unrecognized type for temporal basis function: ", options.basistype)
+        end
     end
     𝚽 = zeros(sum(𝐓), nbases)
     k = 0

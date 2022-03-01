@@ -89,7 +89,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
                 		spikehistorylags::Vector{integertype},
                 		trials::Vector{<:Trial}) where {integertype<:Integer}
 	@unpack Δt, K, 𝚽, 𝛏, 𝐲 = mpGLM
-	@unpack 𝐮, 𝐯, a, b = mpGLM.θ
+	@unpack 𝐮, 𝐯 = mpGLM.θ
 	max_spikes_per_step = floor(Δt/1e-3)
     nspikehistorylags = length(spikehistorylags)
     if nspikehistorylags>0
@@ -98,10 +98,10 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
     end
     𝐔 = copy(mpGLM.𝐔)
     𝐔[:, 1:nspikehistorylags] .= 0.
-	eᵃ = exp(a[1])
+	fa = rectifya(mpGLM.θ.a[1])
     𝚽𝐯 = 𝚽*𝐯
     𝐲̂ = similar(𝐲)
-	f𝛏 = map(ξ->transformaccumulator(b[1], ξ), 𝛏)
+	f𝛏 = map(ξ->transformaccumulator(mpGLM.θ.b[1], ξ), 𝛏)
 	zeroindex = (length(𝛏)+1)/2
     t = 0
     for m in eachindex(trials)
@@ -117,7 +117,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
                 if j < zeroindex
                     𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + f𝛏[j]*𝚽𝐯[t]
                 elseif j > zeroindex
-                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + eᵃ*f𝛏[j]*𝚽𝐯[t]
+                    𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮 + fa*f𝛏[j]*𝚽𝐯[t]
                 else
                     𝐰ᵀ𝐱 = 𝐔[t,:]⋅𝐮
                 end
