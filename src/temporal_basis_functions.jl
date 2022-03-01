@@ -20,6 +20,8 @@ function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
         Φ = chebyshevbases(nbases, Tmax)
     elseif options.basistype == "stretched_raised_cosine"
         Φ = stretched_raised_cosines(nbases, Tmax)
+    elseif options.basistype == "none"
+        Φ = ones(Tmax)
     else
         error("unrecognized type for temporal basis function: ", options.basistype)
     end
@@ -52,12 +54,14 @@ function raisedcosinebases(nbases::Integer, nbins::Integer)
     # begins at 0, ends at 0
     # Δcenter = (nbins-1) / (nbases+3)
     # centers = collect(1+2Δcenter:Δcenter:nbins-2Δcenter)
+
     #begins at 0, ends at peak
-    Δcenter = (nbins-1) / nbases
-    centers = collect(1+Δcenter:Δcenter:nbins)
+    # Δcenter = (nbins-1) / nbases
+    # centers = collect(1+Δcenter:Δcenter:nbins)
+
     # begins at peak, ends at peak
-    # Δcenter = (nbins-1) / max(1,nbases-1)
-    # centers = collect(1:Δcenter:nbins)
+    Δcenter = (nbins-1) / max(1,nbases-1)
+    centers = collect(1:Δcenter:nbins)
 
     timefromcenter = collect(1:nbins) .- transpose(centers)
     period = 4Δcenter

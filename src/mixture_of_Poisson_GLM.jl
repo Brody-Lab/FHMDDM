@@ -255,13 +255,14 @@ RETURN
 """
 function estimatefilters(γ::Matrix{<:Vector{<:AbstractFloat}},
                          mpGLM::MixturePoissonGLM;
+                         iterations::Integer=20,
                          show_trace::Bool=true)
     @unpack 𝐮, 𝐯 = mpGLM.θ
     x₀ = vcat(𝐮, 𝐯)
     f(x) = negativeexpectation(γ, mpGLM, x)
     g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x)
     h!(𝐇, x) = 𝐇negativeexpectation!(𝐇, γ, mpGLM, x)
-    results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace))
+    results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
     show_trace && println("The model converged: ", Optim.converged(results))
     return Optim.minimizer(results)
 end
