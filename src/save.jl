@@ -4,7 +4,7 @@
 Save the model parameters and the expectation of the emissions
 
 ARGUMENT
--model: an instance of `DDLM`, a drift-diffusion linear model
+-model: an instance of `FHMDDM`, a factorial hidden-Markov drift-diffusion model
 
 RETURN
 -nothing
@@ -26,5 +26,19 @@ function save(model::Model,
                 "pchoice" => pchoice,
                 "lambdaDeltat" => λΔt)
     matwrite(model.options.resultspath, dict)
+    return nothing
+end
+
+"""
+    save
+
+Save the results of crossvalidation
+
+ARGUMENT
+-`cvresults`: an instance of `CVResults`, a drift-diffusion linear model
+"""
+function save(cvresults::CVResults, options::Options)
+    path = dirname(options.resultspath)*"/cvresults.mat"
+    matwrite(path, dictionary(cvresults))
     return nothing
 end

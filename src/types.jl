@@ -110,7 +110,7 @@ Model settings
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"the number of time bins before the current bin when the spike history is considered, one value for each regressor, such as [1, 2, ..., 9]. Note a positive lag represents a time bin before the current time bin."
-    spikehistorylags::TVI=collect(1:10)
+    spikehistorylags::TVI=ones(1)
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end
@@ -318,4 +318,48 @@ Container of variables used by both the log-likelihood and gradient computation
 	indexθ::TI
 	"Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
 	p𝐘𝑑::VVVMF
+end
+
+"""
+	CVIndices
+
+Indices of trials and timesteps used for training and testing
+"""
+@with_kw struct CVIndices{VVI<:Vector{<:Vector{<:Integer}}}
+	"`testingtrials[i]` indexes the trials from the i-th trialset used for testing"
+	testingtrials::VVI
+	"`trainingtrials[i]` indexes the trials from the i-th trialset used for training"
+	trainingtrials::VVI
+	"`testingtimesteps[i]` indexes the time steps from the i-th trialset used for testing"
+	testingtimesteps::VVI
+	"`trainingtimesteps[i]` indexes the time steps from the i-th trialset used for training"
+	trainingtimesteps::VVI
+end
+
+"""
+	CVResults
+
+Results of cross-validation
+"""
+@with_kw struct CVResults{VC<:Vector{<:CVIndices},
+							VL<:Vector{<:Latentθ},
+							VVVG<:Vector{<:Vector{<:Vector{<:GLMθ}}},
+							VVF<:Vector{<:Vector{<:AbstractFloat}},
+							VF<:Vector{<:AbstractFloat}}
+	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
+	cvindices::VC
+	"θ₀native[k] specify the initial values of the parameters of the latent variables in the k-th resampling"
+	θ₀native::VL
+	"θnative[k] specify the optimized values of the parameters of the latent variables in the k-th resampling"
+	θnative::VL
+	"glmθ[k][i][n] specify the optimized values of the parameters of the n-th neuron's GLM in the i-th trialset in the k-th resampling"
+	glmθ::VVVG
+	"losses[k][i] specify the value of the loss function in the i-th iteration of the optimization in the k-th resampling"
+	losses::VVF
+	"gradientnorms[k][i] specify the 2-norm of gradient the loss function in the i-th iteration of the optimization in the k-th resampling"
+	gradientnorms::VVF
+	"rll_choice[i] indicate the trial-averaged log-likelihood of the choices in the i-th trialset, relative to the baseline trial-average log-likelihood computed under a Bernoulli distribution parametrized by fraction of right responses"
+	rll_choice::VF
+	"rll_spikes[i][n] indicate the time-averaged log-likelihood of the spike train of the n-th neuron in the -th trialset, relative to the baseline time-averaged log-likelihood computed under a Poisson distribution parametrized by mean spike train response"
+	rll_spikes::VVF
 end

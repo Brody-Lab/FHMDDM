@@ -214,6 +214,10 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 		f .*= p𝐘𝑑[t]
 		D = sum(f)
 		f ./= D
+		if (D < 0) || (isnan(D))
+			println("f = ", f)
+			error("negative or NaN D")
+		end
 		ℓ += log(D)
 	end
 	return ℓ

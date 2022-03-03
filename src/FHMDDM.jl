@@ -15,13 +15,17 @@ import  Flux # packages whose name but not its exported function is in scope
 export  adapt, # module-specific functions and types in this module that we can call in the REPL without preceding with the name of the module
         approximatetransition!,
         Clicks,
+        CVIndices,
+        CVResults,
         choicelikelihood,
         choiceposteriors,
         concatenatebounds,
         concatenateparameters,
         concatenate_choice_related_parameters,
         conditional_probability_of_choice,
+        conditionallikelihood,
         conditionedmean,
+        crossvalidate,
         dictionary,
         differentiateℓ_wrt_ψ,
         do_not_fit_ψ,
@@ -65,6 +69,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         real2native,
         real2native!,
         rectifya,
+        relative_loglikelihood,
         Shared,
         sample,
         sampleemissions,
@@ -72,7 +77,10 @@ export  adapt, # module-specific functions and types in this module that we can 
         sortparameters,
         sortparameters!,
         stochasticmatrix!,
+        subsample,
+        testingset,
         temporal_bases_values,
+        trainingset,
         transformaccumulator,
         Trial,
         Trialinvariant,
@@ -82,6 +90,7 @@ include("types.jl") # This list contains files that in which functions and types
 include("benchmarking.jl")
 include("choicemodel.jl")
 include("conversions.jl")
+include("crossvalidation.jl")
 include("drift_diffusion_dynamics.jl")
 include("E_step.jl")
 include("loadmodel.jl")

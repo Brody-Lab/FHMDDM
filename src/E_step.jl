@@ -25,16 +25,12 @@ end
 
 """
     likelihood!(p𝐘𝑑, trialset, ψ)
-
 Update the conditional likelihood of the emissions (spikes and/or behavioral choice)
-
 MODIFIED ARGUMENT
 -`p𝐘𝑑`: Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
-
 UNMODIFIED ARGUMENT
 -`trialsets`: data used to constrain the model
 -`ψ`: lapse rate
-
 RETURN
 -`nothing`
 """

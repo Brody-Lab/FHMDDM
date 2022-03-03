@@ -61,6 +61,29 @@ function likelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer,
 end
 
 """
+	likelihood(λΔt, y, y!)
+
+Poisson likelihood
+
+ARGUMENT
+-`λΔt`: the expected value
+-`y`: the observation
+-`y!`: the factorial of the observation
+
+OUTPUT
+-the likelihood
+"""
+function likelihood(λΔt::Real, y::Integer, y!::Integer)
+	if y==0
+		exp(-λΔt)
+	elseif y==1
+		λΔt/exp(λΔt)
+	else
+		λΔt^y / exp(λΔt) / y!
+	end
+end
+
+"""
     linearpredictor(mpGLM, j, k)
 
 Linear combination of the weights in the j-th accumulator state and k-th coupling state
@@ -256,7 +279,7 @@ RETURN
 function estimatefilters(γ::Matrix{<:Vector{<:AbstractFloat}},
                          mpGLM::MixturePoissonGLM;
                          iterations::Integer=20,
-                         show_trace::Bool=true)
+                         show_trace::Bool=false)
     @unpack 𝐮, 𝐯 = mpGLM.θ
     x₀ = vcat(𝐮, 𝐯)
     f(x) = negativeexpectation(γ, mpGLM, x)
@@ -391,44 +414,43 @@ function ∇negativeexpectation(γ::Matrix{<:Vector{type}},
     @unpack Δt, K, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
     @unpack 𝐮, 𝐯, a, b = mpGLM.θ
     Ξ = size(γ,1)
-    zeroindex = (Ξ+1)/2
+    zeroindex = cld(Ξ,2)
     𝐔𝐮 = 𝐔*𝐮
     fa = rectifya(a[1])
     T = length(𝐲)
-    ∑𝐮, ∑left, ∑right = zeros(type, T), zeros(type, T), zeros(type, T)
+    ∑left, ∑right = zeros(type, T), zeros(type, T)
     fit_b && (∑b = zeros(type, T))
-    𝛈 = 𝐔𝐮 # reuse memory
-    for t in eachindex(𝛈)
-        𝛈[t] = differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
+	if size(γ,2) > 1 # i.e, the coupling variable has more than one state
+        ∑γdecoupled = γ[zeroindex,1] .+ sum(γ[:,2])
+    else
+        ∑γdecoupled = γ[zeroindex,1]
     end
-    for k = 1:K
-        for i = 1:Ξ
-            if k == 2 || i == zeroindex
-                dnegℓ = 𝛈
-            else
-                fξ = transformaccumulator(b[1], 𝛏[i])
-                if i < zeroindex
-                    𝐰 = vcat(𝐮, fξ.*𝐯)
-                else
-                    𝐰 = vcat(𝐮, fa.*fξ.*𝐯)
-                end
-                𝐗𝐰 = 𝐗*𝐰
-                dnegℓ = 𝐗𝐰 # reuse memory
-                for t in eachindex(dnegℓ)
-                    dnegℓ[t] = differentiate_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
-                end
-            end
-            ζ = γ[i,k] .* dnegℓ
-            ∑𝐮 .+= ζ
-            if k == 1 &&  i != zeroindex
-                if i < zeroindex
-                    ∑left .+= fξ.*ζ
-                    fit_b && (∑b .+= dtransformaccumulator(b[1], 𝛏[i]).*ζ)
-                elseif i > zeroindex
-                    ∑right .+= fξ.*ζ
-                    fit_b && (∑b .+= fa.*dtransformaccumulator(b[1], 𝛏[i]).*ζ)
-                end
-            end
+    ∑𝐮 = 𝐔𝐮
+    for t in eachindex(∑𝐮)
+        ∑𝐮[t] = ∑γdecoupled[t]*differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
+    end
+    for i = 1:Ξ
+		if i == zeroindex
+			continue
+		end
+        fξ = transformaccumulator(b[1], 𝛏[i])
+        if i < zeroindex
+            𝐰 = vcat(𝐮, fξ.*𝐯)
+        else
+            𝐰 = vcat(𝐮, fa.*fξ.*𝐯)
+        end
+        𝐗𝐰 = 𝐗*𝐰
+        ζ = 𝐗𝐰
+        for t in eachindex(ζ)
+            ζ[t] = γ[i,1][t]*differentiate_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
+        end
+        ∑𝐮 .+= ζ
+        if i < zeroindex
+            ∑left .+= fξ.*ζ
+            fit_b && (∑b .+= dtransformaccumulator(b[1], 𝛏[i]).*ζ)
+        elseif i > zeroindex
+            ∑right .+= fξ.*ζ
+            fit_b && (∑b .+= fa.*dtransformaccumulator(b[1], 𝛏[i]).*ζ)
         end
     end
     ∑𝐯 = ∑left # reuse memory

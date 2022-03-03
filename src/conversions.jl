@@ -20,7 +20,7 @@ function native2real(options::Options,
 			μ₀ = [θnative.μ₀[1]],
 			ϕ = [logit(θnative.ϕ[1]) - logit(options.q_ϕ)],
 			πᶜ₁ = [logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)],
-			ψ 	= [θnative.ψ[1]==0.0 ? -Inf : logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)],
+			ψ 	= [logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)],
 			σ²ₐ = [log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)],
 			σ²ᵢ = [log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)],
 			σ²ₛ = [log((θnative.σ²ₛ[1]-options.bound_σ²) /options.q_σ²ₛ)],
@@ -48,7 +48,7 @@ function native2real!(θreal::Latentθ,
 	θreal.k[1] = log(θnative.k[1]/options.q_k)
 	θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
 	θreal.πᶜ₁[1] = logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)
-	θreal.ψ[1] = θnative.ψ[1]==0.0 ? -Inf : logit((θnative.ψ[1]-options.bound_ψ)/(1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
+	θreal.ψ[1] = logit((θnative.ψ[1]-options.bound_ψ)/(1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
 	θreal.σ²ₐ[1] = log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)
 	θreal.σ²ᵢ[1] = log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)
 	θreal.σ²ₛ[1] = log((θnative.σ²ₛ[1]-options.bound_σ²)/options.q_σ²ₛ)
@@ -113,7 +113,7 @@ function real2native(options::Options,
 			μ₀ = [1.0*θreal.μ₀[1]],
 			ϕ = [logistic(θreal.ϕ[1] + logit(options.q_ϕ))],
 			πᶜ₁ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))],
-			ψ   = θreal.ψ[1] == -Inf ? zeros(1) : [options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))],
+			ψ   = [options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))],
 			σ²ₐ = [options.bound_σ² + options.q_σ²ₐ*exp(θreal.σ²ₐ[1])],
 			σ²ᵢ = [options.bound_σ² + options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])],
 			σ²ₛ = [options.bound_σ² + options.q_σ²ₛ*exp(θreal.σ²ₛ[1])],
@@ -143,7 +143,7 @@ function real2native!(θnative::Latentθ,
 	θnative.μ₀[1] = θreal.μ₀[1]
 	θnative.ϕ[1] = logistic(θreal.ϕ[1] + logit(options.q_ϕ))
 	θnative.πᶜ₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	θnative.ψ[1]   = θreal.ψ[1] == -Inf ? 0.0 : options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
+	θnative.ψ[1]   = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
 	θnative.σ²ₐ[1] = options.bound_σ² + options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
 	θnative.σ²ᵢ[1] = options.bound_σ² + options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
 	θnative.σ²ₛ[1] = options.bound_σ² + options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
@@ -276,6 +276,34 @@ function dictionary(θ::Latentθ)
 		"sigma2_i"=>θ.σ²ᵢ[1],
 		"sigma2_s"=>θ.σ²ₛ[1],
 		"w_h"=>θ.wₕ[1])
+end
+
+"""
+	dictionary(cvindices)
+
+Convert an instance of 'CVIndices' to a dictionary
+"""
+function dictionary(cvindices::CVIndices)
+	Dict("testingtrials" => cvindices.testingtrials,
+		 "trainingtrials" => cvindices.trainingtrials,
+		 "testingtimesteps" => cvindices.testingtimesteps,
+		 "trainingtimesteps" => cvindices.trainingtimesteps)
+end
+
+"""
+	dictionary(cvresults)
+
+Convert an instance of `CVResults` to a dictionary
+"""
+function dictionary(cvresults::CVResults)
+	Dict("cvindices" => map(dictionary, cvresults.cvindices),
+		 "theta0_native" => map(dictionary, cvresults.θ₀native),
+		 "theta_native" => map(dictionary, cvresults.θnative),
+		 "thetaglm" => map(glmθ->map(glmθ->map(glmθ->dictionary(glmθ), glmθ), glmθ), cvresults.glmθ),
+		 "losses"=>cvresults.losses,
+		 "gradientnorms"=>cvresults.gradientnorms,
+		 "rll_choice"=>cvresults.rll_choice,
+		 "rll_spikes"=>cvresults.rll_spikes)
 end
 
 """
