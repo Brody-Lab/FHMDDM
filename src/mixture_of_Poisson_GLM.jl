@@ -242,7 +242,7 @@ RETURN
 function estimatefilters!(trialsets::Vector{<:Trialset},
                           γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
                           options::Options;
-                          show_trace::Bool=true)
+                          show_trace::Bool=false)
     concatentatedθ = map(trialsets, γ) do trialset, γ
                         pmap(trialset.mpGLMs) do mpGLM
                             estimatefilters(γ, mpGLM; show_trace=show_trace)

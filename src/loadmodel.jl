@@ -174,12 +174,11 @@ function Trialset(options::Options, trialset::Dict)
     units = vec(trialset["units"])
     𝐘 = map(x->convert.(Int64, vec(x["y"])), units)
     @assert sum(ntimesteps) == length(𝐘[1])
-    𝐔ₕ = map(x->x["Xautoreg"], units)
     𝐔ₑ = trialset["Xtiming"]
 	@unpack Ξ = options
 	𝛏normalized = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1) # if not normalized, the denominator is `Ξ-2`
 	𝚽, Φ = temporal_bases_values(options, ntimesteps)
-	if all(isempty.(𝐔ₕ))
+	if isempty(options.spikehistorylags)
 		𝐗 = hcat(𝐔ₑ,𝚽)
 		mpGLMs = map(𝐘) do 𝐲
 					θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(size(𝐔ₑ,2)),
@@ -187,7 +186,8 @@ function Trialset(options::Options, trialset::Dict)
 					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, θ=θ, 𝐔=𝐔ₑ, 𝛏=𝛏normalized, 𝐗=𝐗, 𝐲=𝐲)
 				 end
 	else
-		mpGLMs = map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
+		mpGLMs = map(𝐘) do 𝐲
+					𝐔ₕ = spikehistory(options.spikehistorylags,trials,𝐲)
 					𝐔 = hcat(𝐔ₕ, 𝐔ₑ)
 					𝐗 = hcat(𝐔, 𝚽)
 					θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(size(𝐔,2)),
@@ -254,4 +254,32 @@ function do_not_fit_ψ(model::Model)
 		   θreal=model.θreal,
 		   θ₀native=model.θ₀native,
 		   trialsets=model.trialsets)
+end
+
+"""
+	spikehistory(lags, trials, 𝐲)
+
+Create a design matrix corresponding to the spike history input
+
+ARGUMENT
+-`lags`: a vector of positive integers corresponding to the timesteps before the current timestep
+-`trials`: a vector of instances of `Trial`
+-`𝐲`: a vector nonnegative integers corresponding to the number of spikes observed in each time step
+"""
+function spikehistory(lags::Vector{<:Integer},
+					  trials::Vector{<:Trial},
+					  𝐲::Vector{<:Integer})
+	H = zeros(length(𝐲), length(lags))
+	τ = 0
+	for m in eachindex(trials)
+		for t=1:trials[m].ntimesteps
+			τ+=1
+			for i in eachindex(lags)
+				if t-lags[i] > 0
+					H[τ,i] = 𝐲[τ-lags[i]]
+				end
+			end
+		end
+	end
+	return H
 end

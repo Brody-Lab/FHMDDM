@@ -76,6 +76,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         save,
         sortparameters,
         sortparameters!,
+        spikehistory,
         stochasticmatrix!,
         subsample,
         testingset,
