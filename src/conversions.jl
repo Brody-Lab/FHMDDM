@@ -279,6 +279,34 @@ function dictionary(θ::Latentθ)
 end
 
 """
+	dictionary(cvindices)
+
+Convert an instance of 'CVIndices' to a dictionary
+"""
+function dictionary(cvindices::CVIndices)
+	Dict("testingtrials" => cvindices.testingtrials,
+		 "trainingtrials" => cvindices.trainingtrials,
+		 "testingtimesteps" => cvindices.testingtimesteps,
+		 "trainingtimesteps" => cvindices.trainingtimesteps)
+end
+
+"""
+	dictionary(cvresults)
+
+Convert an instance of `CVResults` to a dictionary
+"""
+function dictionary(cvresults::CVResults)
+	Dict("cvindices" => map(dictionary, cvresults.cvindices),
+		 "theta0_native" => map(dictionary, cvresults.θ₀native),
+		 "theta_native" => map(dictionary, cvresults.θnative),
+		 "thetaglm" => map(glmθ->map(glmθ->map(glmθ->dictionary(glmθ), glmθ), glmθ), cvresults.glmθ),
+		 "losses"=>cvresults.losses,
+		 "gradientnorms"=>cvresults.gradientnorms,
+		 "rll_choice"=>cvresults.rll_choice,
+		 "rll_spikes"=>cvresults.rll_spikes)
+end
+
+"""
     Options(options::Dict)
 
 Create an instance of `Options` from a Dict

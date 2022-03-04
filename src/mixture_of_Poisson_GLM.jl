@@ -61,6 +61,29 @@ function likelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer,
 end
 
 """
+	Poissonlikelihood(λΔt, y, y!)
+
+Probability of a Poisson observation
+
+ARGUMENT
+-`λΔt`: the expected value
+-`y`: the observation
+-`y!`: the factorial of the observation
+
+OUTPUT
+-the likelihood
+"""
+function Poissonlikelihood(λΔt::Real, y::Integer, y!::Integer)
+	if y==0
+		exp(-λΔt)
+	elseif y==1
+		λΔt/exp(λΔt)
+	else
+		λΔt^y / exp(λΔt) / y!
+	end
+end
+
+"""
     linearpredictor(mpGLM, j, k)
 
 Linear combination of the weights in the j-th accumulator state and k-th coupling state

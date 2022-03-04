@@ -28,3 +28,17 @@ function save(model::Model,
     matwrite(model.options.resultspath, dict)
     return nothing
 end
+
+"""
+    save
+
+Save the results of crossvalidation
+
+ARGUMENT
+-`cvresults`: an instance of `CVResults`, a drift-diffusion linear model
+"""
+function save(cvresults::CVResults, options::Options)
+    path = dirname(options.resultspath)*"/cvresults.mat"
+    matwrite(path, dictionary(cvresults))
+    return nothing
+end
