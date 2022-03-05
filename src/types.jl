@@ -101,10 +101,16 @@ Model settings
 	q_σ²ᵢ::TF=1e-3; 	@assert q_σ²ᵢ >= 0
 	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
 	q_σ²ₛ::TF=1e-3;	 	@assert q_σ²ₛ >= 0
+	"bound of leak/instability"
+	bound_λ::TF = 5.0
+	"bound of the constant offset"
+	bound_μ₀::TF = 5.0
 	"lower bound of the initial noise"
 	bound_σ²::TF = 1e-4
 	"lower bound of the lapse rate"
 	bound_ψ::TF = 1e-4
+	"bound of the weight of the trial history inputs"
+	bound_wₕ::TF = 5.0
 	"lower bound of the probabilities for the coupling variable"
 	bound_z::TF = 1e-4
 	"where the results of the model fitting are to be saved"
