@@ -207,19 +207,19 @@ RETURN
 -values of model parameter in native space
 """
 function initializeparameters(options::Options)
-	Latentθ(Aᶜ₁₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₁₁],
-			Aᶜ₂₂=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₂₂],
-			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
-			k=options.fit_k ? rand(1) : [options.q_k],
-			λ=options.fit_λ ? [1-2rand()] : zeros(1),
-			μ₀=options.fit_μ₀ ? [1-2rand()] : zeros(1),
-			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
-			πᶜ₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_πᶜ₁],
-			ψ=options.fit_ψ ? [options.bound_ψ + rand()*(1-2*options.bound_ψ)] : [options.q_ψ],
-			σ²ₐ=options.fit_σ²ₐ ? rand(1) : [options.q_σ²ₐ],
-			σ²ᵢ=options.fit_σ²ᵢ ? rand(1) : [options.q_σ²ᵢ],
-			σ²ₛ=options.fit_σ²ₛ ? rand(1)/10 : [options.q_σ²ₛ],
-			wₕ=options.fit_wₕ ? [1-2rand()] : zeros(1))
+	Latentθ(Aᶜ₁₁=[options.q_Aᶜ₁₁],
+			Aᶜ₂₂=[options.q_Aᶜ₂₂],
+			B=[options.q_B],
+			k=[options.q_k],
+			λ=zeros(1),
+			μ₀=zeros(1),
+			ϕ=[options.q_ϕ],
+			πᶜ₁=[options.q_πᶜ₁],
+			ψ=[options.q_ψ],
+			σ²ₐ=[options.q_σ²ₐ],
+			σ²ᵢ=[options.q_σ²ᵢ],
+			σ²ₛ=[options.q_σ²ₛ],
+			wₕ=zeros(1))
 end
 
 """
