@@ -283,7 +283,7 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 	@unpack K = options
 	trialinvariant = Trialinvariant(model; purpose="gradient")
 	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+				map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑 #pmap
 					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
 				end
 			end
@@ -362,7 +362,7 @@ function ∇negativeloglikelihood(concatenatedθ::Vector{T},
 	@unpack K = options
 	trialinvariant = Trialinvariant(model; purpose="gradient")
 	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-				map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑 #pmap
+				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
 					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
 				end
 			end
@@ -496,7 +496,9 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 				dAᵃₜdB = dAᵃdB[i]
 			end
 			χ_oslash_Aᵃ = reshape(p𝐘𝑑[t].*b, Ξ, 1, K, 1) .* reshape(f[t-1], 1, Ξ, 1, K) .* Aᶜreshaped ./ D[t]
-	        ∑χᶜ += dropdims(sum(χ_oslash_Aᵃ.*Aᵃₜ, dims=(1,2)); dims=(1,2))
+			if K == 2
+		        ∑χᶜ += dropdims(sum(χ_oslash_Aᵃ.*Aᵃₜ, dims=(1,2)); dims=(1,2))
+			end
 			χᵃ_Aᵃ = dropdims(sum(χ_oslash_Aᵃ, dims=(3,4)); dims=(3,4))
 			χᵃ_dlogAᵃdμ = χᵃ_Aᵃ .* dAᵃₜdμ # χᵃ⊙ d/dμ{log(Aᵃ)} = χᵃ⊘ Aᵃ⊙ d/dμ{Aᵃ}
 			∑_χᵃ_dlogAᵃdμ = sum(χᵃ_dlogAᵃdμ)
@@ -521,10 +523,16 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 		end
 	end
 	dℓdσ²ₐ *= Δt
-	dℓdAᶜ₁₁ = ∑χᶜ[1,1]/Aᶜ[1,1] - ∑χᶜ[2,1]/Aᶜ[2,1]
-	dℓdAᶜ₂₂ = ∑χᶜ[2,2]/Aᶜ[2,2] - ∑χᶜ[1,2]/Aᶜ[1,2]
-	∑γᶜ₁ = sum(fb[1], dims=1)
-	dℓdxπᶜ₁ = (∑γᶜ₁[1] - θnative.πᶜ₁[1])/θnative.πᶜ₁[1]/(1.0 - θnative.πᶜ₁[1])
+	if K == 2
+		dℓdAᶜ₁₁ = ∑χᶜ[1,1]/Aᶜ[1,1] - ∑χᶜ[2,1]/Aᶜ[2,1]
+		dℓdAᶜ₂₂ = ∑χᶜ[2,2]/Aᶜ[2,2] - ∑χᶜ[1,2]/Aᶜ[1,2]
+		∑γᶜ₁ = sum(fb[1], dims=1)
+		dℓdxπᶜ₁ = (∑γᶜ₁[1] - θnative.πᶜ₁[1])/θnative.πᶜ₁[1]/(1.0 - θnative.πᶜ₁[1])
+	else
+		dℓdAᶜ₁₁ = 0.0
+		dℓdAᶜ₂₂ = 0.0
+		dℓdxπᶜ₁ = 0.0
+	end
 	γᵃ₁_oslash_πᵃ = sum(p𝐘𝑑[1] .* πᶜᵀ ./ D[1] .* b, dims=2)
 	∑_γᵃ₁_dlogπᵃdμ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdμ # similar to above, γᵃ₁⊙ d/dμ{log(πᵃ)} = γᵃ₁⊘ πᵃ⊙ d/dμ{πᵃ}
 	dℓdμ₀ = ∑_γᵃ₁_dlogπᵃdμ
@@ -590,9 +598,15 @@ function Trialinvariant(model::Model; purpose="gradient")
 	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
 	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
 	πᶜ₁ = θnative.πᶜ₁[1]
-	Aᶜ = [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
-	Aᶜᵀ = [Aᶜ₁₁ 1-Aᶜ₁₁; 1-Aᶜ₂₂ Aᶜ₂₂]
-	πᶜᵀ = [πᶜ₁ 1-πᶜ₁]
+	if K == 2
+		Aᶜ = [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
+		Aᶜᵀ = [Aᶜ₁₁ 1-Aᶜ₁₁; 1-Aᶜ₂₂ Aᶜ₂₂]
+		πᶜᵀ = [πᶜ₁ 1-πᶜ₁]
+	else
+		Aᶜ = ones(1,1)
+		Aᶜᵀ = ones(1,1)
+		πᶜᵀ = ones(1,1)
+	end
 	𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 	𝛍 = conditionedmean(0.0, Δt, θnative.λ[1], 𝛏)
 	σ = √(θnative.σ²ₐ[1]*Δt)
