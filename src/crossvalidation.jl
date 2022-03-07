@@ -38,25 +38,83 @@ function crossvalidate(model::Model,
 					end
 				end
 			end
-    for k=1:kfold
-        θ₀native[k] = initializeparameters(model.options)
-        trainingmodel = Model(trialsets = trainingset(cvindices[k], model.trialsets),
-                              options = model.options,
-                              θ₀native = θ₀native[k],
-                              θnative = Latentθ(([getfield(θ₀native[k], f)...] for f in fieldnames(Latentθ))...),
-                              θreal = native2real(model.options, θ₀native[k]))
-        maximizechoiceLL!(trainingmodel)
-        initializeparameters!(trainingmodel)
-        losses[k], gradientnorms[k] = maximizeposterior!(trainingmodel, 𝐬, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
-        θnative[k] = trainingmodel.θnative
-        for i in eachindex(model.trialsets)
-            for n in eachindex(model.trialsets[i].mpGLMs)
-                glmθ[k][i][n] = model.trialsets[i].mpGLMs[n].θ
-            end
+	for k=1:1
+	    θ₀native[k] = initializeparameters(model.options)
+	    trainingmodel = Model(trialsets = trainingset(cvindices[k], model.trialsets),
+	                          options = model.options,
+	                          θ₀native = θ₀native[k],
+	                          θnative = Latentθ(([getfield(θ₀native[k], f)...] for f in fieldnames(Latentθ))...),
+	                          θreal = native2real(model.options, θ₀native[k]))
+	    maximizechoiceLL!(trainingmodel)
+	    initializeparameters!(trainingmodel)
+	    losses[k], gradientnorms[k] = maximizeposterior!(trainingmodel, 𝐬, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
+	end
+	θnative[k] = trainingmodel.θnative
+    for i in eachindex(model.trialsets)
+        for n in eachindex(model.trialsets[i].mpGLMs)
+            glmθ[k][i][n] = model.trialsets[i].mpGLMs[n].θ
         end
     end
     rll_choice, rll_spikes = relative_loglikelihood(cvindices, glmθ, model.options, θnative, model.trialsets)
     CVResults(cvindices = cvindices,
+              θ₀native = θ₀native,
+              θnative = θnative,
+              glmθ = glmθ,
+              losses = losses,
+              gradientnorms = gradientnorms,
+              rll_choice = rll_choice,
+              rll_spikes = rll_spikes)
+end
+
+"""
+    crossvalidateonce(model)
+
+Assess how well the factorial hidden Markov drift-diffusion model generalizes to independent datasets
+
+"""
+function crossvalidateonce!(model::Model;
+							kfold::Integer=10,
+							𝐬::Vector{<:AbstractFloat}=Float64[],
+							iterations= 1000)
+    cvindices = CVIndices(model, kfold)[1:1]
+    θ₀native = map(k->Latentθ(), 1:1)
+    θnative = map(k->Latentθ(), 1:1)
+	losses = map(k->fill(NaN, iterations), 1:1)
+	gradientnorms = map(k->fill(NaN, iterations), 1:1)
+    glmθ = map(1:1) do k
+				map(model.trialsets) do trialset
+					map(trialset.mpGLMs) do mpGLM
+						GLMθ(𝐮=copy(mpGLM.θ.𝐮),
+							 𝐯=copy(mpGLM.θ.𝐯),
+							 a=copy(mpGLM.θ.a),
+							 b=copy(mpGLM.θ.b))
+					end
+				end
+			end
+    k=1
+    θ₀native[k] = initializeparameters(model.options)
+    trainingmodel = Model(trialsets = trainingset(cvindices[k], model.trialsets),
+                          options = model.options,
+                          θ₀native = θ₀native[k],
+                          θnative = Latentθ(([getfield(θ₀native[k], f)...] for f in fieldnames(Latentθ))...),
+                          θreal = native2real(model.options, θ₀native[k]))
+    maximizechoiceLL!(trainingmodel)
+    initializeparameters!(trainingmodel)
+	if isempty(𝐬)
+		concatenatedθ,indexθ = concatenateparameters(model)
+		𝐬 = zeros(length(concatenatedθ))
+	end
+    losses[k], gradientnorms[k] = maximizeposterior!(trainingmodel, 𝐬, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
+    θnative[k] = trainingmodel.θnative
+    for i in eachindex(model.trialsets)
+        for n in eachindex(model.trialsets[i].mpGLMs)
+            glmθ[k][i][n] = model.trialsets[i].mpGLMs[n].θ
+        end
+    end
+	concatenatedθ,indexθ = concatenateparameters(trainingmodel)
+	sortparameters!(model, concatenatedθ,indexθ)
+    rll_choice, rll_spikes = relative_loglikelihood(cvindices, glmθ, model.options, θnative, model.trialsets)
+    CVResults(cvindices = cvindices[1:1],
               θ₀native = θ₀native,
               θnative = θnative,
               glmθ = glmθ,

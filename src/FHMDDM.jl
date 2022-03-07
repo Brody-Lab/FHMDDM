@@ -26,6 +26,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         conditionallikelihood,
         conditionedmean,
         crossvalidate,
+        crossvalidateonce!,
         dictionary,
         differentiateℓ_wrt_ψ,
         do_not_fit_ψ,

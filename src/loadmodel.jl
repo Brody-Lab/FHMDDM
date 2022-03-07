@@ -211,7 +211,7 @@ function initializeparameters(options::Options)
 			Aᶜ₂₂=[options.q_Aᶜ₂₂],
 			B=[options.q_B],
 			k=[options.q_k],
-			λ=zeros(1),
+			λ=options.fit_λ ? [-1e-2] : zeros(1),
 			μ₀=zeros(1),
 			ϕ=[options.q_ϕ],
 			πᶜ₁=[options.q_πᶜ₁],
