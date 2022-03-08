@@ -14,14 +14,14 @@ OPTIONAL ARGUMENT
 RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function Model(datapath::String)
+function Model(datapath::String; randomize::Bool=false)
     dataMAT = matopen(datapath);
     options = Options(read(dataMAT, "options"))
     trialsets = vec(map(trialset->Trialset(options, trialset), read(dataMAT, "data")))
     if isfile(options.resultspath)
         Model(options, options.resultspath, trialsets)
     else
-        Model(options, trialsets)
+        Model(options, trialsets; randomize=randomize)
     end
 end
 
@@ -71,8 +71,8 @@ RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
 """
 function Model(options::Options,
-				trialsets::Vector{<:Trialset})
-	θnative = initializeparameters(options)
+				trialsets::Vector{<:Trialset}; randomize::Bool=false)
+	θnative = randomize ? randomlyinitialize(options) : initializeparameters(options)
 	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # just making a deep copy
 	Model(options=options,
 		   θnative=θnative,
@@ -220,6 +220,30 @@ function initializeparameters(options::Options)
 			σ²ᵢ=[options.q_σ²ᵢ],
 			σ²ₛ=[options.q_σ²ₛ],
 			wₕ=zeros(1))
+end
+
+"""
+	initializeparameters(options)
+
+Initialize the value of each model parameters in native space by sampling from a Uniform random variable
+
+RETURN
+-values of model parameter in native space
+"""
+function randomlyinitialize(options::Options)
+	Latentθ(Aᶜ₁₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₁₁],
+			Aᶜ₂₂=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₂₂],
+			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
+			k=options.fit_k ? rand(1) : [options.q_k],
+			λ=options.fit_λ ? [1-2rand()] : zeros(1),
+			μ₀=options.fit_μ₀ ? [1-2rand()] : zeros(1),
+			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
+			πᶜ₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_πᶜ₁],
+			ψ=options.fit_ψ ? [options.bound_ψ + rand()*(1-2*options.bound_ψ)] : [options.q_ψ],
+			σ²ₐ=options.fit_σ²ₐ ? rand(1) : [options.q_σ²ₐ],
+			σ²ᵢ=options.fit_σ²ᵢ ? rand(1) : [options.q_σ²ᵢ],
+			σ²ₛ=options.fit_σ²ₛ ? rand(1)/10 : [options.q_σ²ₛ],
+			wₕ=options.fit_wₕ ? [1-2rand()] : zeros(1))
 end
 
 """
