@@ -464,17 +464,19 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 	fb = f # reuse memory
 	b = ones(T, Ξ,K)
 	Aᶜreshaped = reshape(Aᶜ, 1, 1, K, K)
-	if θnative.λ[1] == 0.0
-		dμdΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
-		η = 0.0
-		𝛏ᵀΔtexpλΔt = zeros(T, 1, length(𝛏))
-	else
-		λΔt = θnative.λ[1]*Δt
-		expλΔt = exp(λΔt)
+	λΔt = θnative.λ[1]*Δt
+	expλΔt = exp(λΔt)
+	if abs(λΔt) > 1e-10
 		dμdΔc = (expλΔt - 1.0)/λΔt
-		η = (expλΔt - dμdΔc)/θnative.λ[1]
-		𝛏ᵀΔtexpλΔt = transpose(𝛏).*Δt.*expλΔt
+	else
+		dμdΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
 	end
+	if abs(θnative.λ[1]) > 1e-3
+		η = (expλΔt - (expλΔt - 1.0)/λΔt)/θnative.λ[1]
+	else
+		η = Δt/2 # use l'Hospital's rule on `lim_{λ→0}  exp(λΔt)/λ - (exp(λΔt) - 1)/(λ²Δt)`
+	end
+	𝛏ᵀΔtexpλΔt = transpose(𝛏).*Δt.*expλΔt
 	@inbounds for t = trial.ntimesteps:-1:1
 		if t < trial.ntimesteps # backward step
 			Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
