@@ -46,12 +46,15 @@ function native2real!(θreal::Latentθ,
 	θreal.Aᶜ₂₂[1] = logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)
 	θreal.B[1] = logit(θnative.B[1]/2/options.q_B)
 	θreal.k[1] = log(θnative.k[1]/options.q_k)
+	θreal.λ[1] = θnative.λ[1]
+	θreal.μ₀[1] = θnative.μ₀[1]
 	θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
 	θreal.πᶜ₁[1] = logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)
 	θreal.ψ[1] = logit((θnative.ψ[1]-options.bound_ψ)/(1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
 	θreal.σ²ₐ[1] = log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)
 	θreal.σ²ᵢ[1] = log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)
 	θreal.σ²ₛ[1] = log((θnative.σ²ₛ[1]-options.bound_σ²)/options.q_σ²ₛ)
+	θreal.wₕ[1] = θnative.wₕ[1]
 	return nothing
 end
 

@@ -19,6 +19,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         CVResults,
         choicelikelihood,
         choiceposteriors,
+        comparegradients,
         concatenatebounds,
         concatenateparameters,
         concatenate_choice_related_parameters,
@@ -102,5 +103,6 @@ include("parametersorting.jl")
 include("temporal_basis_functions.jl")
 include("sampling.jl")
 include("save.jl")
+include("tests.jl")
 
 end # module

@@ -465,7 +465,7 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 	b = ones(T, Ξ,K)
 	Aᶜreshaped = reshape(Aᶜ, 1, 1, K, K)
 	if θnative.λ[1] == 0.0
-		dμdΔc = 1.0
+		dμdΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
 		η = 0.0
 		𝛏ᵀΔtexpλΔt = zeros(T, 1, length(𝛏))
 	else
