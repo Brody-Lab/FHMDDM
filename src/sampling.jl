@@ -262,3 +262,79 @@ function sample(model::Model;
     trialsets = map(trialset->sample(options.spikehistorylags, model.θnative, trialinvariant, trialset), model.trialsets)
 	Model(options, trialsets)
 end
+
+
+"""
+	sampleclicks(a_latency_s, clickrate_Hz, Δt, ntimesteps, right2left)
+
+Create a structure containing information on a sequence of simulated clicks
+
+INPUT
+-`a_latency_s`: latency, in second, of the response of the accumulator to the clicks
+-`clickrate_Hz`: number of left and right clicks, combined, per second
+-`Δt`: size of the time step
+-`ntimesteps`: number of time steps in the trial
+-`right2left`: ratio of the right to left click rate
+
+RETURN
+-a structure containing the times and time step indices of simulated clicks
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30)
+Clicks{Vector{Float64}, BitVector, Vector{Int64}, Vector{Vector{Int64}}}
+  time: Array{Float64}((35,)) [0.03535593874845616, 0.11620327763153825, 0.20070443480234917, 0.20267578816244386, 0.24651121564481937, 0.25271348149289374, 0.28212598515585835, 0.2923893454249192, 0.38639914440058487, 0.39104694133712664  …  0.7358489636299059, 0.7496389490980643, 0.7775989000479905, 0.7882768608067173, 0.7901513878713159, 0.7957808498880533, 0.813886931295781, 0.8293245350122752, 0.8709161080727402, 0.9751747027643045]
+  inputtimesteps: Array{Int64}((29,)) [5, 13, 22, 26, 27, 30, 31, 40, 41, 45  …  72, 75, 76, 79, 80, 81, 83, 84, 89, 99]
+  inputindex: Array{Vector{Int64}}((100,))
+  source: BitVector
+  left: Array{Vector{Int64}}((100,))
+  right: Array{Vector{Int64}}((100,))
+```
+"""
+function sampleclicks(a_latency_s::Number, clickrate_Hz::Number, Δt::Number, ntimesteps::Integer, right2left::Number)
+	leftrate = 1/(1+right2left)
+	rightrate = clickrate_Hz - leftrate
+	duration_s = ntimesteps*Δt
+	leftclicktimes = samplePoissonprocess(leftrate, duration_s)
+	rightclicktimes = samplePoissonprocess(rightrate, duration_s)
+	Clicks(a_latency_s, Δt, leftclicktimes, ntimesteps, rightclicktimes)
+end
+
+"""
+	samplePoissonprocess(λ, T)
+
+Return the event times from sampling a Poisson process with rate `λ` for duration `T`
+
+INPUT
+-`λ`: expected number of events per unit time
+-`T`: duration in time to simulate the process
+
+RETURN
+-a vector of event times
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> FHMDDM.samplePoissonprocess(10, 1.0)
+9-element Vector{Float64}:
+ 0.07905414067672215
+ 0.34836141788431263
+ 0.4290121941428464
+ 0.4760418862082705
+ 0.48733013889669546
+ 0.4900673382176315
+ 0.6172597288986647
+ 0.988594823030946
+ 0.990668151277051
+```
+"""
+function samplePoissonprocess(λ::Number, T::Number)
+	@assert λ > 0
+	@assert T > 0
+	times = zeros(1)
+	while times[end] < T
+		times = vcat(times, times[end]+randexp()/λ)
+	end
+	return times[2:end-1]
+end
