@@ -276,28 +276,36 @@ INPUT
 -`ntimesteps`: number of time steps in the trial
 -`right2left`: ratio of the right to left click rate
 
+OPTIONAL INPUT
+-`rng`: random number generator
+
 RETURN
 -a structure containing the times and time step indices of simulated clicks
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM
-julia> FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30)
-Clicks{Vector{Float64}, BitVector, Vector{Int64}, Vector{Vector{Int64}}}
-  time: Array{Float64}((35,)) [0.03535593874845616, 0.11620327763153825, 0.20070443480234917, 0.20267578816244386, 0.24651121564481937, 0.25271348149289374, 0.28212598515585835, 0.2923893454249192, 0.38639914440058487, 0.39104694133712664  …  0.7358489636299059, 0.7496389490980643, 0.7775989000479905, 0.7882768608067173, 0.7901513878713159, 0.7957808498880533, 0.813886931295781, 0.8293245350122752, 0.8709161080727402, 0.9751747027643045]
-  inputtimesteps: Array{Int64}((29,)) [5, 13, 22, 26, 27, 30, 31, 40, 41, 45  …  72, 75, 76, 79, 80, 81, 83, 84, 89, 99]
-  inputindex: Array{Vector{Int64}}((100,))
-  source: BitVector
-  left: Array{Vector{Int64}}((100,))
-  right: Array{Vector{Int64}}((100,))
+julia> using FHMDDM, Random
+julia> FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30; rng=MersenneTwister(1234))
+	Clicks{Vector{Float64}, BitVector, Vector{Int64}, Vector{Vector{Int64}}}
+	  time: Array{Float64}((46,)) [0.0479481935162798, 0.06307130174886962, 0.0804820073564533, 0.11317136052678396, 0.18273464895638575, 0.2000809403010865, 0.2086987723064543, 0.21917011781456938, 0.23527419909502842, 0.25225718711259393  …  0.8251247971779945, 0.8461572549605891, 0.847170493491451, 0.8519321105940183, 0.8555972472927873, 0.8670437145405672, 0.93879550239758, 0.9419273975453288, 0.9484616835697396, 0.9755875605263443]
+	  inputtimesteps: Array{Int64}((35,)) [6, 8, 10, 13, 20, 22, 23, 25, 27, 30  …  77, 79, 83, 84, 86, 87, 88, 95, 96, 99]
+	  inputindex: Array{Vector{Int64}}((100,))
+	  source: BitVector
+	  left: Array{Vector{Int64}}((100,))
+	  right: Array{Vector{Int64}}((100,))
 ```
 """
-function sampleclicks(a_latency_s::Number, clickrate_Hz::Number, Δt::Number, ntimesteps::Integer, right2left::Number)
+function sampleclicks(a_latency_s::Real,
+					  clickrate_Hz::Real,
+					  Δt::Real,
+					  ntimesteps::Integer,
+					  right2left::Real;
+					  rng::AbstractRNG=MersenneTwister())
 	leftrate = 1/(1+right2left)
 	rightrate = clickrate_Hz - leftrate
 	duration_s = ntimesteps*Δt
-	leftclicktimes = samplePoissonprocess(leftrate, duration_s)
-	rightclicktimes = samplePoissonprocess(rightrate, duration_s)
+	leftclicktimes = samplePoissonprocess(leftrate, duration_s; rng=rng)
+	rightclicktimes = samplePoissonprocess(rightrate, duration_s; rng=rng)
 	Clicks(a_latency_s, Δt, leftclicktimes, ntimesteps, rightclicktimes)
 end
 
@@ -310,31 +318,33 @@ INPUT
 -`λ`: expected number of events per unit time
 -`T`: duration in time to simulate the process
 
+OPTIONAL INPUT
+-`rng`: random number generator
+
 RETURN
 -a vector of event times
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM
-julia> FHMDDM.samplePoissonprocess(10, 1.0)
-9-element Vector{Float64}:
- 0.07905414067672215
- 0.34836141788431263
- 0.4290121941428464
- 0.4760418862082705
- 0.48733013889669546
- 0.4900673382176315
- 0.6172597288986647
- 0.988594823030946
- 0.990668151277051
+julia> using FHMDDM, Random
+julia> FHMDDM.samplePoissonprocess(10, 1.0; rng=MersenneTwister(1234))
+	6-element Vector{Float64}:
+	 0.24835053723904896
+	 0.40002089777669625
+	 0.4604645464869504
+	 0.5300512053508091
+	 0.6607031685057758
+	 0.9387319245195712
 ```
 """
-function samplePoissonprocess(λ::Number, T::Number)
+function samplePoissonprocess(λ::Real,
+							  T::Real;
+							  rng::AbstractRNG=MersenneTwister())
 	@assert λ > 0
 	@assert T > 0
 	times = zeros(1)
 	while times[end] < T
-		times = vcat(times, times[end]+randexp()/λ)
+		times = vcat(times, times[end]+randexp(rng)/λ)
 	end
 	return times[2:end-1]
 end
