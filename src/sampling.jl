@@ -301,7 +301,7 @@ function sampleclicks(a_latency_s::Real,
 					  ntimesteps::Integer,
 					  right2left::Real;
 					  rng::AbstractRNG=MersenneTwister())
-	leftrate = 1/(1+right2left)
+	leftrate = clickrate_Hz/(1+right2left)
 	rightrate = clickrate_Hz - leftrate
 	duration_s = ntimesteps*Δt
 	leftclicktimes = samplePoissonprocess(leftrate, duration_s; rng=rng)
