@@ -195,16 +195,54 @@ ARGUMENT
 -`Δc`: right input minus left input
 -`Δt`: size of the time step
 -`λ`: leak or instability
--`𝛏`: values of the accumulator variable in the previous time step
+-`𝛏`: conditional values of the accumulator variable in the previous time step
+
+RETURN
+-a vector whose j-th element represents the mean of the accumulator conditioned on the accumulator in the previous time step equal to 𝛏[j]
 """
-function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::T, 𝛏::Vector{<:Real}) where {T<:Real}
-    if λ==zero(T)
-		𝛏 .+ Δc
+function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Reals, 𝛏::Vector{<:Real})
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δc, Δt, λ)
+	exp(λ*Δt).*𝛏 .+ Δc*dμ_dΔc
+end
+
+"""
+    conditionedmean(Δc, Δt, λ, ξ)
+
+Mean of the Gaussian PDF of the accumulator variable conditioned on its value in the previous time step
+
+ARGUMENT
+-`Δc`: right input minus left input
+-`Δt`: size of the time step
+-`λ`: leak or instability
+-`ξ`: conditional value of the accumulator variable in the previous time step
+
+RETURN
+-the mean of the accumulator conditioned on the accumulator in the previous time step equal to 𝛏[j]
+"""
+function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, ξ::Real)
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δc, Δt, λ)
+	exp(λ*Δt)*ξ + Δc*dμ_dΔc
+end
+
+"""
+	differentiate_μ_wrt_Δc(Δc, Δt, λ)
+
+Partial derivative of the mean of the accumulator with respect to the click difference
+
+ARGUMENT
+-`Δc`: total right minus left input
+-`Δt`: size of the time step
+-`λ`: feedback of the accumulator onto itself
+
+RETURN
+-the partial derivative
+"""
+function differentiate_μ_wrt_Δc(Δc::Real, Δt::AbstractFloat, λ::Real)
+	λΔt = λ*Δt
+	if abs(λΔt) > 1e-10
+		dμ_dΔc = (exp(λΔt) - 1.0)/λΔt
 	else
-		λΔt = λ*Δt
-		expλΔt = exp(λΔt)
-		c̃ = Δc*(expλΔt- 1.0)/λΔt
-	    expλΔt.*𝛏 .+ c̃
+		dμ_dΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
 	end
 end
 
