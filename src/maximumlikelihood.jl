@@ -464,19 +464,9 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 	fb = f # reuse memory
 	b = ones(T, Ξ,K)
 	Aᶜreshaped = reshape(Aᶜ, 1, 1, K, K)
-	λΔt = θnative.λ[1]*Δt
-	expλΔt = exp(λΔt)
-	if abs(λΔt) > 1e-10
-		dμdΔc = (expλΔt - 1.0)/λΔt
-	else
-		dμdΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
-	end
-	if abs(θnative.λ[1]) > 1e-3
-		η = (expλΔt - (expλΔt - 1.0)/λΔt)/θnative.λ[1]
-	else
-		η = Δt/2 # use l'Hospital's rule on `lim_{λ→0}  exp(λΔt)/λ - (exp(λΔt) - 1)/(λ²Δt)`
-	end
-	𝛏ᵀΔtexpλΔt = transpose(𝛏).*Δt.*expλΔt
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
+	d²μ_dΔcdλ = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
+	𝛏ᵀΔtexpλΔt = transpose(𝛏).*Δt.*exp(θnative.λ[1]*Δt)
 	@inbounds for t = trial.ntimesteps:-1:1
 		if t < trial.ntimesteps # backward step
 			Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
@@ -510,7 +500,7 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 			if isempty(inputindex[t])
 				dμdλ = 𝛏ᵀΔtexpλΔt
 			else
-				dμdλ = 𝛏ᵀΔtexpλΔt .+ Δc[i].*η
+				dμdλ = 𝛏ᵀΔtexpλΔt .+ Δc[i].*d²μ_dΔcdλ
 				dℓdσ²ₛ += ∑_χᵃ_dlogAᵃdσ²*∑c[i]
 				dcLdϕ = sum(dCdϕ[clicks.left[t]])
 				dcRdϕ = sum(dCdϕ[clicks.right[t]])
@@ -518,8 +508,8 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 				dcRdk = sum(dCdk[clicks.right[t]])
 				dσ²dϕ = θnative.σ²ₛ[1]*(dcLdϕ + dcRdϕ)
 				dσ²dk = θnative.σ²ₛ[1]*(dcLdk + dcRdk)
-				dℓdϕ += ∑_χᵃ_dlogAᵃdμ*dμdΔc*(dcRdϕ - dcLdϕ) + ∑_χᵃ_dlogAᵃdσ²*dσ²dϕ
-				dℓdk += ∑_χᵃ_dlogAᵃdμ*dμdΔc*(dcRdk - dcLdk) + ∑_χᵃ_dlogAᵃdσ²*dσ²dk
+				dℓdϕ += ∑_χᵃ_dlogAᵃdμ*dμ_dΔc*(dcRdϕ - dcLdϕ) + ∑_χᵃ_dlogAᵃdσ²*dσ²dϕ
+				dℓdk += ∑_χᵃ_dlogAᵃdμ*dμ_dΔc*(dcRdk - dcLdk) + ∑_χᵃ_dlogAᵃdσ²*dσ²dk
 			end
 			dℓdλ += sum(χᵃ_dlogAᵃdμ.*dμdλ)
 		end

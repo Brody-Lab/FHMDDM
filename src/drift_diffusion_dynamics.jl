@@ -200,8 +200,8 @@ ARGUMENT
 RETURN
 -a vector whose j-th element represents the mean of the accumulator conditioned on the accumulator in the previous time step equal to 𝛏[j]
 """
-function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Reals, 𝛏::Vector{<:Real})
-	dμ_dΔc = differentiate_μ_wrt_Δc(Δc, Δt, λ)
+function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, 𝛏::Vector{<:Real})
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, λ)
 	exp(λ*Δt).*𝛏 .+ Δc*dμ_dΔc
 end
 
@@ -220,14 +220,14 @@ RETURN
 -the mean of the accumulator conditioned on the accumulator in the previous time step equal to 𝛏[j]
 """
 function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, ξ::Real)
-	dμ_dΔc = differentiate_μ_wrt_Δc(Δc, Δt, λ)
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, λ)
 	exp(λ*Δt)*ξ + Δc*dμ_dΔc
 end
 
 """
 	differentiate_μ_wrt_Δc(Δc, Δt, λ)
 
-Partial derivative of the mean of the accumulator with respect to the click difference
+Partial derivative of the mean of the accumulator with respect to the auditory input
 
 ARGUMENT
 -`Δc`: total right minus left input
@@ -237,12 +237,33 @@ ARGUMENT
 RETURN
 -the partial derivative
 """
-function differentiate_μ_wrt_Δc(Δc::Real, Δt::AbstractFloat, λ::Real)
+function differentiate_μ_wrt_Δc(Δt::AbstractFloat, λ::Real)
 	λΔt = λ*Δt
 	if abs(λΔt) > 1e-10
 		dμ_dΔc = (exp(λΔt) - 1.0)/λΔt
 	else
 		dμ_dΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
+	end
+end
+
+"""
+	differentiate_μ_wrt_Δcλ(Δc, Δt, λ)
+
+Second-order partial derivative of the mean of the accumulator with respect to the auditory input and λ
+
+ARGUMENT
+-`Δc`: total right minus left input
+-`Δt`: size of the time step
+-`λ`: feedback of the accumulator onto itself
+
+RETURN
+-the partial derivative
+"""
+function differentiate_μ_wrt_Δcλ(Δt::AbstractFloat, λ::Real)
+	if abs(λ) > 1e-3
+		d²μ_dΔcdλ = (expλΔt - (expλΔt - 1.0)/λΔt)/λ
+	else
+		d²μ_dΔcdλ = Δt/2 # use l'Hospital's rule on `lim_{λ→0}  exp(λΔt)/λ - (exp(λΔt) - 1)/(λ²Δt)`
 	end
 end
 
