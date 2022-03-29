@@ -46,18 +46,70 @@ function ∇adapt(clicks::Clicks, k::T1, ϕ::T2) where {T1<:Real, T2<:Real}
 	nclicks = length(clicks.time)
 	@assert nclicks > 0
     C, dCdk, dCdϕ = zeros(T, nclicks), zeros(T, nclicks), zeros(T, nclicks)
-    e⁻ᵏᵈᵗ = exp(-k*clicks.time[1])
+	Δt = clicks.time[1]
+    e⁻ᵏᵈᵗ = exp(-k*Δt)
     C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
     dCdϕ[1] = e⁻ᵏᵈᵗ
-    dCdk[1] = (1.0-C[1])*clicks.time[1]
+    dCdk[1] = e⁻ᵏᵈᵗ*(1.0-ϕ)*Δt
     for i = 2:nclicks
         Δt = clicks.time[i] - clicks.time[i-1]
         e⁻ᵏᵈᵗ = exp(-k*Δt)
         C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
         dCdϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dCdϕ[i-1])
-        dCdk[i] = ϕ*e⁻ᵏᵈᵗ*dCdk[i-1] + (1.0-C[i])*Δt
+        dCdk[i] = e⁻ᵏᵈᵗ*(ϕ*dCdk[i-1] + Δt*(1.0-ϕ*C[i-1]))
     end
     return C, dCdk, dCdϕ
+end
+
+"""
+    ∇∇adapt(clicks, k, ϕ)
+
+Compute the adapted impact of each click in a trial as well as the first- and second-order partial derivatives
+
+ARGUMENT
+-`clicks`: structure containing information about the auditory clicks in one trial. Stereoclick excluded.
+-`k`: exponential change of the adaptation dynamics
+-`ϕ`: strength and sign of the adaptation (facilitation: ϕ > 0; depression: ϕ < 0)
+
+RETURN
+-`C`: adapted strengths of the clicks
+-`dCdk`: first-order partial derivative of `C` with respect to `k`
+-`dCdϕ`: first-order partial derivative of `C` with respect to `ϕ`
+-`dCdkdk`: second-order partial derivative of `C` with respect to `k`
+-`dCdkdϕ`: second-order partial derivative of `C` with respect to `k` and `ϕ`
+-`dCdϕdϕ`: second-order partial derivative of `C` with respect to `ϕ` and `ϕ`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> clicks = FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30; rng=MersenneTwister(1234))
+julia> C, dCdk, dCdϕ, dCdkdk, dCdkdϕ, dCdϕdϕ = FHMDDM.∇∇adapt(clicks, 0.5, 0.8);
+julia> dCdkdk[1]
+	-0.0004489135110232355
+```
+"""
+function ∇∇adapt(clicks::Clicks, k::Real, ϕ::Real)
+	nclicks = length(clicks.time)
+	@assert nclicks > 0
+    C, dCdk, dCdϕ, dCdkdk, dCdkdϕ, dCdϕdϕ = zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks)
+	Δt = clicks.time[1]
+    e⁻ᵏᵈᵗ = exp(-k*Δt)
+    C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
+    dCdϕ[1] = e⁻ᵏᵈᵗ
+    dCdk[1] = e⁻ᵏᵈᵗ*(1.0-ϕ)*Δt
+    dCdkdk[1] = -Δt*dCdk[1]
+	dCdkdϕ[1] = -Δt*dCdϕ[1]
+    for i = 2:nclicks
+        Δt = clicks.time[i] - clicks.time[i-1]
+        e⁻ᵏᵈᵗ = exp(-k*Δt)
+        C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
+        dCdϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dCdϕ[i-1])
+        dCdk[i] = e⁻ᵏᵈᵗ*(ϕ*dCdk[i-1] + Δt*(1.0-ϕ*C[i-1]))
+		dCdkdk[i] = -Δt*dCdk[i] + ϕ*e⁻ᵏᵈᵗ*(dCdkdk[i-1] - Δt*dCdk[i-1])
+		dCdkdϕ[i] = -Δt*dCdϕ[i] + e⁻ᵏᵈᵗ*(dCdk[i-1] + ϕ*dCdkdϕ[i-1])
+		dCdϕdϕ[i] = e⁻ᵏᵈᵗ*(2*dCdϕ[i-1] + ϕ*dCdϕdϕ[i-1])
+    end
+    return C, dCdk, dCdϕ, dCdkdk, dCdkdϕ, dCdϕdϕ
 end
 
 """
@@ -280,7 +332,7 @@ julia> μ=1.0; σ=2.0; Ξ=7; B=10.0; 𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 """
 function probabilityvector(μ::T,
 						   σ::T,
-						   𝛏) where {T<:Real}
+						   𝛏::Vector{T}) where {T<:Real}
     Ξ = length(𝛏)
     Ξ_1 = Ξ-1
     σ_Δξ = σ/(𝛏[2]-𝛏[1])
@@ -371,6 +423,81 @@ function probabilityvector!(π::Vector{T},
 	∂σ²[Ξ] = -Δf[Ξ_1]/σ2Δξ
 	∂B[Ξ] = (C[Ξ] - π[Ξ] - 𝛚[Ξ_1]*ΔΦ[Ξ_1])/B
     return C, Δf, ΔΦ, f, Φ, 𝐳
+end
+
+"""
+	probabilityvector!(𝛑, d𝛑_dB, d𝛑_dμ, d𝛑_dσ², d²𝛑_dBdB, d²𝛑_dBdμ, d²𝛑_dBdσ², d²𝛑_dμdμ, d²𝛑_dμdσ², d²𝛑_dσ²dσ², μ, σ, 𝛏)
+
+Compute a probability vector of the accumulator and its first- and second-order partial derivatives
+
+MODFIED ARGUMENT
+-`𝛑`: probability vector
+-`d𝛑_dB`: first-order partial derivative with respect to the bound height
+-`d𝛑_dμ`: first-order partial derivative with respect to the Gaussian mean
+-`d𝛑_dσ²``: first-order partial derivative with respect to the Gaussian variance
+-`d𝛑_dBdB`: second-order partial derivative with respect to the bound height
+-`d𝛑_dBdμ`: second-order partial derivative with respect to the bound height and mean
+-`d𝛑_dBdσ²`: second-order partial derivative with respect to the bound height and variance
+-`d𝛑_dμdμ`: second-order partial derivative with respect to the mean
+-`d𝛑_dμdσ²`: second-order partial derivative with respect to the mean and variance
+-`d𝛑_dσ²dσ²`: second-order partial derivative with respect to the variance
+
+UNMODIFIED ARGUMENT
+-`μ`: mean
+-`σ`: standard deviation
+-`𝛏`: discrete values of the accumulator
+"""
+function probabilityvector!(𝛑::Vector{<:AbstractFloat},
+							d𝛑_dB::Vector{<:AbstractFloat},
+							d𝛑_dμ::Vector{<:AbstractFloat},
+							d𝛑_dσ²::Vector{<:AbstractFloat},
+							d²𝛑_dBdB::Vector{<:AbstractFloat},
+							d²𝛑_dBdμ::Vector{<:AbstractFloat},
+							d²𝛑_dBdσ²::Vector{<:AbstractFloat},
+							d²𝛑_dμdμ::Vector{<:AbstractFloat},
+							d²𝛑_dμdσ²::Vector{<:AbstractFloat},
+							d²𝛑_dσ²dσ²::Vector{<:AbstractFloat},
+							μ::AbstractFloat,
+							σ::AbstractFloat,
+							𝛏::Vector{<:AbstractFloat})
+    Ξ = length(𝛏)
+    Ξ_1 = Ξ-1
+	B = 𝛏[end]*(Ξ-2)/Ξ_1
+    Δξ=𝛏[2]-𝛏[1]
+    𝛚 = 𝛏./Δξ
+	C, Δf, ΔΦ, 𝐟, Φ, 𝐳 = probabilityvector!(𝛑, d𝛑_dμ, d𝛑_dσ², d𝛑_dB, μ, 𝛚, σ, 𝛏)
+	Δζ = diff(𝐟.*(𝐳.^2 .- 1.0)./4.0./σ.^3.0./Δξ)
+	Δfωξ = diff(𝐟.*𝛚.*𝛏)
+	Δfωz = diff(𝐟.*𝛚.*𝐳)
+	Δfξ = diff(𝐟.*𝛏)
+	Δfz = diff(𝐟.*𝐳)
+	B²σ = B^2*σ
+	BΔξσ = B*Δξ*σ
+	Bσ²2 = B*σ^2*2
+	Δξσ²2 = Δξ*σ^2*2
+	for i=1:Ξ
+		if i == 1
+			d²𝛑_dBdB[i] 	= Δfωξ[1]/B²σ - 2∂B[1]/B
+			d²𝛑_dBdμ[i] 	= -Δfξ[1]/BΔξσ - ∂μ[1]/B
+			d²𝛑_dBdσ²[i] 	= -Δfωz[1]/Bσ²2 - ∂σ²[1]/B
+			d²𝛑_dμdσ²[i] 	= Δfz[1]/Δξσ²2
+			d²𝛑_dσ²dσ²[i]	= Δζ[1]
+		elseif i < Ξ
+			d²𝛑_dBdB[i] 	= (Δfωξ[i] - Δfωξ[i-1])/B²σ - 2∂B[i]/B
+			d²𝛑_dBdμ[i] 	= (Δfξ[i-1]-Δfξ[i])/BΔξσ - ∂μ[i]/B
+			d²𝛑_dBdσ²[i] 	= (Δfωz[i-1]-Δfωz[i])/Bσ²2 - ∂σ²[i]/B
+			d²𝛑_dμdσ²[i] 	= (Δfz[i]-Δfz[i-1])/Δξσ²2
+			d²𝛑_dσ²dσ²[i] 	= Δζ[i] - Δζ[i-1]
+		else
+			d²𝛑_dBdB[i]	= -Δfωξ[Ξ_1]/B²σ - 2∂B[Ξ]/B
+			d²𝛑_dBdμ[i]	= Δfξ[Ξ_1]/BΔξσ - ∂μ[Ξ]/B
+			d²𝛑_dBdσ²[i] 	= Δfωz[Ξ_1]/Bσ²2 - ∂σ²[Ξ]/B
+			d²𝛑_dμdσ²[i] 	= -Δfz[Ξ_1]/Δξσ²2
+			d²𝛑_dσ²dσ²[i] 	= -Δζ[Ξ_1]
+		end
+		d²𝛑_dμdμ[i] = 2d𝛑_dσ²[i]
+	end
+	return nothing
 end
 
 """
