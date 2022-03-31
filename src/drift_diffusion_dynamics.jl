@@ -225,12 +225,11 @@ function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, ξ::Real)
 end
 
 """
-	differentiate_μ_wrt_Δc(Δc, Δt, λ)
+	differentiate_μ_wrt_Δc(Δt, λ)
 
 Partial derivative of the mean of the accumulator with respect to the auditory input
 
 ARGUMENT
--`Δc`: total right minus left input
 -`Δt`: size of the time step
 -`λ`: feedback of the accumulator onto itself
 
@@ -242,17 +241,16 @@ function differentiate_μ_wrt_Δc(Δt::AbstractFloat, λ::Real)
 	if abs(λΔt) > 1e-10
 		dμ_dΔc = (exp(λΔt) - 1.0)/λΔt
 	else
-		dμ_dΔc = 1.0 # use l'Hospital's rule on `lim_{λ→0} dμdΔc = lim_{λ→0} (expλΔt - 1.0)/λΔt`
+		dμ_dΔc = 1.0
 	end
 end
 
 """
-	differentiate_μ_wrt_Δcλ(Δc, Δt, λ)
+	differentiate_μ_wrt_Δcλ(Δt, λ)
 
-Second-order partial derivative of the mean of the accumulator with respect to the auditory input and λ
+Third-order partial derivative of the mean of the accumulator with respect to the auditory input and λ
 
 ARGUMENT
--`Δc`: total right minus left input
 -`Δt`: size of the time step
 -`λ`: feedback of the accumulator onto itself
 
@@ -260,10 +258,32 @@ RETURN
 -the partial derivative
 """
 function differentiate_μ_wrt_Δcλ(Δt::AbstractFloat, λ::Real)
+	λΔt = λ*Δt
 	if abs(λ) > 1e-3
-		d²μ_dΔcdλ = (expλΔt - (expλΔt - 1.0)/λΔt)/λ
+		(exp(λΔt)*(λΔt-1.0)+1.0)/λΔt/λ
 	else
-		d²μ_dΔcdλ = Δt/2 # use l'Hospital's rule on `lim_{λ→0}  exp(λΔt)/λ - (exp(λΔt) - 1)/(λ²Δt)`
+		Δt/2
+	end
+end
+
+"""
+	differentiate_μ_wrt_Δcλλ(Δt, λ)
+
+Third-order partial derivative of the mean of the accumulator with respect to the auditory input (once) and λ (twice)
+
+ARGUMENT
+-`Δt`: size of the time step
+-`λ`: feedback of the accumulator onto itself
+
+RETURN
+-the partial derivative
+"""
+function differentiate_μ_wrt_Δcλλ(Δt::AbstractFloat, λ::Real)
+	λΔt = λ*Δt
+	if abs(λ) > 1e-2
+		(exp(λΔt)*(λΔt^2 - 2λΔt + 2)-2)/λΔt/λ^2
+	else
+		Δt^2/3
 	end
 end
 
@@ -482,256 +502,6 @@ function probabilityvector!(π::Vector{T},
 	∂σ²[Ξ] = -Δf[Ξ_1]/σ2Δξ
 	∂B[Ξ] = (C[Ξ] - π[Ξ] - 𝛚[Ξ_1]*ΔΦ[Ξ_1])/B
     return C, Δf, ΔΦ, f, Φ, 𝐳
-end
-
-"""
-	probabilityvector!(𝛑, d𝛑_dB, d𝛑_dμ, d𝛑_dσ², d²𝛑_dBdB, d²𝛑_dBdμ, d²𝛑_dBdσ², d²𝛑_dμdμ, d²𝛑_dμdσ², d²𝛑_dσ²dσ², μ, σ, 𝛏)
-
-Compute a probability vector of the accumulator and its first- and second-order partial derivatives
-
-MODFIED ARGUMENT
--`𝛑`: probability vector
--`d𝛑_dB`: first-order partial derivative with respect to the bound height
--`d𝛑_dμ`: first-order partial derivative with respect to the Gaussian mean
--`d𝛑_dσ²``: first-order partial derivative with respect to the Gaussian variance
--`d𝛑_dBdB`: second-order partial derivative with respect to the bound height
--`d𝛑_dBdμ`: second-order partial derivative with respect to the bound height and mean
--`d𝛑_dBdσ²`: second-order partial derivative with respect to the bound height and variance
--`d𝛑_dμdμ`: second-order partial derivative with respect to the mean
--`d𝛑_dμdσ²`: second-order partial derivative with respect to the mean and variance
--`d𝛑_dσ²dσ²`: second-order partial derivative with respect to the variance
-
-UNMODIFIED ARGUMENT
--`μ`: mean
--`σ`: standard deviation
--`𝛏`: discrete values of the accumulator
-"""
-function probabilityvector!(𝛑::Vector{<:AbstractFloat},
-							d𝛑_dB::Vector{<:AbstractFloat},
-							d𝛑_dμ::Vector{<:AbstractFloat},
-							d𝛑_dσ²::Vector{<:AbstractFloat},
-							d²𝛑_dBdB::Vector{<:AbstractFloat},
-							d²𝛑_dBdμ::Vector{<:AbstractFloat},
-							d²𝛑_dBdσ²::Vector{<:AbstractFloat},
-							d²𝛑_dμdμ::Vector{<:AbstractFloat},
-							d²𝛑_dμdσ²::Vector{<:AbstractFloat},
-							d²𝛑_dσ²dσ²::Vector{<:AbstractFloat},
-							μ::AbstractFloat,
-							σ::AbstractFloat,
-							𝛏::Vector{<:AbstractFloat})
-    Ξ = length(𝛏)
-    Ξ_1 = Ξ-1
-	B = 𝛏[end]*(Ξ-2)/Ξ_1
-    Δξ=𝛏[2]-𝛏[1]
-    𝛚 = 𝛏./Δξ
-	C, Δf, ΔΦ, 𝐟, Φ, 𝐳 = probabilityvector!(𝛑, d𝛑_dμ, d𝛑_dσ², d𝛑_dB, μ, 𝛚, σ, 𝛏)
-	Δζ = diff(𝐟.*(𝐳.^2 .- 1.0)./4.0./σ.^3.0./Δξ)
-	Δfωξ = diff(𝐟.*𝛚.*𝛏)
-	Δfωz = diff(𝐟.*𝛚.*𝐳)
-	Δfξ = diff(𝐟.*𝛏)
-	Δfz = diff(𝐟.*𝐳)
-	B²σ = B^2*σ
-	BΔξσ = B*Δξ*σ
-	Bσ²2 = B*σ^2*2
-	Δξσ²2 = Δξ*σ^2*2
-	for i=1:Ξ
-		if i == 1
-			d²𝛑_dBdB[i] 	= Δfωξ[1]/B²σ - 2∂B[1]/B
-			d²𝛑_dBdμ[i] 	= -Δfξ[1]/BΔξσ - ∂μ[1]/B
-			d²𝛑_dBdσ²[i] 	= -Δfωz[1]/Bσ²2 - ∂σ²[1]/B
-			d²𝛑_dμdσ²[i] 	= Δfz[1]/Δξσ²2
-			d²𝛑_dσ²dσ²[i]	= Δζ[1]
-		elseif i < Ξ
-			d²𝛑_dBdB[i] 	= (Δfωξ[i] - Δfωξ[i-1])/B²σ - 2∂B[i]/B
-			d²𝛑_dBdμ[i] 	= (Δfξ[i-1]-Δfξ[i])/BΔξσ - ∂μ[i]/B
-			d²𝛑_dBdσ²[i] 	= (Δfωz[i-1]-Δfωz[i])/Bσ²2 - ∂σ²[i]/B
-			d²𝛑_dμdσ²[i] 	= (Δfz[i]-Δfz[i-1])/Δξσ²2
-			d²𝛑_dσ²dσ²[i] 	= Δζ[i] - Δζ[i-1]
-		else
-			d²𝛑_dBdB[i]	= -Δfωξ[Ξ_1]/B²σ - 2∂B[Ξ]/B
-			d²𝛑_dBdμ[i]	= Δfξ[Ξ_1]/BΔξσ - ∂μ[Ξ]/B
-			d²𝛑_dBdσ²[i] 	= Δfωz[Ξ_1]/Bσ²2 - ∂σ²[Ξ]/B
-			d²𝛑_dμdσ²[i] 	= -Δfz[Ξ_1]/Δξσ²2
-			d²𝛑_dσ²dσ²[i] 	= -Δζ[Ξ_1]
-		end
-		d²𝛑_dμdμ[i] = 2d𝛑_dσ²[i]
-	end
-	return nothing
-end
-
-"""
-	expectatedHessian!
-
-Expectation of second-derivatives of the log of the initial probability of the accumulator variable.
-
-Computes the following for a single trial:
-
-	`∑_𝐚₁ p(𝐚₁ ∣ 𝐘, d, θ) ⋅ ∇∇log(𝐚₁ ∣ B, μ₀, σᵢ², wₕ)`
-
-ARGUMENT:
--`γᵃ₁`: a vector of floating-point numbers whose i-th element is the posterior probability of the initial value of accumulator in the i-th state: `γᵃ₁[i] ≡ p(a₁ᵢ=1 ∣ 𝐘, d, θ)`
--`μ₀`: a floating-point number representing the an offset to the mean of the initial distribution of the accumulator; this offset is fixed across all trials
--`previousanswer`: an integer representing whether the previous answer is on the left (-1), on the right (1), or unknown (0)
--`σ`: a floating-point number representing the standard deviation of the initial value of the accumulator
--`wₕ`: a floating-point number representing the weight of the previous answer on the mean of the initial distribution of the accumulator
--`𝛏`: a vector of floating-point numbers representing the values into which the accumulator is discretized
-
-RETURN:
--`EH`: a four-by-four matrix whose columns and rows correspond to the second-order partial derivatives with respect to B, μ₀, σᵢ², and wₕ, in this order.
-
-EXAMPLE
-```julia-repo
-> Ξ = 53
-> γᵃ₁ = rand(Ξ)
-> γᵃ₁ ./= sum(γᵃ₁)
-> 𝛏 = (2.*collect(1:Ξ) .- Ξ .- 1)./(Ξ - 2)
-> μ₀ = 0.5
-> wₕ = 0.1
-> σ = 0.8
-> previousanswer = -1
-> EH = expectatedHessian(γᵃ₁, μ₀, previousanswer, σ, wₕ, 𝛏)
-```
-"""
-function expectatedHessian(γᵃ₁::Vector{<:AbstractFloat},
-							μ₀::AbstractFloat,
-							previousanswer::Integer,
-							σ::AbstractFloat,
-							wₕ::AbstractFloat,
-							𝛏::Vector{<:AbstractFloat})
-    Ξ = length(𝛏)
-    Ξ_1 = Ξ-1
-	B = 𝛏[end]*(Ξ-2)/Ξ_1
-    Δξ=𝛏[2]-𝛏[1]
-    𝛚 = 𝛏./Δξ
-	μ = μ₀ + wₕ*previousanswer
-	𝛑, ∂μ, ∂σ², ∂B = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
-	C, Δf, ΔΦ, 𝐟, Φ, 𝐳 = probabilityvector!(𝛑, ∂μ, ∂σ², ∂B, μ, 𝛚, σ, 𝛏)
-	Δζ = diff(𝐟.*(𝐳.^2 .- 1.0)./4.0./σ.^3.0./Δξ)
-	Δfωξ = diff(𝐟.*𝛚.*𝛏)
-	Δfωz = diff(𝐟.*𝛚.*𝐳)
-	Δfξ = diff(𝐟.*𝛏)
-	Δfz = diff(𝐟.*𝐳)
-	B²σ = B^2*σ
-	BΔξσ = B*Δξ*σ
-	Bσ²2 = B*σ^2*2
-	Δξσ²2 = Δξ*σ^2*2
-	EH = zeros(4,4)
-	for i=1:Ξ
-		if i == 1
-			∂B∂B = Δfωξ[1]/B²σ - 2∂B[1]/B
-			∂B∂μ = -Δfξ[1]/BΔξσ - ∂μ[1]/B
-			∂B∂σ² = -Δfωz[1]/Bσ²2 - ∂σ²[1]/B
-			∂μ∂σ² = Δfz[1]/Δξσ²2
-			∂σ²∂σ² = Δζ[1]
-		elseif i < Ξ
-			∂B∂B = (Δfωξ[i] - Δfωξ[i-1])/B²σ - 2∂B[i]/B
-			∂B∂μ = (Δfξ[i-1]-Δfξ[i])/BΔξσ - ∂μ[i]/B
-			∂B∂σ² = (Δfωz[i-1]-Δfωz[i])/Bσ²2 - ∂σ²[i]/B
-			∂μ∂σ² = (Δfz[i]-Δfz[i-1])/Δξσ²2
-			∂σ²∂σ² = Δζ[i] - Δζ[i-1]
-		else
-			∂B∂B = -Δfωξ[Ξ_1]/B²σ - 2∂B[Ξ]/B
-			∂B∂μ = Δfξ[Ξ_1]/BΔξσ - ∂μ[Ξ]/B
-			∂B∂σ² = Δfωz[Ξ_1]/Bσ²2 - ∂σ²[Ξ]/B
-			∂μ∂σ² = -Δfz[Ξ_1]/Δξσ²2
-			∂σ²∂σ² = -Δζ[Ξ_1]
-		end
-		∂μ∂μ = ∂σ²[i]*2
-		EH[1,1] += γᵃ₁[i]*∂B∂B
-		EH[1,2] += γᵃ₁[i]*∂B∂μ
-		EH[1,3] += γᵃ₁[i]*∂B∂σ²
-		EH[2,2] += γᵃ₁[i]*∂μ∂μ
-		EH[2,3] += γᵃ₁[i]*∂μ∂σ²
-		EH[3,3] += γᵃ₁[i]*∂σ²∂σ²
-	end
-	EH[2,1] = EH[1,2]
-	EH[3,1] = EH[1,3]
-	EH[4,1] = EH[1,4] = EH[1,2]*previousreward #𝔼(∂wₕ∂B) = 𝔼(∂B∂wₕ) = 𝔼(∂μ₀∂B)*previousreward
-	EH[3,2] = EH[2,3]
-	EH[4,2] = EH[2,4] = EH[2,2]*previousreward #𝔼(∂wₕ∂μ₀) = 𝔼(∂μ₀∂wₕ) = 𝔼(∂μ₀∂μ₀)*previousreward
-	EH[4,3] = EH[3,4] = EH[2,3]*previousreward #𝔼(∂wₕ∂σ²) = 𝔼(∂σ²∂wₕ) = 𝔼(∂μ₀∂σ²)*previousreward
-	EH[4,4] = EH[2,2]*previousreward^2 #𝔼(∂wₕ∂wₕ) = 𝔼(∂μ₀∂μ₀)*previousreward^2
-	return EH
-end
-
-"""
-	Hessian
-
-Expectation of second-derivatives of the log of the initial probability of the accumulator variable.
-
-Computes the following for a single trial:
-
-	`∇∇log(𝐚₁ ∣ B, μ₀, σᵢ², wₕ)`
-
-ARGUMENT:
--`μ`: a floating-point number representing the mean of the initial distribution of the accumulator
--`σ`: a floating-point number representing the standard deviation of the initial value of the accumulator
--`𝛏`: a vector of floating-point numbers representing the values into which the accumulator is discretized
-
-RETURN:
--`EH`: a four-by-four matrix whose columns and rows correspond to the second-order partial derivatives with respect to B, μ₀, σᵢ², and wₕ, in this order.
-
-EXAMPLE
-```julia-repo
-Ξ = 53
-B = 10.0
-𝛏 = B.*(2.0.*collect(1:Ξ) .- Ξ .- 1)./(Ξ - 2)
-μ = 0.5
-σ = 0.8
-i = 28
-EH = Hessian(i, μ, σ, 𝛏)
-```
-"""
-function Hessian(i::Integer,
-				 μ::AbstractFloat,
-				 σ::AbstractFloat,
-				 𝛏::Vector{<:AbstractFloat})
-    Ξ = length(𝛏)
-    Ξ_1 = Ξ-1
-	B = 𝛏[end]*(Ξ-2)/Ξ_1
-    Δξ=𝛏[2]-𝛏[1]
-    𝛚 = 𝛏./Δξ
-	𝛑, ∂μ, ∂σ², ∂B = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
-	C, Δf, ΔΦ, 𝐟, Φ, 𝐳 = probabilityvector!(𝛑, ∂μ, ∂σ², ∂B, μ, 𝛚, σ, 𝛏)
-	Δζ = diff(𝐟.*(𝐳.^2 .- 1.0)./4.0./σ.^3.0./Δξ)
-	Δfωξ = diff(𝐟.*𝛚.*𝛏)
-	Δfωz = diff(𝐟.*𝛚.*𝐳)
-	Δfξ = diff(𝐟.*𝛏)
-	Δfz = diff(𝐟.*𝐳)
-	B²σ = B^2*σ
-	BΔξσ = B*Δξ*σ
-	Bσ²2 = B*σ^2*2
-	Δξσ²2 = Δξ*σ^2*2
-	EH = zeros(3,3)
-	if i == 1
-		∂B∂B = Δfωξ[1]/B²σ - 2∂B[1]/B
-		∂B∂μ = -Δfξ[1]/BΔξσ - ∂μ[1]/B
-		∂B∂σ² = -Δfωz[1]/Bσ²2 - ∂σ²[1]/B
-		∂μ∂σ² = Δfz[1]/Δξσ²2
-		∂σ²∂σ² = Δζ[1]
-	elseif i < Ξ
-		∂B∂B = (Δfωξ[i] - Δfωξ[i-1])/B²σ - 2∂B[i]/B
-		∂B∂μ = (Δfξ[i-1]-Δfξ[i])/BΔξσ - ∂μ[i]/B
-		∂B∂σ² = (Δfωz[i-1]-Δfωz[i])/Bσ²2 - ∂σ²[i]/B
-		∂μ∂σ² = (Δfz[i]-Δfz[i-1])/Δξσ²2
-		∂σ²∂σ² = Δζ[i] - Δζ[i-1]
-	else
-		∂B∂B = -Δfωξ[Ξ_1]/B²σ - 2∂B[Ξ]/B
-		∂B∂μ = Δfξ[Ξ_1]/BΔξσ - ∂μ[Ξ]/B
-		∂B∂σ² = Δfωz[Ξ_1]/Bσ²2 - ∂σ²[Ξ]/B
-		∂μ∂σ² = -Δfz[Ξ_1]/Δξσ²2
-		∂σ²∂σ² = -Δζ[Ξ_1]
-	end
-	EH[1,1] = ∂B∂B
-	EH[1,2] = ∂B∂μ
-	EH[1,3] = ∂B∂σ²
-	EH[2,2] = ∂σ²[i]*2 #∂μ∂μ
-	EH[2,3] = ∂μ∂σ²
-	EH[3,3] = ∂σ²∂σ²
-	EH[2,1] = EH[1,2]
-	EH[3,1] = EH[1,3]
-	EH[3,2] = EH[2,3]
-	return EH
 end
 
 """
