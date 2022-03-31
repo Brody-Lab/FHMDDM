@@ -20,6 +20,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         choicelikelihood,
         choiceposteriors,
         comparegradients,
+        compareHessians,
         concatenatebounds,
         concatenateparameters,
         concatenate_choice_related_parameters,

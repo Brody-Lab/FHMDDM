@@ -358,9 +358,6 @@ function ∇negativeloglikelihood(concatenatedθ::Vector{T},
 			end
 		end
     likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
-	@unpack options, θnative, θreal, trialsets = model
-	@unpack K = options
-	trialinvariant = Trialinvariant(model; purpose="gradient")
 	output=	map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
 				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
 					∇loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
