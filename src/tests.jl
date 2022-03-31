@@ -70,6 +70,69 @@ function comparegradients(clicks::Clicks, k::Real, ϕ::Real)
 end
 
 """
+	comparegradients(𝐰, 𝐱, y)
+
+Compare the automatically computed and hand-coded gradient of the probability from a Poisson generalized linear model
+
+The model has a softplus nonlinearity.
+
+ARGUMENT
+-`𝐰`: weight vector
+-`𝐱`: input vector
+-`y`: observations
+
+RETURN
+-maximum absolute difference
+-automatically computed gradient
+-hand-coded gradient
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> rng = MersenneTwister(1234);
+julia> 𝐰 = randn(rng, 10);
+julia> 𝐱 = randn(rng, 10);
+julia> maxabsdiff, automaticgradient, handcodedgradient = comparegradients(𝐰, 𝐱, 2);
+julia> maxabsdiff
+	6.938893903907228e-18
+```
+"""
+function comparegradients(𝐰::Vector{<:Real}, 𝐱::Vector{<:Real}, y::Integer)
+	@assert y>=0
+	f(w) = Poissonlikelihood(w, 𝐱, y)
+	automaticgradient = ForwardDiff.gradient(f,𝐰)
+	η = logistic(𝐰⋅𝐱)
+	λ = softplus(𝐰⋅𝐱)
+	p = Poissonlikelihood(𝐰,𝐱,y)
+	if y==0
+		handcodedgradient = -η.*p.*𝐱
+	elseif y==1
+		handcodedgradient = η.*(exp(-λ) - p).*𝐱
+	else
+		handcodedgradient = η.*(λ^(y-1)*exp(-λ)/factorial(y-1) - p).*𝐱
+	end
+	return maximum(abs.(automaticgradient .- handcodedgradient)), automaticgradient, handcodedgradient
+end
+
+"""
+	Poissonlikelihood(𝐰,𝐱,y)
+
+Likelihood of observing `y` given that the rate is softplus(𝐰⋅𝐱)
+
+ARGUMENT
+-`𝐰`: weight vector
+-`𝐱`: input vector
+-`y`: observations
+
+RETURN
+-a scalar representing the likelihood
+"""
+function Poissonlikelihood(𝐰::Vector{<:Real}, 𝐱::Vector{<:Real}, y::Integer)
+	λ = softplus(𝐰⋅𝐱)
+	λ^y*exp(-λ)/factorial(y)
+end
+
+"""
 	compareHessians(B, μ, σ², Ξ)
 
 Compare the automatically computed and hand-coded Hessian matrices
