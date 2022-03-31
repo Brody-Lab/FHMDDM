@@ -308,7 +308,7 @@ function compareHessians(B::Real,
 		handcoded_Hessians[i][2,4] = handcoded_Hessians[i][4,2] = d²μ_dkdϕ*d𝛑_dμ[i] + d²σ²_dkdϕ*d𝛑_dσ²[i] + dμ_dk*dμ_dϕ*d²𝛑_dμdμ[i] + d²𝛑_dμdσ²[i]*(dμ_dϕ*dσ²_dk + dσ²_dϕ*dμ_dk) + dσ²_dk*dσ²_dϕ*d²𝛑_dσ²dσ²[i]  #d²πᵢ_dkdϕ
 		d²πᵢ_dkdσ² = dμ_dk*d²𝛑_dμdσ²[i] + dσ²_dk*d²𝛑_dσ²dσ²[i]
 		handcoded_Hessians[i][2,5] = handcoded_Hessians[i][5,2] = Δt*d²πᵢ_dkdσ² #d²πᵢ_dkdσ²ₐ
-		handcoded_Hessians[i][2,6] = handcoded_Hessians[i][6,2] = Σc*d²πᵢ_dkdσ² + dΔc_dk*d𝛑_dσ²[i] #d²πᵢ_dkdσ²ₛ
+		handcoded_Hessians[i][2,6] = handcoded_Hessians[i][6,2] = Σc*d²πᵢ_dkdσ² + dΣc_dk*d𝛑_dσ²[i] #d²πᵢ_dkdσ²ₛ
 		handcoded_Hessians[i][3,3] = d²μ_dλdλ*d𝛑_dμ[i] + (dμ_dλ)^2*d²𝛑_dμdμ[i] #d²πᵢ_dλdλ
 		handcoded_Hessians[i][3,4] = handcoded_Hessians[i][4,3] = dΔc_dϕ*d²πᵢ_dλdΔc + dΣc_dϕ*d²πᵢ_dλdΣc #d²πᵢ_dλdϕ
 		d²πᵢ_dλdσ² = dμ_dλ*d²𝛑_dμdσ²[i]
@@ -317,7 +317,7 @@ function compareHessians(B::Real,
 		handcoded_Hessians[i][4,4] = d²μ_dϕdϕ*d𝛑_dμ[i] + d²σ²_dϕdϕ*d𝛑_dσ²[i] + dμ_dϕ^2*d²𝛑_dμdμ[i] + 2dμ_dϕ*dσ²_dϕ*d²𝛑_dμdσ²[i] + dσ²_dϕ^2*d²𝛑_dσ²dσ²[i] #d²πᵢ_dϕdϕ
 		d²πᵢ_dϕdσ² = dμ_dϕ*d²𝛑_dμdσ²[i] + dσ²_dϕ*d²𝛑_dσ²dσ²[i]
 		handcoded_Hessians[i][4,5] = handcoded_Hessians[i][5,4] = Δt*d²πᵢ_dϕdσ² #d²πᵢ_dϕdσ²ₐ
-		handcoded_Hessians[i][4,6] = handcoded_Hessians[i][6,4] = Σc*d²πᵢ_dϕdσ² + dΔc_dϕ*d𝛑_dσ²[i] #d²πᵢ_dϕdσ²ₛ
+		handcoded_Hessians[i][4,6] = handcoded_Hessians[i][6,4] = Σc*d²πᵢ_dϕdσ² + dΣc_dϕ*d𝛑_dσ²[i] #d²πᵢ_dϕdσ²ₛ
 		handcoded_Hessians[i][5,5] = Δt^2*d²𝛑_dσ²dσ²[i] #d²πᵢ_dσ²ₐdσ²ₐ
 		handcoded_Hessians[i][5,6] = handcoded_Hessians[i][6,5] = Δt*Σc*d²𝛑_dσ²dσ²[i] #d²πᵢ_dσ²ₐdσ²ₛ
 		handcoded_Hessians[i][6,6] = Σc^2*d²𝛑_dσ²dσ²[i] #d²πᵢ_dσ²ₛdσ²ₛ
@@ -334,6 +334,45 @@ function compareHessians(B::Real,
 	end
 	end
 	return maxabsdiff, automatic_Hessians, handcoded_Hessians
+end
+
+"""
+	compareHessians(B,clicks,Δt,k,λ,ϕ,σ²ₐ,σ²ₛ,Ξ)
+
+Compare the automatically differentiated and hand-coded second-order partial derivatives with respect to the parameters governing transition dynamics
+
+ARGUMENT
+-`B`: bound height
+-`clicks`: a structure containing the timing, source, and time step of the auditory clicks in a trial
+-`Δt`: width of each time step
+-`k`: change rate of the adaptation
+-`λ`: feedback of the accumulator onto itself
+-`ϕ`: strength of adaptation
+-`σ²ₐ`: variance of diffusion noise
+-`σ²ₛ`: variance of per-click noise
+-`Ξ`: Number of discrete values into which the accumulator is discretized
+
+RETURN
+-`maxabsdiff`: a matrix representing the maximum absolute difference between the automatically computed and hand-coded Hessians for each partial derivative
+"""
+function compareHessians(B::Real,
+						 clicks::Clicks,
+						 Δt::Real,
+						 k::Real,
+						 λ::Real,
+						 ϕ::Real,
+						 σ²ₐ::Real,
+						 σ²ₛ::Real,
+						 Ξ::Integer)
+	ntimesteps = length(clicks.inputindex)
+	maxabsdiff = zeros(6,6)
+	for t = 2:ntimesteps
+		for j = 2:Ξ-1
+			maxabsdiff_j_t, Hauto, Hhand = compareHessians(B, clicks, Δt, j, k, λ, ϕ, σ²ₐ, σ²ₛ, t, Ξ)
+			maxabsdiff = max.(maxabsdiff, maxabsdiff_j_t)
+		end
+	end
+	maxabsdiff
 end
 
 """

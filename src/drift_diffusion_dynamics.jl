@@ -237,11 +237,11 @@ RETURN
 -the partial derivative
 """
 function differentiate_μ_wrt_Δc(Δt::AbstractFloat, λ::Real)
-	λΔt = λ*Δt
-	if abs(λΔt) > 1e-10
-		dμ_dΔc = (exp(λΔt) - 1.0)/λΔt
+	if abs(λ) > 1e-8
+		λΔt = λ*Δt
+		(exp(λΔt) - 1.0)/λΔt
 	else
-		dμ_dΔc = 1.0
+		1.0
 	end
 end
 
@@ -258,8 +258,8 @@ RETURN
 -the partial derivative
 """
 function differentiate_μ_wrt_Δcλ(Δt::AbstractFloat, λ::Real)
-	λΔt = λ*Δt
 	if abs(λ) > 1e-3
+		λΔt = λ*Δt
 		(exp(λΔt)*(λΔt-1.0)+1.0)/λΔt/λ
 	else
 		Δt/2
@@ -279,8 +279,8 @@ RETURN
 -the partial derivative
 """
 function differentiate_μ_wrt_Δcλλ(Δt::AbstractFloat, λ::Real)
-	λΔt = λ*Δt
 	if abs(λ) > 1e-2
+		λΔt = λ*Δt
 		(exp(λΔt)*(λΔt^2 - 2λΔt + 2)-2)/λΔt/λ^2
 	else
 		Δt^2/3
