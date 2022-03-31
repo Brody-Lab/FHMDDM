@@ -287,7 +287,6 @@ function compareHessians(B::Real,
 	d²σ²_dkdk = d²Σc_dkdk*dσ²_dΣc
 	d²σ²_dkdϕ = d²Σc_dkdϕ*dσ²_dΣc
 	d²σ²_dϕdϕ = d²Σc_dϕdϕ*dσ²_dΣc
-	expλΔt = exp(λΔt)
 	d²μ_dΔcdλ = differentiate_μ_wrt_Δcλ(Δt, λ)
 	dμ_dλ = Δt*expλΔt*𝛏[j] + Δc*d²μ_dΔcdλ
 	dξ_dB = (2j-Ξ-1)/(Ξ-2)
@@ -354,6 +353,21 @@ ARGUMENT
 
 RETURN
 -`maxabsdiff`: a matrix representing the maximum absolute difference between the automatically computed and hand-coded Hessians for each partial derivative
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> Δt = 0.01; B = 1.0; k = 0.5; λ = -0.5; ϕ = 0.1; σ²ₐ = 2.0; σ²ₛ = 0.5; Ξ = 53;
+julia> clicks = FHMDDM.sampleclicks(0.01, 40, Δt, 20, 1; rng=MersenneTwister(1234));
+julia> maxabsdiff = FHMDDM.compareHessians(B, clicks, Δt, k, λ, ϕ, σ²ₐ, σ²ₛ, Ξ)
+	6×6 Matrix{Float64}:
+	 1.96371e-14  4.32293e-15  4.14946e-15  6.48925e-14  1.22298e-15  9.36404e-15
+	 4.44089e-15  2.22912e-15  2.68102e-15  9.01362e-15  4.97866e-16  2.34188e-15
+	 4.14078e-15  2.68448e-15  1.15889e-14  3.1173e-14   2.71593e-16  3.20403e-15
+	 5.65381e-14  6.82093e-15  3.12042e-14  2.11831e-13  2.31065e-15  3.52079e-14
+	 1.38474e-15  4.7011e-16   2.71376e-16  2.37831e-15  3.31332e-16  4.77916e-16
+	 8.69704e-15  2.1684e-15   3.20403e-15  3.87468e-14  4.5363e-16   6.69603e-15
+```
 """
 function compareHessians(B::Real,
 						 clicks::Clicks,
@@ -373,6 +387,113 @@ function compareHessians(B::Real,
 		end
 	end
 	maxabsdiff
+end
+
+
+"""
+	compareHessians(B, Δt, μ₀, previousreward, σ²ᵢ, wₕ, Ξ)
+
+Compare the automatically differentiated and hand-coded second-order partial derivatives of the prior probabilities of the accumulator
+
+ARGUMENT
+-`B`: bound height
+-`Δt`: width of each time step
+-`μ₀`: mean
+-`previousreward`: side where the reward was baited in the previous trial: -1 (left), 0 (no previous trial), +1(right)
+-`σ²ᵢ`: variance
+-`wₕ`: weight of the previous reward on the mean
+-`Ξ`: Number of discrete values into which the accumulator is discretized
+
+RETURN
+-`maxabsdiff`: a matrix representing the maximum absolute difference between the automatically computed and hand-coded Hessians for each partial derivative
+-`automatic_Hessians`: a vector of matrices whose i-th element is the automatically computed Hessian matrix of p(a₁ = ξᵢ)
+-`handcoded_Hessians`: a vector of matrices whose i-th element is the hand-coded Hessian matrix of p(a₁ = ξᵢ)
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> maxabsdiff, automatic_Hessians, handcoded_Hessians = FHMDDM.compareHessians(10.0, 0.01, 0.5, 1, 2.0, -0.6, 53);
+julia> maxabsdiff
+	4×4 Matrix{Float64}:
+	 5.14454e-17  6.67869e-17  7.41594e-17  6.67869e-17
+	 1.15359e-16  6.245e-16    2.74954e-16  6.245e-16
+	 8.39172e-17  2.32453e-16  2.13371e-16  2.32453e-16
+	 1.15359e-16  6.245e-16    2.74954e-16  6.245e-16
+```
+"""
+function compareHessians(B::Real,
+						 Δt::Real,
+						 μ₀::Real,
+						 previousreward::Real,
+						 σ²ᵢ::Real,
+						 wₕ::Real,
+						 Ξ::Integer)
+	@assert Ξ>0
+	automatic_Hessians, handcoded_Hessians = collect(zeros(4,4) for i=1:Ξ), collect(zeros(4,4) for i=1:Ξ)
+	∂𝛏_∂B = (2collect(1:Ξ).-Ξ.-1)./(Ξ-2)
+	𝛏 = B.*∂𝛏_∂B
+	𝛈 = ∂𝛏_∂B
+	𝛚 = 𝛈.*(Ξ-2)/2
+	μ = μ₀ + previousreward*wₕ
+	σ² = σ²ᵢ
+	σ = √σ²
+	𝛑, d𝛑_dB, d𝛑_dμ, d𝛑_dσ², d²𝛑_dBdB, d²𝛑_dBdμ, d²𝛑_dBdσ², d²𝛑_dμdμ, d²𝛑_dμdσ², d²𝛑_dσ²dσ² = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
+	CΦ, Δf, ΔΦ, 𝐟, Φ, 𝐳 = probabilityvector!(𝛑, d𝛑_dμ, d𝛑_dσ², d𝛑_dB, μ, 𝛚, σ, 𝛏)
+	Ξ_1 = Ξ-1
+	Δξ=𝛏[2]-𝛏[1]
+	fη = 𝐟.*𝛈
+	Δfη = diff(fη)
+	Δfω = diff(𝐟.*𝛚)
+	Δfωz = diff(𝐟.*𝛚.*𝐳)
+	Δfz = diff(𝐟.*𝐳)
+	Δζ = diff(𝐟.*(𝐳.^2 .- 1.0)./4.0./σ.^3.0./Δξ)
+	Δξσ²2 = Δξ*σ^2*2
+	for i=1:Ξ
+		if i == 1
+			d²𝛑_dBdB[i] 	= ((fη[1] + 𝛚[2]*Δfη[1])/σ - 2d𝛑_dB[1])/B
+			d²𝛑_dBdμ[i] 	= (-Δfω[1]/σ - d𝛑_dμ[1])/B
+			d²𝛑_dBdσ²[i] 	= (-Δfωz[1]/2/σ² - d𝛑_dσ²[1])/B
+			d²𝛑_dμdσ²[i] 	= Δfz[1]/Δξσ²2
+			d²𝛑_dσ²dσ²[i]	= Δζ[1]
+		elseif i < Ξ
+			d²𝛑_dBdB[i] 	= ((𝛚[i+1]*Δfη[i] - 𝛚[i-1]*Δfη[i-1])/σ - 2d𝛑_dB[i])/B
+			d²𝛑_dBdμ[i] 	= ((Δfω[i-1]-Δfω[i])/σ - d𝛑_dμ[i])/B
+			d²𝛑_dBdσ²[i] 	= ((Δfωz[i-1]-Δfωz[i])/2/σ² - d𝛑_dσ²[i])/B
+			d²𝛑_dμdσ²[i] 	= (Δfz[i]-Δfz[i-1])/Δξσ²2
+			d²𝛑_dσ²dσ²[i] 	= Δζ[i] - Δζ[i-1]
+		else
+			d²𝛑_dBdB[i]	= -((fη[Ξ] + 𝛚[Ξ_1]*Δfη[Ξ_1])/σ + 2d𝛑_dB[Ξ])/B
+			d²𝛑_dBdμ[i]	= (Δfω[Ξ_1]/σ - d𝛑_dμ[Ξ])/B
+			d²𝛑_dBdσ²[i] 	= (Δfωz[Ξ_1]/2/σ² - d𝛑_dσ²[Ξ])/B
+			d²𝛑_dμdσ²[i] 	= -Δfz[Ξ_1]/Δξσ²2
+			d²𝛑_dσ²dσ²[i] 	= -Δζ[Ξ_1]
+		end
+		d²𝛑_dμdμ[i] = 2d𝛑_dσ²[i]
+	end
+	for i = 1:Ξ
+		handcoded_Hessians[i][1,1] = d²𝛑_dBdB[i]
+		handcoded_Hessians[i][1,2] = handcoded_Hessians[i][2,1] = d²𝛑_dBdμ[i] #d²πᵢ_dBdμ₀
+		handcoded_Hessians[i][1,3] = handcoded_Hessians[i][3,1] = d²𝛑_dBdσ²[i] #d²πᵢ_dBdσ²ᵢ
+		handcoded_Hessians[i][1,4] = handcoded_Hessians[i][4,1] = previousreward*d²𝛑_dBdμ[i] #d²πᵢ_dBdwₕ
+		handcoded_Hessians[i][2,2] = d²𝛑_dμdμ[i] #d²πᵢ_dμ₀dμ₀
+		handcoded_Hessians[i][2,3] = handcoded_Hessians[i][3,2] = d²𝛑_dμdσ²[i] #d²πᵢ_dμ₀dσ²ᵢ
+		handcoded_Hessians[i][2,4] = handcoded_Hessians[i][4,2] = previousreward*d²𝛑_dμdμ[i]  #d²πᵢ_dμ₀dwₕ
+		handcoded_Hessians[i][3,3] = d²𝛑_dσ²dσ²[i] #d²πᵢ_dσ²ᵢdσ²ᵢ
+		handcoded_Hessians[i][3,4] = handcoded_Hessians[i][4,3] = previousreward*d²𝛑_dμdσ²[i]  #d²πᵢ_dσ²ᵢdwₕ
+		handcoded_Hessians[i][4,4] = previousreward^2*d²𝛑_dμdμ[i] #d²πᵢ_dwₕdwₕ
+	end
+	x₀ = [B, μ₀, σ²ᵢ, wₕ]
+	for i = 1:Ξ
+		f(x) = FHMDDM.accumulatorprobability(Δt, i, previousreward, Ξ, x)
+		automatic_Hessians[i] = ForwardDiff.hessian(f, x₀)
+	end
+	maxabsdiff = zeros(4,4)
+	for i = 1:length(automatic_Hessians)
+	for j in eachindex(maxabsdiff)
+	    maxabsdiff[j] = max(maxabsdiff[j], abs(automatic_Hessians[i][j] - handcoded_Hessians[i][j]))
+	end
+	end
+	return maxabsdiff, automatic_Hessians, handcoded_Hessians
 end
 
 """
@@ -425,6 +546,47 @@ function accumulatorprobability(clicks::Clicks,
 end
 
 """
+    accumulatorprobability(Δt, i, previousreward, Ξ, x)
+
+Compute the transition probability of the accumulator variable `p(aₜ=i ∣ aₜ₋₁=j)`
+
+INPUT
+-`clicks`: a structure containing the times and origin of each auditory click played during a trial
+-`Δt`: duration of each time step
+-`i`: state of the accumulator at time step t
+-`j`: state of the accumulator at time step t-1
+-'t': time step
+-`Ξ`: number of states into which the accumulator is discretized
+-`x`: vector containing the alphabetically concatenated values of the parameters
+
+RETURN
+-transition probability `p(aₜ=i ∣ aₜ₋₁=j)`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> x = [10.0, 0.5, 2.0, 0.8];
+julia> FHMDDM.accumulatorprobability(0.01, 26, 1, 53, x)
+	0.0542176221212666
+```
+"""
+function accumulatorprobability(Δt::AbstractFloat,
+                                i::Integer,
+								previousreward::Real,
+								Ξ::Integer,
+                                x::Vector{<:Real})
+	@assert length(x)==4
+	B = x[1]
+    μ₀ = x[2]
+    σ²ᵢ = x[3]
+    wₕ = x[4]
+	𝛏 = B.*(2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	μ = μ₀ + previousreward*wₕ
+	σ = √σ²ᵢ
+	probabilityvector(μ, σ, 𝛏)[i]
+end
+
+"""
 	accumulatorprobability(i, Ξ, x)
 
 Probability of the accumulator being equal to its i-th discrete value
@@ -452,48 +614,6 @@ function accumulatorprobability(i::Integer, Ξ::Integer, x::Vector{<:Real})
 	σ = √x[3]
 	𝛏 = B.*(2.0.*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	probabilityvector(μ, σ, 𝛏)[i]
-end
-
-"""
-	Hessian(μ, σ², 𝛏)
-
-Hessian of each element of a probability vector with respect to bound height B, mean μ, variance σ²
-
-INPUT
--`B`: bound height
--`μ`: mean of the Gaussian distribution
--`σ`: standard deviation of the Gaussian distribution
--`Ξ`: number of values into which the accumulator is discretized
-
-RETURN
--`𝗛`: a vector whose element 𝗛[i] is the 3x3 Hessian matrix of the i-th element of a the probability vector with respect to B, μ, and σ²
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> 𝗛 = Hessian(10, 1, 4, 53);
-julia> 𝗛[27]
-	3×3 Matrix{Float64}:
-	 -9.86457e-6   -0.00168064  -0.000634302
-	 -0.00168064   -0.0128575    0.00584635
-	 -0.000634302   0.00584635   0.00166927
-```
-"""
-function Hessian(B::Real, μ::Real, σ²::Real, Ξ::Integer)
-    @assert Ξ>0
-	𝛏 = B.*(2collect(1:Ξ).-Ξ.-1)./(Ξ-2)
-	𝛑, d𝛑_dB, d𝛑_dμ, d𝛑_dσ², d²𝛑_dBdB, d²𝛑_dBdμ, d²𝛑_dBdσ², d²𝛑_dμdμ, d²𝛑_dμdσ², d²𝛑_dσ²dσ² = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
-	probabilityvector!(𝛑, d𝛑_dB, d𝛑_dμ, d𝛑_dσ², d²𝛑_dBdB, d²𝛑_dBdμ, d²𝛑_dBdσ², d²𝛑_dμdμ, d²𝛑_dμdσ², d²𝛑_dσ²dσ², μ, √σ², 𝛏)
-	𝗛 = collect(zeros(3,3) for i=1:Ξ)
-	for i=1:Ξ
-		𝗛[i][1,1] = d²𝛑_dBdB[i]
-		𝗛[i][1,2] = 𝗛[i][2,1] = d²𝛑_dBdμ[i]
-		𝗛[i][1,3] = 𝗛[i][3,1] = d²𝛑_dBdσ²[i]
-		𝗛[i][2,2] = d²𝛑_dμdμ[i]
-		𝗛[i][2,3] = 𝗛[i][3,2] = d²𝛑_dμdσ²[i]
-		𝗛[i][3,3] = d²𝛑_dσ²dσ²[i]
-	end
-	return 𝗛
 end
 
 """
@@ -588,85 +708,5 @@ function expectatedHessian(γᵃ₁::Vector{<:AbstractFloat},
 	EH[4,2] = EH[2,4] = EH[2,2]*previousreward #𝔼(∂wₕ∂μ₀) = 𝔼(∂μ₀∂wₕ) = 𝔼(∂μ₀∂μ₀)*previousreward
 	EH[4,3] = EH[3,4] = EH[2,3]*previousreward #𝔼(∂wₕ∂σ²) = 𝔼(∂σ²∂wₕ) = 𝔼(∂μ₀∂σ²)*previousreward
 	EH[4,4] = EH[2,2]*previousreward^2 #𝔼(∂wₕ∂wₕ) = 𝔼(∂μ₀∂μ₀)*previousreward^2
-	return EH
-end
-
-"""
-	Hessian
-
-Expectation of second-derivatives of the log of the initial probability of the accumulator variable.
-
-Computes the following for a single trial:
-
-	`∇∇log(𝐚₁ ∣ B, μ₀, σᵢ², wₕ)`
-
-ARGUMENT:
--`μ`: a floating-point number representing the mean of the initial distribution of the accumulator
--`σ`: a floating-point number representing the standard deviation of the initial value of the accumulator
--`𝛏`: a vector of floating-point numbers representing the values into which the accumulator is discretized
-
-RETURN:
--`EH`: a four-by-four matrix whose columns and rows correspond to the second-order partial derivatives with respect to B, μ₀, σᵢ², and wₕ, in this order.
-
-EXAMPLE
-```julia-repo
-Ξ = 53
-B = 10.0
-𝛏 = B.*(2.0.*collect(1:Ξ) .- Ξ .- 1)./(Ξ - 2)
-μ = 0.5
-σ = 0.8
-i = 28
-EH = Hessian(i, μ, σ, 𝛏)
-```
-"""
-function Hessian(i::Integer,
-				 μ::AbstractFloat,
-				 σ::AbstractFloat,
-				 𝛏::Vector{<:AbstractFloat})
-    Ξ = length(𝛏)
-    Ξ_1 = Ξ-1
-	B = 𝛏[end]*(Ξ-2)/Ξ_1
-    Δξ=𝛏[2]-𝛏[1]
-    𝛚 = 𝛏./Δξ
-	𝛑, ∂μ, ∂σ², ∂B = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
-	C, Δf, ΔΦ, 𝐟, Φ, 𝐳 = probabilityvector!(𝛑, ∂μ, ∂σ², ∂B, μ, 𝛚, σ, 𝛏)
-	Δζ = diff(𝐟.*(𝐳.^2 .- 1.0)./4.0./σ.^3.0./Δξ)
-	Δfωξ = diff(𝐟.*𝛚.*𝛏)
-	Δfωz = diff(𝐟.*𝛚.*𝐳)
-	Δfξ = diff(𝐟.*𝛏)
-	Δfz = diff(𝐟.*𝐳)
-	B²σ = B^2*σ
-	BΔξσ = B*Δξ*σ
-	Bσ²2 = B*σ^2*2
-	Δξσ²2 = Δξ*σ^2*2
-	EH = zeros(3,3)
-	if i == 1
-		∂B∂B = Δfωξ[1]/B²σ - 2∂B[1]/B
-		∂B∂μ = -Δfξ[1]/BΔξσ - ∂μ[1]/B
-		∂B∂σ² = -Δfωz[1]/Bσ²2 - ∂σ²[1]/B
-		∂μ∂σ² = Δfz[1]/Δξσ²2
-		∂σ²∂σ² = Δζ[1]
-	elseif i < Ξ
-		∂B∂B = (Δfωξ[i] - Δfωξ[i-1])/B²σ - 2∂B[i]/B
-		∂B∂μ = (Δfξ[i-1]-Δfξ[i])/BΔξσ - ∂μ[i]/B
-		∂B∂σ² = (Δfωz[i-1]-Δfωz[i])/Bσ²2 - ∂σ²[i]/B
-		∂μ∂σ² = (Δfz[i]-Δfz[i-1])/Δξσ²2
-		∂σ²∂σ² = Δζ[i] - Δζ[i-1]
-	else
-		∂B∂B = -Δfωξ[Ξ_1]/B²σ - 2∂B[Ξ]/B
-		∂B∂μ = Δfξ[Ξ_1]/BΔξσ - ∂μ[Ξ]/B
-		∂B∂σ² = Δfωz[Ξ_1]/Bσ²2 - ∂σ²[Ξ]/B
-		∂μ∂σ² = -Δfz[Ξ_1]/Δξσ²2
-		∂σ²∂σ² = -Δζ[Ξ_1]
-	end
-	EH[1,1] = ∂B∂B
-	EH[1,2] = ∂B∂μ
-	EH[1,3] = ∂B∂σ²
-	EH[2,2] = ∂σ²[i]*2 #∂μ∂μ
-	EH[2,3] = ∂μ∂σ²
-	EH[3,3] = ∂σ²∂σ²
-	EH[2,1] = EH[1,2]
-	EH[3,1] = EH[1,3]
-	EH[3,2] = EH[2,3]
 	return EH
 end
