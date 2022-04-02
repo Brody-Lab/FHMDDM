@@ -141,6 +141,20 @@ The stereoclick is excluded.
 end
 
 """
+	SpikeTrainModel
+
+The inputs and observations of a mixture of Poisson generalized linear model of a neuron's spike train for one trial
+"""
+@with_kw struct SpikeTrainModel{TVI<:Vector{<:Integer}, TMF<:Matrix{<:AbstractFloat}}
+    "Columns of the design matrix that are invariant to the accumulator variable and correspond to regressors related to spike history or timing of events. Each column is scaled such that the maximum of the absolute value is 1."
+    𝐔::TMF
+    "Temporal bases values. Element 𝚽[t,i] corresponds to the value of the i-th temporal basis at the t-th time step"
+    𝚽::TMF
+    "response variable"
+    𝐲::TVI
+end
+
+"""
     Trial
 
 Information on the sensory stimulus and behavior each trial
@@ -150,7 +164,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
 @with_kw struct Trial{TB<:Bool,
                       TC<:Clicks,
                       TI<:Integer,
-                      VI<:Vector{<:Integer}}
+                      VI<:Vector{<:Integer},
+					  VS<:Vector{<:SpikeTrainModel}}
     "information on the auditory clicks"
     clicks::TC
     "behavioral choice"
@@ -159,6 +174,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
     ntimesteps::TI
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
+	"vector of whose each element is a structure containing the input and observations of the mixture of poisson GLMs of the spike train of a neuron in this trial"
+	spiketrainmodels::VS
     "generative values of the accumulator index variable (𝐚). This is nonempty only in sampled data"
     a::VI=Vector{Int}(undef,0)
     "generative values of the coupling variable (𝐜). This is nonempty only in sampled data"
@@ -178,6 +195,7 @@ end
 	"Parameter specifying how the accumulator is nonlinearly transformed before inputted into the generalized linear model"
 	b::TVR=zeros(eltype(𝐮),1)
 end
+
 """
     MixturePoissonGLM
 

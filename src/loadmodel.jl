@@ -150,28 +150,9 @@ OUTPUT
 """
 function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
-    rawclicktimes = map(x->x["clicktimes"], rawtrials)
-    L = map(rawclicktimes) do x
-			leftclicks = x["L"]
-			typeof(leftclicks)<:AbstractFloat ? [leftclicks] : vec(leftclicks)
-		end
-	R = map(rawclicktimes) do x
-			rightclicks = x["R"]
-			typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
-		end
     ntimesteps = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
-    choice = map(x->x["choice"], rawtrials)
-	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
-    previousanswer = vec(convert.(Int64, trialset["lagged"]["answer"]))
-    clicks = map((L,R,ntimesteps)->Clicks(options.a_latency_s, options.Δt,L,ntimesteps,R), L, R, ntimesteps)
-    trials = map(clicks, choice, ntimesteps, previousanswer) do clicks, choice, ntimesteps, previousanswer
-                Trial(clicks=clicks,
-                      choice=choice,
-                      ntimesteps=ntimesteps,
-                      previousanswer=previousanswer)
-             end
 
-    units = vec(trialset["units"])
+	units = vec(trialset["units"])
     𝐘 = map(x->convert.(Int64, vec(x["y"])), units)
     @assert sum(ntimesteps) == length(𝐘[1])
     𝐔ₕ = map(x->x["Xautoreg"], units)
@@ -195,6 +176,29 @@ function Trialset(options::Options, trialset::Dict)
 					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, θ=θ, 𝐔=𝐔, 𝐗=𝐗, 𝛏=𝛏normalized, 𝐲=𝐲)
 	             end
 	end
+
+	set_of_spiketrainmodels = SpikeTrainModel(ntimesteps, 𝚽, 𝐔ₑ, 𝐔ₕ, 𝐘)
+	rawclicktimes = map(x->x["clicktimes"], rawtrials)
+    L = map(rawclicktimes) do x
+			leftclicks = x["L"]
+			typeof(leftclicks)<:AbstractFloat ? [leftclicks] : vec(leftclicks)
+		end
+	R = map(rawclicktimes) do x
+			rightclicks = x["R"]
+			typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
+		end
+	choice = map(x->x["choice"], rawtrials)
+	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
+    previousanswer = vec(convert.(Int64, trialset["lagged"]["answer"]))
+    clicks = map((L,R,ntimesteps)->Clicks(options.a_latency_s, options.Δt,L,ntimesteps,R), L, R, ntimesteps)
+    trials = map(clicks, choice, ntimesteps, previousanswer, set_of_spiketrainmodels) do clicks, choice, ntimesteps, previousanswer, spiketrainmodels
+                Trial(clicks=clicks,
+                      choice=choice,
+                      ntimesteps=ntimesteps,
+                      previousanswer=previousanswer,
+					  spiketrainmodels = spiketrainmodels)
+             end
+
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end
 
