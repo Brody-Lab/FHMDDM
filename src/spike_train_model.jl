@@ -64,7 +64,7 @@ function dPoissonlikelihood(Δt::Real, x::Real, y::Integer)
     λ = softplus(x)
     λΔt = λ*Δt
     expλΔt = exp(λΔt)
-    η = logistic(x)
+    η = logistic(x)*Δt
     if y==0
         p = 1/expλΔt
         ∂p_∂x = -η*p

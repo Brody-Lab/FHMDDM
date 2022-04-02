@@ -105,35 +105,39 @@ function ∇conditionallikelihood(glmθs::Vector{<:GLMθ},
 	nparameters_per_neuron = n𝐮+n𝐯+1
 	nparameters = nneurons*nparameters_per_neuron
 	p𝐘 = map(t->ones(Ξ,K), 1:ntimesteps)
-	∇p𝐘 = map(q->map(t->zeros(Ξ,K), 1:ntimesteps), 1:nparameters)
+	∇p𝐘 = map(q->map(t->ones(Ξ,K), 1:ntimesteps), 1:nparameters)
 	for n = 1:nneurons
 		f𝛏 = map(ξ->transformaccumulator(glmθs[n].b[1], ξ), 𝛏)
 		∂f𝛏_∂b = map(ξ->dtransformaccumulator(glmθs[n].b[1], ξ), 𝛏)
+		𝐔𝐮 = spiketrainmodels[n].𝐔 * glmθs[n].𝐮
+		𝚽𝐯 = spiketrainmodels[n].𝚽 * glmθs[n].𝐯
 		index1 = (n-1)*nparameters_per_neuron+1
 		indices𝐮 = index1 : index1+n𝐮-1
 		indices𝐯 = index1+n𝐮 : index1+n𝐮+n𝐯-1
 		indexb = index1+n𝐮+n𝐯
-		𝚽𝐯 = spiketrainmodels[n].𝚽 * glmθs[n].𝐯
-		for t=1:ntimesteps
-			for i = 1:n𝐮
-				q = indices𝐮[i]
-				∇p𝐘[q][t] .= spiketrainmodels[n].𝐔[t,i]
-			end
-			for i = 1:n𝐯
-				q = indices𝐯[i]
-				∇p𝐘[q][t][:,1] .= spiketrainmodels[n].𝚽[t,i].*f𝛏
-			end
-			∇p𝐘[indexb][t][:,1] .= 𝚽𝐯[t].*∂f𝛏_∂b
-		end
 		indicesbefore = 1:index1-1
 		indices = index1:index1+nparameters_per_neuron-1
 		indicesafter = indices[end]+1:nparameters
-		for j = 1:Ξ
-			for k = 1:K
-				𝐗𝐰 = spiketrainmodels[n].𝐔 * glmθs[n].𝐮
-				(k == 1) && (𝐗𝐰 .+= 𝚽𝐯.*f𝛏[j])
-				for t=1:ntimesteps
-					∂p𝑦ₙₜ_∂Xw, p𝑦ₙₜ = dPoissonlikelihood(Δt, 𝐗𝐰[t], spiketrainmodels[n].𝐲[t])
+		for t=1:ntimesteps
+			for i = 1:n𝐮
+				q = indices𝐮[i]
+				∇p𝐘[q][t] .*= spiketrainmodels[n].𝐔[t,i]
+			end
+			for i = 1:n𝐯
+				q = indices𝐯[i]
+				∇p𝐘[q][t][:,1] .*= spiketrainmodels[n].𝚽[t,i].*f𝛏
+				∇p𝐘[q][t][:,2] .*= 0.0
+			end
+			∇p𝐘[indexb][t][:,1] .*= 𝚽𝐯[t].*∂f𝛏_∂b
+			∇p𝐘[indexb][t][:,2] .*= 0.0
+			for j = 1:Ξ
+				for k = 1:K
+					if k == 1
+						Xw = 𝐔𝐮[t] + 𝚽𝐯[t]*f𝛏[j]
+					else
+						Xw = 𝐔𝐮[t]
+					end
+					∂p𝑦ₙₜ_∂Xw, p𝑦ₙₜ = dPoissonlikelihood(Δt, Xw, spiketrainmodels[n].𝐲[t])
 					p𝐘[t][j,k] *= p𝑦ₙₜ
 					for q in indicesbefore
 						∇p𝐘[q][t][j,k] *= p𝑦ₙₜ
@@ -164,16 +168,40 @@ RETURN
 
 EXAMPLE
 ```julia-repl
-using FHMDDM
-model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
-maxabsdiff = FHMDDM.compare∇p𝐘(model)
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
+julia> rng = MersenneTwister(1234)
+julia> 	for i in eachindex(model.trialsets)
+			for n in eachindex(model.trialsets[i].mpGLMs)
+				model.trialsets[i].mpGLMs[n].θ.𝐮 .= rand(rng, length(model.trialsets[i].mpGLMs[n].θ.𝐮))
+				model.trialsets[i].mpGLMs[n].θ.𝐯 .= rand(rng, length(model.trialsets[i].mpGLMs[n].θ.𝐯))
+				model.trialsets[i].mpGLMs[n].θ.b .= rand(rng, length(model.trialsets[i].mpGLMs[n].θ.b))
+			end
+		end
+julia> maxabsdiff = FHMDDM.compare∇p𝐘(model)
+	16-element Vector{Float64}:
+		 3.469446951953614e-18
+		 3.469446951953614e-18
+		 4.336808689942018e-18
+		 3.469446951953614e-18
+		 4.336808689942018e-18
+		 4.336808689942018e-18
+		 3.469446951953614e-18
+		 8.131516293641283e-19
+		 3.469446951953614e-18
+		 4.336808689942018e-18
+		 4.336808689942018e-18
+		 3.469446951953614e-18
+		 3.469446951953614e-18
+		 3.469446951953614e-18
+		 3.469446951953614e-18
+		 9.920449878242366e-18
 ```
 """
 function compare∇p𝐘(model::Model)
 	@unpack trialsets = model
 	@unpack Δt, K, Ξ = model.options
 	trialinvariant = Trialinvariant(model)
-	maxbsdiff = 0.0
 	glmθs = map(glm->glm.θ, model.trialsets[1].mpGLMs)
 	concatenatedθ = zeros(0)
 	for n in eachindex(glmθs)
