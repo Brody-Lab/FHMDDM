@@ -150,7 +150,7 @@ function ddPoissonlikelihood(Δt::Real, L::Real, y::Integer)
     elseif y ==3
         p = λΔt^3 / expλΔt / 6
         ∂p_∂λ = Δt*(λΔt^2/expλΔt/2 - p)
-        ∂²p_∂λ∂λ = Δt^2*(p + (1-λ)*λΔt/expλΔt)
+        ∂²p_∂λ∂λ = Δt^2*(p + (1-λΔt)*λΔt/expλΔt)
     else
         p = λΔt^y / expλΔt / factorial(y)
         ∂p_∂λ = Δt*(λΔt^(y-1)/expλΔt/factorial(y-1) - p)
@@ -180,7 +180,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> FHMDDM.comparederivatives(0.01, -0.5, 3)
+julia> FHMDDM.comparederivatives(0.01, 15, 3)
 
 """
 function comparederivatives(Δt::Real, L::Real, y::Integer)
@@ -189,62 +189,4 @@ function comparederivatives(Δt::Real, L::Real, y::Integer)
     automatic_2nd = ForwardDiff.hessian(f, [L])[1]
     handcoded_2nd, handcoded_1st, p = ddPoissonlikelihood(Δt, L, y)
     return abs(handcoded_2nd-automatic_2nd), abs(handcoded_1st-automatic_1st)
-end
-
-"""
-	conditionallikelihood(Δt,j,k,spiketrainmodels,t,Ξ,x)
-
-Conditional likelihood of the spiking of a population, for automatic differentiation
-
-ARGUMENT
--`Δt`: time step size
--`j`: index of the state of the accumulator
--`k`: index of the state of the coupling
--`spiketrainmodels`: a vector whose element contains one trial's data of the Poisson mixture generalized linear model of a neuron's spike train. Each element corresponds to a neuron.
--`t`: index of the time step
--`x`: parameters of each neuron's generalized linear model, concatenated
-
-RETURN
--likelihood of the population spiking at time step t conditioned on the accumulator being in the j-th state and the coupling in the i-th state
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
-julia> nparameters = length(model.trialsets[1].mpGLMs) * (length(model.trialsets[1].mpGLMs[1].θ.𝐮) + length(model.trialsets[1].mpGLMs[1].θ.𝐯) + 1)
-julia> x = rand(MersenneTwister(1234), nparameters)
-julia> FHMDDM.conditionallikelihood(model.options.Δt, 27, 1, model.trialsets[1].trials[1].spiketrainmodels, 10, model.options.Ξ, x)
-	0.013017384655839466
-```
-"""
-function conditionallikelihood(Δt::Real,
-							   j::Integer,
-							   k::Integer,
-							   spiketrainmodels::Vector{<:SpikeTrainModel},
-							   t::Integer,
-							   Ξ::Integer,
-							   x::Vector{<:Real})
-	ξ = (2j-Ξ-1)/(Ξ-1) # normalized
-	n𝐮 = size(spiketrainmodels[1].𝐔,2)
-	n𝐯 = size(spiketrainmodels[1].𝚽,2)
-	q = 0
-	p = 1.0
-	for n in eachindex(spiketrainmodels)
-		𝐮 = x[q+1:q+n𝐮]
-		q+=n𝐮
-		𝐯 = x[q+1:q+n𝐯]
-		q+=n𝐯
-		b = x[q+1]
-		q+=1
-		Xw = spiketrainmodels[n].𝐔[t,:] ⋅ 𝐮
-		if k == 1
-			Xw += transformaccumulator(b,ξ)*(spiketrainmodels[n].𝚽[t,:] ⋅ 𝐯)
-		end
-		λ = softplus(Xw)
-	    λΔt = λ*Δt
-	    expλΔt = exp(λΔt)
-		y = spiketrainmodels[n].𝐲[t]
-		p *= λΔt^y / expλΔt / factorial(y)
-	end
-	return p
 end
