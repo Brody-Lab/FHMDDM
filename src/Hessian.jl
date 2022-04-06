@@ -1,229 +1,253 @@
 """
-Gradient of the joint posterior probability of the latent variables
+	∇∇loglikelihood
 
-The gradient is computed for the m-th trial of the i-th trialset, the t-th timestep in that trialet, and for accumulator state iᵃ and coupling variable state iᶜ:
-    ∇p(a = ξ(iᵃ), c = iᶜ ∣ 𝐘ᵢₘ, dᵢₘ)
-
-The recommended dataset should have a few number of trials
-
-ARGUMENT
--`i`: trialset
--`m`: trial
--`t`: time step
--`iᵃ`: index of the accumulator
--`iᶜ`: index of the coupling variable
--`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
-
-RETURN
--a vector corresponding to the gradient of the posterior probability
+Hessian of the observations in one trial
 """
-function ∇posterior(i::Integer, m::Integer, t::Integer, iᵃ::Integer, iᶜ::Integer, model::Model)
-    @unpack options, θnative, θreal, trialsets = model
-	@unpack Ξ, K = options
-	trialinvariant = Trialinvariant(model; purpose="gradient")
-	p𝐘𝑑=map(model.trialsets) do trialset
-			map(trialset.trials) do trial
-				map(1:trial.ntimesteps) do t
-					ones(T,Ξ,K)
-				end
-			end
-		end
-    likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
-	∇posterior(p𝐘𝑑[i][m], mpGLMs, trialinvariant, θnative, trialsets[i].trials[m])
-end
-
-"""
-Compute the gradient of the posterior probabilities for each time step in one trial
-
-RETURN
--a nested array whose element [t][i][j][q] corresponds the t-th time step, j-th accumulator state, j-th coupling state, and q-th parameter
-"""
-function ∇posterior(glmθs::Vector{<:GLMθ}, θnative::Latentθ, trial::Trial, trialinvariant::Trialinvariant)
+function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
+						 θnative::Latentθ,
+						 trial::Trial,
+						 trialinvariant::Trialinvariant)
 	@unpack clicks = trial
 	@unpack inputtimesteps, inputindex = clicks
-	@unpack Aᵃsilent, dAᵃsilentdμ, dAᵃsilentdσ², dAᵃsilentdB, Aᶜ, Aᶜᵀ, Δt, K, 𝛚, πᶜᵀ, Ξ, 𝛏 = trialinvariant
-	dℓdk, dℓdλ, dℓdϕ, dℓdσ²ₐ, dℓdσ²ₛ, dℓdB = 0., 0., 0., 0., 0., 0.
-	∑χᶜ = zeros(T, K,K)
-	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
-	σ = √θnative.σ²ᵢ[1]
-	πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB = zeros(T, Ξ), zeros(T, Ξ), zeros(T, Ξ), zeros(T, Ξ)
-	probabilityvector!(πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB, μ, 𝛚, σ, 𝛏)
-	n_steps_with_input = length(clicks.inputtimesteps)
-	Aᵃ = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdμ = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdσ² = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdB = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
-	Δc = zeros(T, n_steps_with_input)
-	∑c = zeros(T, n_steps_with_input)
-	C, dCdk, dCdϕ = ∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	for i in 1:n_steps_with_input
-		t = clicks.inputtimesteps[i]
-		cL = sum(C[clicks.left[t]])
-		cR = sum(C[clicks.right[t]])
-		stochasticmatrix!(Aᵃ[i], dAᵃdμ[i], dAᵃdσ²[i], dAᵃdB[i], cL, cR, trialinvariant, θnative)
-		Δc[i] = cR-cL
-		∑c[i] = cL+cR
+	@unpack Aᵃsilent, dAᵃsilentdμ, dAᵃsilentdσ², dAᵃsilentdB, Aᶜ, Aᶜᵀ, Δt, K, 𝛚, πᶜᵀ, Ξ, 𝛏 = trialinvariant # need second derivative of the silent transition matrix and silent prior probability (without including `previousreward`)
+	C, dCdk, dCdϕ, dCdkdk, dCdkdϕ, dCdϕdϕ = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	for t =1:trial.ntimesteps
+		∇∇conditionallikelihood!(∇∇pY, ∇pY, pY, glmθs, t, trial.spiketrainmodels, trialinvariant)
+		# then, compute using ∇∇p𝐘, ∇p𝐘, p𝐘
 	end
-
-	p𝐘𝑑, ∂p𝐘𝑑_∂w, ∂p𝐘𝑑_∂ψ = ∇conditionalikelihood(choice, glmθs, θnative.ψ[1], trial.spiketrainmodels, trialinvariant) #to write
-
-	D, f = forward(Aᵃ, inputindex, πᵃ, p𝐘𝑑, trialinvariant)
 end
 
 """
-	∇conditionallikelihood(glmθs, spiketrainmodels, trialinvariant)
+	∇∇conditionallikelihood!
 
-Gradient of the conditional likelihood of the spiking of simultaneously recorded neurons
+Hessian of the conditional likelihood of the population spiking at one time step
 
-ARGUMENT
--`glmθs`: a vector whose each element contains the parameters of the Poisson mixture generalized linear model of a neuron's spike train. Each element corresponds to a neuron.
--`spiketrainmodels`: a vector whose element contains one trial's data of the Poisson mixture generalized linear model of a neuron's spike train. Each element corresponds to a neuron.
--`trialinvariant`: a structure containing quantities that are used in each trial
+MODIFIED ARGUMENTS
+-`∇∇pY`: a nested array whose element ∇∇pY[q,r][i,j] corresponds to the second partial derivative of the conditional likelihood of population spiking, given that the accumulator is in the i-th state and the coupling in the j-th state, with respect the q-th and r-th parameters
+-`∇pY`: a nested array whose element ∇pY[q][i,j] corresponds to the partial derivative of the conditional likelihood of population spiking, given that the accumulator is in the i-th state and the coupling in the j-th state, with respect the q-th parameter
+-`pY`: an array whose element pY[i,j] corresponds to the conditional likelihood of population spiking, given that the accumulator is in the i-th state and the coupling in the j-th state
 
-RETURN
--`∇p𝐘`: partial derivatives; element ∇p𝐘[q][t][j,k] corresponds to the partial derivative of the product of the likelihood of all neurons' spike count at time step t conditioned on the accumulator in the j-th state and the coupling in the k-th state, with respect to the q-th parameter. The parameters of the GLMs of all neurons are concatenated.
--`p𝐘`: conditional likelihood; element p𝐘[t][j,k] corresponds to the product of the likelihood of all neurons' spike count at time step t conditioned on the accumulator in the j-th state and the coupling in the k-th state
+UNMODFIED ARGUMENTS
+-`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
+-`t`: time step
+-`spiketrainmodels`: a vector whose each element is a structure containing the input and observations of the generalized linear model of a neuron
+-`trialinvariant`: a structure containing quantities used in each trial
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
-julia> trialinvariant = Trialinvariant(model)
-julia> glmθs = map(glm->glm.θ, model.trialsets[1].mpGLMs)
-julia> ∇p𝐘, p𝐘 = FHMDDM.∇conditionallikelihood(glmθs, model.trialsets[1].trials[1].spiketrainmodels, trialinvariant)
+using FHMDDM
+model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
+glmθs = map(x->x.θ, model.trialsets[1].mpGLMs)
+t = 10
+spiketrainmodels = model.trialsets[1].trials[1].spiketrainmodels
+trialinvariant = Trialinvariant(model; purpose = "gradient")
+nparameters = length(glmθs)*(length(glmθs[1].𝐮) + length(glmθs[1].𝐯))
+Ξ = model.options.Ξ
+K = model.options.K
+pY = zeros(Ξ,K)
+∇pY = collect(zeros(Ξ,K) for n=1:nparameters)
+∇∇pY = map(index->zeros(Ξ,K), CartesianIndices((nparameters,nparameters)))
+FHMDDM.∇∇conditionallikelihood!(∇∇pY, ∇pY, pY, glmθs, t, spiketrainmodels, trialinvariant)
 ```
 """
-function ∇conditionallikelihood(glmθs::Vector{<:GLMθ},
-							    spiketrainmodels::Vector{<:SpikeTrainModel},
-							    trialinvariant::Trialinvariant)
-	@unpack Δt, K, Ξ = trialinvariant
-	𝛏 = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1) # normalized
-	ntimesteps = length(spiketrainmodels[1].𝐲)
+function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
+								  ∇pY::Vector{<:Matrix{<:Real}},
+								  pY::Matrix{<:Real},
+								  glmθs::Vector{<:GLMθ},
+								  t::Integer,
+								  spiketrainmodels::Vector{<:SpikeTrainModel},
+								  trialinvariant::Trialinvariant)
+	@unpack Δt, K, Ξ, 𝛏 = trialinvariant
 	nneurons = length(spiketrainmodels)
 	n𝐮 = length(glmθs[1].𝐮)
 	n𝐯 = length(glmθs[1].𝐯)
-	nparameters_per_neuron = n𝐮+n𝐯+1
+	nparameters_per_neuron = n𝐮+n𝐯
 	nparameters = nneurons*nparameters_per_neuron
-	p𝐘 = map(t->ones(Ξ,K), 1:ntimesteps)
-	∇p𝐘 = map(q->map(t->ones(Ξ,K), 1:ntimesteps), 1:nparameters)
+	zeroindex = cld(Ξ,2)
+	pY .= 1.0
 	for n = 1:nneurons
-		f𝛏 = map(ξ->transformaccumulator(glmθs[n].b[1], ξ), 𝛏)
-		∂f𝛏_∂b = map(ξ->dtransformaccumulator(glmθs[n].b[1], ξ), 𝛏)
-		𝐔𝐮 = spiketrainmodels[n].𝐔 * glmθs[n].𝐮
-		𝚽𝐯 = spiketrainmodels[n].𝚽 * glmθs[n].𝐯
+		𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,:] ⋅ glmθs[n].𝐮
+		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,:] ⋅ glmθs[n].𝐯
 		index1 = (n-1)*nparameters_per_neuron+1
 		indices𝐮 = index1 : index1+n𝐮-1
 		indices𝐯 = index1+n𝐮 : index1+n𝐮+n𝐯-1
-		indexb = index1+n𝐮+n𝐯
-		indicesbefore = 1:index1-1
-		indices = index1:index1+nparameters_per_neuron-1
-		indicesafter = indices[end]+1:nparameters
-		for t=1:ntimesteps
-			for i = 1:n𝐮
-				q = indices𝐮[i]
-				∇p𝐘[q][t] .*= spiketrainmodels[n].𝐔[t,i]
+		indices_thisneuron = index1:index1+n𝐮+n𝐯-1
+		indices_previousneurons = 1:index1-1
+		indices_subsequentneurons = index1+n𝐮+n𝐯:nparameters
+		for i = 1:Ξ
+			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*𝛏[i]
+			∂²py_∂L∂L, ∂py_∂L, py = ddPoissonlikelihood(Δt, L, spiketrainmodels[n].𝐲[t])
+			pY[i,1] *= py
+			for j=1:n𝐮
+				q = indices𝐮[j]
+				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝐔[t,j]/py #∂p(yₙ)/∂u * [1/p(yₙ)]
 			end
-			for i = 1:n𝐯
-				q = indices𝐯[i]
-				∇p𝐘[q][t][:,1] .*= spiketrainmodels[n].𝚽[t,i].*f𝛏
-				∇p𝐘[q][t][:,2] .*= 0.0
+			for j=1:n𝐯
+				q = indices𝐯[j]
+				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝚽[t,j]*𝛏[i]/py #∂p(yₙ)/∂v * [1/p(yₙ)]
 			end
-			∇p𝐘[indexb][t][:,1] .*= 𝚽𝐯[t].*∂f𝛏_∂b
-			∇p𝐘[indexb][t][:,2] .*= 0.0
-			for j = 1:Ξ
-				for k = 1:K
-					if k == 1
-						Xw = 𝐔𝐮[t] + 𝚽𝐯[t]*f𝛏[j]
-					else
-						Xw = 𝐔𝐮[t]
-					end
-					∂p𝑦ₙₜ_∂Xw, p𝑦ₙₜ = dPoissonlikelihood(Δt, Xw, spiketrainmodels[n].𝐲[t])
-					p𝐘[t][j,k] *= p𝑦ₙₜ
-					for q in indicesbefore
-						∇p𝐘[q][t][j,k] *= p𝑦ₙₜ
-					end
-					for q in indices
-						∇p𝐘[q][t][j,k] *= ∂p𝑦ₙₜ_∂Xw
-					end
-					for q in indicesafter
-						∇p𝐘[q][t][j,k] *= p𝑦ₙₜ
-					end
+			for j = 1:n𝐮
+				q = indices𝐮[j]
+				for k = j:n𝐮
+					r = indices𝐮[k]
+					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝐔[t,j] * spiketrainmodels[n].𝐔[t,k] / py
+				end
+			end
+			for j = 1:n𝐮
+				q = indices𝐮[j]
+				for k = 1:n𝐯
+					r = indices𝐯[k]
+					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝐔[t,j] * spiketrainmodels[n].𝚽[t,k]*𝛏[i] / py
+				end
+			end
+			for j = 1:n𝐯
+				q = indices𝐯[j]
+				for k = j:n𝐯
+					r = indices𝐯[k]
+					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝚽[t,j] * spiketrainmodels[n].𝚽[t,k]*𝛏[i]^2 / py
+				end
+			end
+			for q in indices_thisneuron
+				for r in indices_previousneurons
+					∇∇pY[q,r][i,1] *= ∇pY[q][i,1]
+					∇∇pY[r,q][i,1] = ∇∇pY[q,r][i,1]
+				end
+				for r in indices_subsequentneurons
+					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∇pY[q][i,1]
 				end
 			end
 		end
 	end
-	return ∇p𝐘, p𝐘
+	for i = 1:Ξ
+		for q = 1:nparameters
+			∇pY[q][i,1] *= pY[i,1]
+			for r = q:nparameters
+				∇∇pY[q,r][i,1] *= pY[i,1]
+				∇∇pY[r,q][i,1] = ∇∇pY[q,r][i,1]
+			end
+		end
+	end
+	if K > 1
+		pY[:,2] .= pY[zeroindex,1]
+		indices𝐮 = vcat(collect((n-1)*nparameters_per_neuron+1:(n-1)*nparameters_per_neuron+n𝐮 for n = 1:nneurons)...)
+		for q in indices𝐮
+			∇pY[q][:,2] .= ∇pY[q][zeroindex,1]
+			for r in indices𝐮
+				∇∇pY[q,r][:,2] .= ∇∇pY[q,r][zeroindex,1]
+			end
+		end
+	end
 end
 
 """
-	compare∇p𝐘(model)
+	compare_conditional_likelihood(model)
 
-Compare the automatically computed and hand coded gradient of the conditional likelihood of the population spiking
+Compare the automatic computed and hand-coded derivatives of the conditional likelihood of population spiking
+
+The second and first partial derivatives are compared at each time step in each trial and for each combination of latent states.
 
 ARGUMENT
--`model`: a structure containing the data, parametes, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+-`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
 
 RETURN
--a vector whose each element shows the maximum absolute difference between the two partial derivatives with respect to each parameter.
+-a matrix whose each element shows the maximum absolute difference between the two second-order partial derivatives with respect to each parameter.
+-a vector whose each element shows the maximum absolute difference between the two first-order partial derivatives with respect to each parameter.
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
-julia> rng = MersenneTwister(1234)
-julia> 	for i in eachindex(model.trialsets)
-			for n in eachindex(model.trialsets[i].mpGLMs)
-				model.trialsets[i].mpGLMs[n].θ.𝐮 .= rand(rng, length(model.trialsets[i].mpGLMs[n].θ.𝐮))
-				model.trialsets[i].mpGLMs[n].θ.𝐯 .= rand(rng, length(model.trialsets[i].mpGLMs[n].θ.𝐯))
-				model.trialsets[i].mpGLMs[n].θ.b .= rand(rng, length(model.trialsets[i].mpGLMs[n].θ.b))
-			end
-		end
-julia> maxabsdiff = FHMDDM.compare∇p𝐘(model)
-	16-element Vector{Float64}:
-		 3.469446951953614e-18
-		 3.469446951953614e-18
-		 4.336808689942018e-18
-		 3.469446951953614e-18
-		 4.336808689942018e-18
-		 4.336808689942018e-18
-		 3.469446951953614e-18
-		 8.131516293641283e-19
-		 3.469446951953614e-18
-		 4.336808689942018e-18
-		 4.336808689942018e-18
-		 3.469446951953614e-18
-		 3.469446951953614e-18
-		 3.469446951953614e-18
-		 3.469446951953614e-18
-		 9.920449878242366e-18
+using FHMDDM
+model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
+ΔH, Δg, Δp = FHMDDM.compare_conditional_likelihood(model)
 ```
 """
-function compare∇p𝐘(model::Model)
+function compare_conditional_likelihood(model::Model)
 	@unpack trialsets = model
 	@unpack Δt, K, Ξ = model.options
 	trialinvariant = Trialinvariant(model)
 	glmθs = map(glm->glm.θ, model.trialsets[1].mpGLMs)
 	concatenatedθ = zeros(0)
 	for n in eachindex(glmθs)
-		concatenatedθ = vcat(concatenatedθ, glmθs[n].𝐮, glmθs[n].𝐯, glmθs[n].b)
+		concatenatedθ = vcat(concatenatedθ, glmθs[n].𝐮, glmθs[n].𝐯)
 	end
+	Δp = 0.0
 	nparameters = length(concatenatedθ)
-	automaticgradient = similar(concatenatedθ)
-	maxabsdiff = zeros(nparameters)
+	gauto, Δg = zeros(nparameters), zeros(nparameters)
+	Hauto, ΔH = zeros(nparameters, nparameters), zeros(nparameters, nparameters)
+	phand = zeros(Ξ,K)
+	ghand = collect(zeros(Ξ,K) for n=1:nparameters)
+	Hhand = map(index->zeros(Ξ,K), CartesianIndices((nparameters,nparameters)))
 	for m in eachindex(model.trialsets[1].trials)
 		trial = model.trialsets[1].trials[m]
-		∇p𝐘, p𝐘 = ∇conditionallikelihood(glmθs, trial.spiketrainmodels, trialinvariant)
 		for t = 1:trial.ntimesteps
+			∇∇conditionallikelihood!(Hhand, ghand, phand, glmθs, t, trial.spiketrainmodels, trialinvariant)
 			for j = 1:Ξ
 				for k = 1:K
-					f(x) = conditionallikelihood(Δt,j,k,trial.spiketrainmodels,t,Ξ,x)
-					automaticgradient = ForwardDiff.gradient!(automaticgradient, f, concatenatedθ)
+					f(x) = conditionallikelihood(j,k,trial.spiketrainmodels,t,trialinvariant,x)
+					ForwardDiff.hessian!(Hauto, f, concatenatedθ)
+					ForwardDiff.gradient!(gauto, f, concatenatedθ)
+					Δp = max(Δp, abs(f(concatenatedθ) - phand[j,k]))
 					for q=1:nparameters
-						maxabsdiff[q] = max(maxabsdiff[q], abs(automaticgradient[q] - ∇p𝐘[q][t][j,k]))
+						Δg[q] = max(Δg[q], abs(gauto[q] - ghand[q][j,k]))
+						for r = q:nparameters
+							ΔH[q,r] = ΔH[r,q] = max(ΔH[q,r], abs(Hauto[q,r] - Hhand[q,r][j,k]))
+						end
 					end
 				end
 			end
 		end
 	end
-	maxabsdiff
+	ΔH, Δg, Δp
+end
+
+"""
+	conditionallikelihood(j,k,spiketrainmodels,t,trialinvariant,x)
+
+Conditional likelihood of the population spiking response, for automatic differentiation
+
+ARGUMENT
+-`j`: index of the state of the accumulator
+-`k`: index of the state of the coupling
+-`spiketrainmodels`: a vector whose element contains one trial's data of the Poisson mixture generalized linear model of a neuron's spike train. Each element corresponds to a neuron.
+-`t`: index of the time step
+-`trialinvariant`: a structure containing quantities used in each trial
+-`x`: parameters of each neuron's generalized linear model, concatenated
+
+RETURN
+-likelihood of the population spiking at time step t conditioned on the accumulator being in the j-th state and the coupling in the i-th state
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
+julia> nparameters = length(model.trialsets[1].mpGLMs) * (length(model.trialsets[1].mpGLMs[1].θ.𝐮) + length(model.trialsets[1].mpGLMs[1].θ.𝐯) + 1)
+julia> x = rand(MersenneTwister(1234), nparameters)
+julia>
+julia> FHMDDM.conditionallikelihood(27, 1, model.trialsets[1].trials[1].spiketrainmodels, Trialinvariant(model), x)
+	0.013017384655839466
+```
+"""
+function conditionallikelihood(j::Integer,
+							   k::Integer,
+							   spiketrainmodels::Vector{<:SpikeTrainModel},
+							   t::Integer,
+                               trialinvariant::Trialinvariant,
+							   x::Vector{<:Real})
+    @unpack Δt, 𝛏, Ξ = trialinvariant
+	n𝐮 = size(spiketrainmodels[1].𝐔,2)
+	n𝐯 = size(spiketrainmodels[1].𝚽,2)
+	q = 0
+	p = 1.0
+	for n in eachindex(spiketrainmodels)
+		𝐮 = x[q+1:q+n𝐮]
+		q+=n𝐮
+		𝐯 = x[q+1:q+n𝐯]
+		q+=n𝐯
+		L = spiketrainmodels[n].𝐔[t,:] ⋅ 𝐮
+		if k == 1
+			L += 𝛏[j]*(spiketrainmodels[n].𝚽[t,:] ⋅ 𝐯)
+		end
+		λ = softplus(L)
+        p *= Poissonlikelihood(λ*Δt, spiketrainmodels[n].𝐲[t])
+	end
+	return p
 end
