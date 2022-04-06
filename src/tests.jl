@@ -183,46 +183,6 @@ function compareHessians(B::Real, μ::Real, σ²::Real, Ξ::Integer)
 end
 
 """
-	compareHessians(clicks, k, ϕ)
-
-Compare the automatically differentiated and hand-coded second-order partial derivatives of the adapted click magnitude with respect to k and ϕ
-
-INPUT
--`clicks`: a structure containing the times, sources, and time steps of the clicks in one trial
--`k`: change rate of adaptation
--`ϕ`: strength of adaptation
-
-RETURN
--`maxabsdiff`: maximum absolute difference between the automatically computed and hand-coded Hessians of the adapated impacts
--`automatic_Hessians`: a vector of matrices whose i-th element is the automatically computed Hessian matrix of the adapted strength of the i-th click
--`handcoded_Hessians`: a vector of matrices whose i-th element is the hand-coded Hessian matrix of the adapted strength of the i-th click
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, Random
-julia> clicks = FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30; rng=MersenneTwister(1234))
-julia> maxabsdiff, automatic_Hessians, handcoded_Hessians = FHMDDM.compareHessians(clicks, 0.5, 0.8)
-julia> maxabsdiff
-	5.329070518200751e-15
-```
-"""
-function compareHessians(clicks::Clicks, k::Real, ϕ::Real)
-	C, dCdk, dCdϕ, dCdkdk, dCdkdϕ, dCdϕdϕ = FHMDDM.∇∇adapt(clicks, k, ϕ)
-	x₀ = [k,ϕ]
-	nclicks = length(clicks.time)
-	automatic_Hessians, handcoded_Hessians = collect(zeros(2,2) for i=1:nclicks), collect(zeros(2,2) for i=1:nclicks)
-	for i = 1:nclicks
-		f(x) = adapt(clicks, x[1], x[2])[i]
-		ForwardDiff.hessian!(automatic_Hessians[i], f, x₀)
-		handcoded_Hessians[i][1,1] = dCdkdk[i]
-		handcoded_Hessians[i][1,2] = handcoded_Hessians[i][2,1] = dCdkdϕ[i]
-		handcoded_Hessians[i][2,2] = dCdϕdϕ[i]
-	end
-	maxabsdiff = maximum(map((x,y)->maximum(abs.(x.-y)), automatic_Hessians, handcoded_Hessians))
-	return maxabsdiff, automatic_Hessians, handcoded_Hessians
-end
-
-"""
 	compareHessians(B,clicks,Δt,j,k,λ,ϕ,σ²ₐ,σ²ₛ,t,Ξ)
 
 Compare the automatically differentiated and hand-coded second-order partial derivatives with respect to the parameters governing transition dynamics
