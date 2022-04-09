@@ -388,6 +388,7 @@ end
 First and second partial derivatives of a probability vector of the accumulator and quantities used for computing these derivatives
 """
 @with_kw struct Probabilityvector{TI<:Integer,
+								  TVI<:Vector{<:Integer},
 								  TR<:Real,
 								  TVR<:Vector{<:Real}}
 	"------hyperparameters------"
@@ -436,7 +437,7 @@ First and second partial derivatives of a probability vector of the accumulator 
 	"a vector whose element `d²𝛍_dBdλ[j]` represents the derivative of the mean given that in the previous time step, the accumulator had the j-th discrete value, with respect to the bound height and the feedback parameters"
 	d²𝛍_dBdλ::TVR = Δt.*expλΔt.*d𝛏_dB
 	"location of the previous reward"
-	previousreward::TVR = zeros(Int,1)
+	previousreward::TVI = zeros(Int,1)
 
 	"------intermediate quantities updated at each time step------"
 	"differential auditory input: sum of the adapted magnitude from all right clicks, minus the summed adapted magnitudes from left clicks, for all clicks in the time step"

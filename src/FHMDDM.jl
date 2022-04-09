@@ -13,7 +13,6 @@ using   Distributed, # packages whose name and exported function is in scope
         StatsFuns
 import  Flux # packages whose name but not its exported function is in scope
 export  adapt, # module-specific functions and types in this module that we can call in the REPL without preceding with the name of the module
-        approximatetransition!,
         Clicks,
         CVIndices,
         CVResults,
@@ -32,7 +31,6 @@ export  adapt, # module-specific functions and types in this module that we can 
         dictionary,
         differentiateℓ_wrt_ψ,
         do_not_fit_ψ,
-        drectifya,
         dtransformaccumulator,
         estimatefilters,
         estimatefilters!,

@@ -195,15 +195,15 @@ julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
 julia> Ξ = model.options.Ξ
 julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, Ξ);
-julia> ∇∇Aᵃinput = map(i->zeros(Ξ,Ξ), CartesianIndices((6,6)));
-julia> ∇Aᵃinput = map(i->zeros(Ξ,Ξ), 1:6);
-julia> Aᵃinput = zeros(Ξ,Ξ);
-julia> Aᵃinput[1,1] = Aᵃinput[Ξ, Ξ] = 1.0;
+julia> ∇∇A = map(i->zeros(Ξ,Ξ), CartesianIndices((6,6)));
+julia> ∇A = map(i->zeros(Ξ,Ξ), 1:6);
+julia> A = zeros(Ξ,Ξ);
+julia> A[1,1] = A[Ξ, Ξ] = 1.0;
 julia> clicks = model.trialsets[1].trials[1].clicks;
 julia> adaptedclicks = FHMDDM.∇∇adapt(clicks, model.θnative.k[1], model.θnative.ϕ[1]);
 julia> t = 3
 julia> FHMDDM.update_for_∇∇transition_probabilities!(P, adaptedclicks, clicks, t)
-julia> FHMDDM.∇∇transitionmatrix!(∇∇Aᵃinput, ∇Aᵃinput, Aᵃinput, P)
+julia> FHMDDM.∇∇transitionmatrix!(∇∇A, ∇A, A, P)
 ```
 """
 function ∇∇transitionmatrix!(∇∇A::Matrix{<:Matrix{<:Real}},
@@ -252,13 +252,30 @@ function ∇transitionmatrix!(∇A::Vector{<:Matrix{<:Real}},
 end
 
 """
-	∇transitionmatrix!(∇A, A, P)
+	transitionmatrix!(A, P)
 
 Computes the the accumulator's transition matrix at one time step
 
 MODIFIED ARGUMENT
 -`A`: Transition matrix of the accumulator. The element `A[i,j]` corresponds to `p{a(t) = ξ(i) ∣ a(t-1) = ξ(j)}`
 -'P': a structure containing the first and second partial derivatives of a probability vector of the accumulator and quantities used for computing these derivatives
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+julia> A = zeros(P.Ξ,P.Ξ);
+julia> A[1,1] = A[P.Ξ, P.Ξ] = 1.0;
+julia> clicks = model.trialsets[1].trials[1].clicks;
+julia> adaptedclicks = FHMDDM.∇∇adapt(clicks, model.θnative.k[1], model.θnative.ϕ[1]);
+julia> t = 3
+julia> FHMDDM.update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+julia> FHMDDM.transitionmatrix!(A, P)
+julia> Aapprox = zeros(P.Ξ,P.Ξ);
+julia> FHMDDM.approximatetransition!(Aapprox, P.Δt, P.Δξ, model.θnative.λ[1], P.Δc[1], P.Ξ, P.σ²[1], P.𝛏)
+julia> maximum(abs.(A .- Aapprox))
+```
 """
 function transitionmatrix!(A::Matrix{<:Real},
 						   P::Probabilityvector)
@@ -866,11 +883,49 @@ function differentiate_μ_wrt_Δcλλ(Δt::AbstractFloat, λ::Real)
 end
 
 """
+	compare_exact_approximate_transition_matrices(model)
+
+Maximum absolute difference between the exact and approximate evaluation of the transition matrix
+
+Approximate computation of the transition matrix is based on DePasquale et al., (2022)
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
+julia> maxabsdiff = FHMDDM.compare_exact_approximate_transition_matrices(model)
+```
+"""
+function compare_exact_approximate_transition_matrices(model::Model)
+	@unpack Δt, Ξ = model.options
+	Aexact, Aapprox, maxabsdiff = zeros(Ξ,Ξ), zeros(Ξ,Ξ), zeros(Ξ,Ξ)
+	Aexact[1,1] = Aexact[Ξ,Ξ] = 1.0
+	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+	for i in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[i].trials)
+			trial = model.trialsets[i].trials[m]
+			adaptedclicks = adapt(trial.clicks, model.θnative.k[1], model.θnative.ϕ[1])
+			for t = 2:trial.ntimesteps
+				update_for_transition_probabilities!(P, adaptedclicks, trial.clicks, t)
+				transitionmatrix!(Aexact, P)
+				approximatetransition!(Aapprox, P.Δt, P.Δξ, model.θnative.λ[1], P.Δc[1], P.Ξ, P.σ²[1], P.𝛏)
+				for ij in eachindex(maxabsdiff)
+					maxabsdiff[ij] = max(maxabsdiff[ij], abs(Aapprox[ij] - Aexact[ij]))
+				end
+			end
+		end
+	end
+	return maxabsdiff
+end
+
+"""
     approximatetransition!(Aᵃ, dt, dx, λ, μ, n, σ², xc)
 
 Compute the approximate transition matrix ``𝑝(𝑎ₜ ∣ 𝑎ₜ₋₁, clicks(𝑡), 𝜃)`` for a single time bin and store it in `Aᵃ`.
 
 The computation makes use of the `λ`, a scalar indexing leakiness or instability; `μ` and `σ²`, mean and variance of the Gaussian noise added, time bin size `dt`, size of bins of the accumulator variable `dx`, number of bins of the accumulator variables `n`, and bin centers `xc`
+
+The implementation is based on DePasquale et al., (2022)
 """
 function approximatetransition!(Aᵃ,
 	                           dt::AbstractFloat,
