@@ -381,3 +381,254 @@ Results of cross-validation
 	"rll_spikes[i][n] indicate the time-averaged log-likelihood of the spike train of the n-th neuron in the -th trialset, relative to the baseline time-averaged log-likelihood computed under a Poisson distribution parametrized by mean spike train response"
 	rll_spikes::VVF
 end
+
+"""
+	Probabilityvector
+
+First and second partial derivatives of a probability vector of the accumulator and quantities used for computing these derivatives
+"""
+@with_kw struct Probabilityvector{TI<:Integer,
+								  TR<:Real,
+								  TVR<:Vector{<:Real}}
+	"------hyperparameters------"
+	"duration of the time step"
+	Δt::TR
+	"number of discrete states of the accumulator"
+	Ξ::TI
+
+	"------parameters------"
+	"parameter for bound height"
+	B::TR
+	"parameter for adptation change rate"
+	k::TR
+	"parameter for feedback"
+	λ::TR
+	"parameter for a constant offset in the mean in the prior probability"
+	μ₀::TR
+	"parameter for adaptation strength"
+	ϕ::TR
+	"parameter for the variance of the diffusion noise"
+	σ²ₐ::TR
+	"parameter for the variance of the prior probability"
+	σ²ᵢ::TR
+	"parameter for the variance of the per-click noise"
+	σ²ₛ::TR
+	"parameter for the weight of the previous reward's location"
+	wₕ::TR
+
+	"------intermediate quantities constant across time steps------"
+	λΔt::TR = λ*Δt
+	expλΔt::TR = exp(λΔt)
+	"a vector representing the derivative of each discrete value of the accumulator with respect to the bound height"
+	d𝛏_dB::TVR = (2collect(1:Ξ).-Ξ.-1)./(Ξ-2)
+	"a vector representing discrete values of the accumulator"
+	𝛏::TVR = B.*d𝛏_dB
+	"spacing between consecutive discrete values of the accumulator"
+	Δξ::TR = 𝛏[2]-𝛏[1]
+	"derivative of the mean of a probability vector at one time step with respect to the differential auditory input (sum of the adapted magnitude from all right clicks, minus the summed adapted magnitudes from left clicks, for all clicks in the time step)"
+	dμ_dΔc::TR = differentiate_μ_wrt_Δc(Δt, λ)
+	"second derivative of the mean with respect to the differential auditory input and the feedback parameter "
+	d²μ_dΔcdλ::TR = differentiate_μ_wrt_Δcλ(Δt, λ)
+	"third derivative of the mean with respect to the differential auditory input and the feedback parameter twice"
+	d³μ_dΔcdλdλ::TR = differentiate_μ_wrt_Δcλλ(Δt, λ)
+	"derivative of the variance of a probability vector of a probability vector at one time step with respect to the aggregate auditory input (sum of the adapted magnitude from all right clicks, plus the summed adapted magnitudes from left clicks, for all clicks in the time step)"
+	dσ²_d∑c::TR = σ²ₛ
+	"a vector whose element `d²𝛍_dBdλ[j]` represents the derivative of the mean given that in the previous time step, the accumulator had the j-th discrete value, with respect to the bound height and the feedback parameters"
+	d²𝛍_dBdλ::TVR = Δt.*expλΔt.*d𝛏_dB
+	"location of the previous reward"
+	previousreward::TVR = zeros(Int,1)
+
+	"------intermediate quantities updated at each time step------"
+	"differential auditory input: sum of the adapted magnitude from all right clicks, minus the summed adapted magnitudes from left clicks, for all clicks in the time step"
+	Δc::TVR = fill(NaN,1)
+	"aggregate auditory input: sum of the adapted magnitude from all right clicks, plus the summed adapted magnitudes from left clicks, for all clicks in the time step"
+ 	∑c::TVR = fill(NaN,1)
+	"derivative of the differential auditory input with respect to the adaptation change rate"
+	dΔc_dk::TVR = fill(NaN,1)
+	"derivative of the aggregate auditory input with respect to the adaptation change rate"
+	d∑c_dk::TVR = fill(NaN,1)
+	"derivative of the differential auditory input with respect to the adaptation strength"
+	dΔc_dϕ::TVR = fill(NaN,1)
+	"derivative of the aggregate auditory input with respect to the adaptation strength"
+	d∑c_dϕ::TVR = fill(NaN,1)
+	"second derivative of the differential auditory input with respect to the adaptation change rate"
+	d²Δc_dkdk::TVR = fill(NaN,1)
+	"second derivative of the aggregate auditory input with respect to the adaptation change rate"
+	d²∑c_dkdk::TVR = fill(NaN,1)
+	"second derivative of the differential auditory input with respect to the adaptation change rate and the adaptation strength"
+	d²Δc_dkdϕ::TVR = fill(NaN,1)
+	"second derivative of the aggregate auditory input with respect to the adaptation change rate and the adaptation strength"
+	d²∑c_dkdϕ::TVR = fill(NaN,1)
+	"second derivative of the differential auditory input with respect to the adaptation strength"
+	d²Δc_dϕdϕ::TVR = fill(NaN,1)
+	"second derivative of the aggregate auditory input with respect to the adaptation strength"
+	d²∑c_dϕdϕ::TVR = fill(NaN,1)
+	"variance of the probability vector"
+	σ²::TVR = fill(NaN,1)
+	"standard deviation of the probability vector"
+	σ::TVR = fill(NaN,1)
+	"standard deviation divided by the spacing between discrete values"
+	σ_Δξ::TVR = fill(NaN,1)
+	"standard deviation multiplied by the spacing between discrete values and by 2"
+	σ2Δξ::TVR = fill(NaN,1)
+	"variance multiplied by the spacing between discrete values and by 2"
+	Δξσ²2::TVR = fill(NaN,1)
+	"a vector whose j-th element represents the conditional mean of the probability vector, given that the accumulator in the previous time step being equal to the j-th discrete value"
+	𝛍::TVR = fill(NaN,Ξ)
+	"a vector of derivatives of the conditional means with respect to the feedback parameter"
+	d𝛍_dλ::TVR = fill(NaN,Ξ)
+	"a vector of second derivatives of the conditional means with respect to the feedback parameter"
+	d²𝛍_dλdλ::TVR = fill(NaN,Ξ)
+	"derivative of the mean with respect to the adaptation change rate"
+	dμ_dk::TVR = fill(NaN,1)
+	"derivative of the mean with respect to the adaptation strength"
+	dμ_dϕ::TVR = fill(NaN,1)
+	"second derivative of the mean with respect to the adaptation change rate"
+	d²μ_dkdk::TVR = fill(NaN,1)
+	"second derivative of the mean with respect to the adaptation change rate and adaptation strength"
+	d²μ_dkdϕ::TVR = fill(NaN,1)
+	"second derivative of the mean with respect to the adaptation strength"
+	d²μ_dϕdϕ::TVR = fill(NaN,1)
+	"derivative of the variance with respect to the adaptation change rate"
+	dσ²_dk::TVR = fill(NaN,1)
+	"derivative of the variance with respect to the adaptation strength"
+	dσ²_dϕ::TVR = fill(NaN,1)
+	"second derivative of the variance with respect to the adaptation change rate"
+	d²σ²_dkdk::TVR = fill(NaN,1)
+	"second derivative of the variance with respect to the adaptation change rate and adaptation strength"
+	d²σ²_dkdϕ::TVR = fill(NaN,1)
+	"second derivative of the variance with respect to the adaptation strength"
+	d²σ²_dϕdϕ::TVR = fill(NaN,1)
+
+	"------quantities updated at each time step and for each column of the transition matrix------"
+	"z-scores computed using the discrete value of the accumulator, the mean, and the standard deviation"
+	𝐳::TVR =  fill(NaN,Ξ)
+	"normal probability density function evaluated at each z-score"
+	𝐟::TVR =  fill(NaN,Ξ)
+	"quantities used for computing derivatives with respect to bound height"
+	𝛈::TVR =  fill(NaN,Ξ)
+	"quantities used for computing derivatives with respect to bound height"
+	𝛚::TVR =  fill(NaN,Ξ)
+	"normal cumulative distibution function evaluated at each z-score"
+	Φ::TVR =  fill(NaN,Ξ)
+	"normal complementary cumulative distibution function evaluated at each z-score"
+	Ψ::TVR =  fill(NaN,Ξ)
+	"difference between the normal probability density function evaluated at succesive z-scores"
+	Δf::TVR = fill(NaN,Ξ-1)
+	"difference between the normal standardized distribution function evaluated at succesive z-scores"
+	ΔΦ::TVR = fill(NaN,Ξ-1)
+	"values of the probability vector"
+	𝛑::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the bound height"
+	d𝛑_dB::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the mean"
+	d𝛑_dμ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the variance"
+	d𝛑_dσ²::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation change rate"
+	d𝛑_dk::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the feedback"
+	d𝛑_dλ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the constant offset to the mean of the prior probability"
+	d𝛑_dμ₀::TVR = d𝛑_dμ
+	"derivative of the probability vector with respect to the adaptation strength"
+	d𝛑_dϕ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the variance of the diffusion noise"
+	d𝛑_dσ²ₐ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the variance of the prior probability"
+	d𝛑_dσ²ᵢ::TVR = d𝛑_dσ²
+	"derivative of the probability vector with respect to the variance of the per-click noise"
+	d𝛑_dσ²ₛ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the weight of the location of the previous reward"
+	d𝛑_dwₕ::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the bound height"
+	d²𝛑_dBdB::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the bound height and mean"
+	d²𝛑_dBdμ::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the bound height and variance"
+	d²𝛑_dBdσ²::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the mean"
+	d²𝛑_dμdμ::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the mean and variance"
+	d²𝛑_dμdσ²::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the variance"
+	d²𝛑_dσ²dσ²::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the bound height and the constant offset to the mean of the prior probability"
+	d²𝛑_dBdμ₀::TVR = d²𝛑_dBdμ
+	"derivative of the probability vector with respect to the bound height and the variance of the prior probability"
+	d²𝛑_dBdσ²ᵢ::TVR = d²𝛑_dBdσ²
+	"derivative of the probability vector with respect to the bound height and the weight of the location of the previous reward"
+	d²𝛑_dBdwₕ::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the constant offset to the mean of the prior probability"
+	d²𝛑_dμ₀dμ₀::TVR = d²𝛑_dμdμ
+	"second derivative of the probability vector with respect to the constant offset to the mean of the prior probability and the variance of the prior probability"
+	d²𝛑_dμ₀dσ²ᵢ::TVR = d²𝛑_dμdσ²
+	"second derivative of the probability vector with respect to the constant offset to the mean of the prior probability and the weight of the location of the previous reward"
+	d²𝛑_dμ₀dwₕ::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with respect to the variance of the prior probability"
+	d²𝛑_dσ²ᵢdσ²ᵢ::TVR = d²𝛑_dσ²dσ²
+	"second derivative of the probability vector with respect to the variance of the prior probability and the weight of the location of the previous reward"
+	d²𝛑_dσ²ᵢdwₕ::TVR = fill(NaN,Ξ)
+	"second derivative of the probability vector with to the weight of the location of the previous reward"
+	d²𝛑_dwₕdwₕ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the bound height and the adaptation change rate"
+	d²𝛑_dBdk::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the bound height and the feedback"
+	d²𝛑_dBdλ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the bound height and the adaptation strength"
+	d²𝛑_dBdϕ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the bound height and the variance of the diffusion noise"
+	d²𝛑_dBdσ²ₐ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the bound height and the variance of the per-click noise"
+	d²𝛑_dBdσ²ₛ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation change rate"
+	d²𝛑_dkdk::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation change rate and the feedback"
+	d²𝛑_dkdλ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation change rate and adaptation strength"
+	d²𝛑_dkdϕ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation change rate and variance of the diffusion noise"
+	d²𝛑_dkdσ²ₐ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation change rate and variance of the per-click noise"
+	d²𝛑_dkdσ²ₛ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the feedback strength"
+	d²𝛑_dλdλ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the feedback strength and adaptation strength"
+	d²𝛑_dλdϕ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the feedback strength and variance of the diffusion noise"
+	d²𝛑_dλdσ²ₐ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the feedback strength and variance of the per-click noise"
+	d²𝛑_dλdσ²ₛ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation strength"
+	d²𝛑_dϕdϕ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation strength and variance of the diffusion noise"
+	d²𝛑_dϕdσ²ₐ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the adaptation strength and variance of the per-click noise"
+	d²𝛑_dϕdσ²ₛ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the variance of the diffusion noise"
+	d²𝛑_dσ²ₐdσ²ₐ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the variance of the diffusion noise and the variance of the per-click noise"
+	d²𝛑_dσ²ₐdσ²ₛ::TVR = fill(NaN,Ξ)
+	"derivative of the probability vector with respect to the variance of the per-click noise"
+	d²𝛑_dσ²ₛdσ²ₛ::TVR = fill(NaN,Ξ)
+end
+
+"""
+	Adaptedclicks
+
+The post-adaptation magnitude of each click and the first- and second-order partial derivatives of the post-adaptation magnitude
+"""
+@with_kw struct Adaptedclicks{TVR1<:Vector{<:Real}, TVR2<:Vector{<:Real}}
+	"adapted strengths of the clicks"
+	C::TVR1
+	"derivative of adapted click strengths with respect to the adaptation change rate"
+	dC_dk::TVR2=zeros(0)
+	"derivative of adapted click strengths with respect to the adaptation strength"
+	dC_dϕ::TVR2=zeros(0)
+	"second derivative of adapted click strengths with respect to the adaptation change rate"
+	d²C_dkdk::TVR2=zeros(0)
+	"second derivative of adapted click strengths with respect to the adaptation change rate and adaptation strength"
+	d²C_dkdϕ::TVR2=zeros(0)
+	"second derivative of adapted click strengths with respect to the adaptation strength"
+	d²C_dϕdϕ::TVR2=zeros(0)
+end
