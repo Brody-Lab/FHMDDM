@@ -883,6 +883,172 @@ function differentiate_μ_wrt_Δcλλ(Δt::AbstractFloat, λ::Real)
 end
 
 """
+	check∇∇transitionmatrix(model)
+
+Maximum absolute difference between the automatically computed and hand-coded first and second order partial derivatives of the transition probabilities of the accumulator
+
+ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters for a factorial hidden-Markov drift-diffusion model
+
+RETURN
+-`maxabsdiff∇∇`: maximum absolute difference between the automatically and hand-coded second-order partial derivatives, across of all elements of the transition matrix at each time step, across all time steps, trials, and trialsets. Element (i,j) corresponds to the derivative with respect to the i-th and j-th parameter. The parameters that determine the transition probabilties are ordered alphabetically:
+	θ[1] = B, bound height
+	θ[2] = k, adaptation change rate
+	θ[3] = λ, feedback
+	θ[4] = σ²ₐ, variance of diffusion noise
+	θ[5] = σ²ₛ, variance of per-click noise
+	θ[6] = ϕ, adaptation strength
+-`maxabsdiff∇`: maximum absolute difference between the automatically and hand-coded first-order partial derivatives. The i-th element corresponds to the derivative with respect to the i-th parameter.
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true);
+julia> maxabsdiff∇∇, maxabsdiff∇ = FHMDDM.check∇∇transitionmatrix(model)
+```
+"""
+function check∇∇transitionmatrix(model::Model)
+	@unpack Δt, Ξ = model.options
+	@unpack θnative = model
+	maxabsdiff∇∇, ∇∇auto = zeros(6,6), zeros(6,6)
+	maxabsdiff∇, ∇auto = zeros(6), zeros(6)
+	P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+	∇∇hand = map(i->zeros(Ξ,Ξ), CartesianIndices((6,6)));
+	∇hand = map(i->zeros(Ξ,Ξ), 1:6);
+	A = zeros(Ξ,Ξ);
+	A[1,1] = A[Ξ,Ξ] = 1.0
+	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+	x₀ = [θnative.B[1], θnative.k[1], θnative.λ[1], θnative.ϕ[1], θnative.σ²ₐ[1], θnative.σ²ₛ[1]]
+	for i in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[i].trials)
+			trial = model.trialsets[i].trials[m]
+			adaptedclicks = ∇∇adapt(trial.clicks, model.θnative.k[1], model.θnative.ϕ[1])
+			for t = 2:trial.ntimesteps
+				update_for_∇∇transition_probabilities!(P, adaptedclicks, trial.clicks, t)
+				∇∇transitionmatrix!(∇∇hand, ∇hand, A, P)
+				for j = 2:Ξ-1
+					for i = 1:Ξ
+						f(x) = transitionprobability(trial.clicks,Δt,i,j,t,Ξ,x)
+						ForwardDiff.hessian!(∇∇auto, f, x₀)
+						ForwardDiff.gradient!(∇auto, f, x₀)
+						for q = 1:6
+							maxabsdiff∇[q] = max(maxabsdiff∇[q], abs(∇auto[q] - ∇hand[q][i,j]))
+							for r = q:6
+								maxabsdiff∇∇[q,r] = maxabsdiff∇∇[r,q] = max(maxabsdiff∇∇[q,r], abs(∇∇auto[q,r] - ∇∇hand[q,r][i,j]))
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return maxabsdiff∇∇, maxabsdiff∇
+end
+
+"""
+    transitionprobability(clicktimes,i,j,t,x)
+
+Compute the transition probability of the accumulator variable `p(aₜ=i ∣ aₜ₋₁=j)`
+
+INPUT
+-`clicks`: a structure containing the times and origin of each auditory click played during a trial
+-`Δt`: duration of each time step
+-`i`: state of the accumulator at time step t
+-`j`: state of the accumulator at time step t-1
+-'t': time step
+-`Ξ`: number of states into which the accumulator is discretized
+-`x`: vector containing the alphabetically concatenated values of the parameters
+
+RETURN
+-transition probability `p(aₜ=i ∣ aₜ₋₁=j)`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> clicks = FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30);
+julia> x = [10.0, 0.5, -0.5, 0.8, 2.0, 0.4];
+julia> p = FHMDDM.transitionprobability(clicks,0.01,4,10,20,53,x)
+```
+"""
+function transitionprobability(clicks::Clicks,
+							   Δt::AbstractFloat,
+                               i::Integer,
+                               j::Integer,
+                               t::Integer,
+							   Ξ::Integer,
+                               x::Vector{<:Real})
+	@assert t > 1
+	@assert length(x)==6
+	B = x[1]
+    k = x[2]
+    λ = x[3]
+    ϕ = x[4]
+    σ²ₐ = x[5]
+    σ²ₛ = x[6]
+    C = adapt(clicks, k, ϕ).C
+    cL = sum(C[clicks.left[t]])
+    cR = sum(C[clicks.right[t]])
+	𝛏 = B.*(2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	μ = exp(λ*Δt)*𝛏[j] + (cR-cL)*differentiate_μ_wrt_Δc(Δt, λ)
+	σ = √( (cL+cR)*σ²ₛ + Δt*σ²ₐ )
+	probabilityvector(μ, σ, 𝛏)[i]
+end
+
+
+"""
+    probabilityvector(μ, σ, 𝛏)
+
+Discrete representation of a Gaussian PDF
+
+ARGUMENT
+-`μ`: mean
+-`σ`: standard deviation
+-`𝛏`: discrete values used for representation
+
+RETURN
+-`𝐩`: probability vector
+
+EXAMPLE
+```julia-repl
+julia> μ=1.0; σ=2.0; Ξ=7; B=10.0; 𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2); probabilityvector(μ,σ,𝛏)
+7-element Array{Float64,1}:
+ 3.471030649983585e-7
+ 0.0010013743804762956
+ 0.09689448862754767
+ 0.5678589080695604
+ 0.31962072539725905
+ 0.014594917590384344
+ 2.9238831707279765e-5
+```
+"""
+function probabilityvector(μ::T,
+						   σ::T,
+						   𝛏::Vector{T}) where {T<:Real}
+    Ξ = length(𝛏)
+    Ξ_1 = Ξ-1
+    σ_Δξ = σ/(𝛏[2]-𝛏[1])
+    𝐳 = (𝛏 .- μ)./σ
+    Δf = diff(normpdf.(𝐳))
+    Φ = normcdf.(𝐳)
+    C = normccdf.(𝐳) # complementary cumulative distribution function
+    ΔΦ = zeros(T, Ξ_1)
+    for i = 1:Ξ_1
+        if μ <= 𝛏[i]
+            ΔΦ[i] = C[i] - C[i+1]
+        else
+            ΔΦ[i] = Φ[i+1] - Φ[i]
+        end
+    end
+    𝐩 = Φ # reuse the memory
+    𝐩[1] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
+    for i = 2:Ξ_1
+        𝐩[i] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
+    end
+    𝐩[Ξ] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
+    return 𝐩
+end
+
+"""
 	compare_exact_approximate_transition_matrices(model)
 
 Maximum absolute difference between the exact and approximate evaluation of the transition matrix
@@ -996,6 +1162,9 @@ function expm1_div_x(x)
     y == 1. ? one(y) : (y-1.)/log(y)
 
 end
+
+
+
 
 
 
@@ -1216,59 +1385,6 @@ function transitionmatrix!(	A::Matrix{<:Real},
 	σ = √( (cL+cR)*θnative.σ²ₛ[1] + θnative.σ²ₐ[1]*Δt )
 	transitionmatrix!(A, ∂μ, ∂σ², ∂B, 𝛍, σ, Ω, 𝛏)
 	return nothing
-end
-
-"""
-    probabilityvector(μ, σ, 𝛏)
-
-Discrete representation of a Gaussian PDF
-
-ARGUMENT
--`μ`: mean
--`σ`: standard deviation
--`𝛏`: discrete values used for representation
-
-RETURN
--`𝐩`: probability vector
-
-EXAMPLE
-```julia-repl
-julia> μ=1.0; σ=2.0; Ξ=7; B=10.0; 𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2); probabilityvector(μ,σ,𝛏)
-7-element Array{Float64,1}:
- 3.471030649983585e-7
- 0.0010013743804762956
- 0.09689448862754767
- 0.5678589080695604
- 0.31962072539725905
- 0.014594917590384344
- 2.9238831707279765e-5
-```
-"""
-function probabilityvector(μ::T,
-						   σ::T,
-						   𝛏::Vector{T}) where {T<:Real}
-    Ξ = length(𝛏)
-    Ξ_1 = Ξ-1
-    σ_Δξ = σ/(𝛏[2]-𝛏[1])
-    𝐳 = (𝛏 .- μ)./σ
-    Δf = diff(normpdf.(𝐳))
-    Φ = normcdf.(𝐳)
-    C = normccdf.(𝐳) # complementary cumulative distribution function
-    ΔΦ = zeros(T, Ξ_1)
-    for i = 1:Ξ_1
-        if μ <= 𝛏[i]
-            ΔΦ[i] = C[i] - C[i+1]
-        else
-            ΔΦ[i] = Φ[i+1] - Φ[i]
-        end
-    end
-    𝐩 = Φ # reuse the memory
-    𝐩[1] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
-    for i = 2:Ξ_1
-        𝐩[i] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
-    end
-    𝐩[Ξ] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
-    return 𝐩
 end
 
 """
