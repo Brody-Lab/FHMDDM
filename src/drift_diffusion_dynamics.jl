@@ -386,6 +386,62 @@ function assign!(A::Matrix{<:Real},
 end
 
 """
+	assign!(∇∇𝛑, P)
+
+Assign second derivatives of a probability vector to elements in a nested array corresponding to the second derivatives of the prior probability
+
+MODIFIED ARGUMENT
+-`∇∇𝛑`: a nested array representing the second-order partial derivatives of the prior probability of the accumulator. The element `∇∇𝛑[m,n][i]` corresponds to `∂²p{a(t=1) = ξ(i)} / ∂θ[m]∂θ[n]`. The parameters are order alphabetically:
+	θ[1] = B, bound height
+	θ[2] = μ₀, additive offset to the mean that is constant across trials
+	θ[3] = σ²ᵢ, variance
+	θ[4] = wₕ, weight of the location of the previous reward
+
+UNMODIFIED ARGUMENT
+-`P`: structure containing second-order partial derivatives
+"""
+function assign!(∇∇𝛑::Matrix{<:Vector{<:Real}},
+				 P::Probabilityvector)
+	for i = 1:P.Ξ
+		∇∇𝛑[1,1][i] = P.d²𝛑_dBdB[i]
+		∇∇𝛑[1,2][i] = P.d²𝛑_dBdμ₀[i]
+		∇∇𝛑[1,3][i] = P.d²𝛑_dBdσ²ᵢ[i]
+		∇∇𝛑[1,4][i] = P.d²𝛑_dBdwₕ[i]
+		∇∇𝛑[2,2][i] = P.d²𝛑_dμ₀dμ₀[i]
+		∇∇𝛑[2,3][i] = P.d²𝛑_dμ₀dσ²ᵢ[i]
+		∇∇𝛑[2,4][i] = P.d²𝛑_dμ₀dwₕ[i]
+		∇∇𝛑[3,3][i] = P.d²𝛑_dσ²ᵢdσ²ᵢ[i]
+		∇∇𝛑[3,4][i] = P.d²𝛑_dσ²ᵢdwₕ[i]
+		∇∇𝛑[4,4][i] = P.d²𝛑_dwₕdwₕ[i]
+	end
+end
+
+"""
+	assign!(∇𝛑, P)
+
+Assign first-order derivatives of a probability vector to elements in a nested array corresponding to the first-order derivatives of the prior probability
+
+MODIFIED ARGUMENT
+-`∇𝛑`: a nested array representing the second-order partial derivatives of the prior probability of the accumulator. The element `∇𝛑[m][i]` corresponds to `∂p{a(t=1) = ξ(i)} / ∂θ[m]`. The parameters are order alphabetically:
+	θ[1] = B, bound height
+	θ[2] = μ₀, additive offset to the mean that is constant across trials
+	θ[3] = σ²ᵢ, variance
+	θ[4] = wₕ, weight of the location of the previous reward
+
+UNMODIFIED ARGUMENT
+-`P`: structure containing second-order partial derivatives
+"""
+function assign!(∇𝛑::Vector{<:Vector{<:Real}},
+				 P::Probabilityvector)
+	for i = 1:P.Ξ
+		∇𝛑[1][i] = P.d𝛑_dB[i]
+		∇𝛑[2][i] = P.d𝛑_dμ₀[i]
+		∇𝛑[3][i] = P.d𝛑_dσ²ᵢ[i]
+		∇𝛑[4][i] = P.d𝛑_dwₕ[i]
+	end
+end
+
+"""
 	update_for_second_derivatives!(P, adaptedclicks, clicks, t)
 
 Compute the intermediate quantities that are updated at each time step for obtaining the second order partial derivatives of a probability vector
@@ -506,49 +562,65 @@ function update_for_transition_probabilities!(P::Probabilityvector,
 end
 
 """
-	∇∇priorprobability(P, previousreward)
+	∇∇priorprobability(∇∇𝛑, ∇𝛑, P, previousanswer)
 
 Compute the second-order partial derivatives of the prior probability vector
 
 MODIFIED ARGUMENT
+-`∇∇𝛑`: a nested array representing the second-order partial derivatives of the prior probability of the accumulator. The element `∇∇𝛑[m,n][i]` corresponds to `∂²p{a(t=1) = ξ(i)} / ∂θ[m]∂θ[n]`. The parameters are order alphabetically:
+	θ[1] = B, bound height
+	θ[2] = μ₀, additive offset to the mean that is constant across trials
+	θ[3] = σ²ᵢ, variance
+	θ[4] = wₕ, weight of the location of the previous reward
+-`∇𝛑`: a nested array representing the second-order partial derivatives of the prior probability of the accumulator. The element `∇𝛑[m][i]` corresponds to `∂p{a(t=1) = ξ(i)} / ∂θ[m]`.
 -`P`: structure containing quantities for computing the prior and transition probabilities of the accumulator variable and the first- and second-order derivatives of these probabilities
 
 UNMODIFIED ARGUMENT
--`previousreward`: location of the reward in the previous trial
+-`previousanswer`: location of the reward in the previous trial
 
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
 julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
-julia> FHMDDM.∇∇priorprobability!(P, -1)
+julia> ∇∇𝛑 = map(i->zeros(P.Ξ), CartesianIndices((4,4)))
+julia> ∇𝛑 = map(i->zeros(P.Ξ), 1:4)
+julia> FHMDDM.∇∇priorprobability!(∇∇𝛑, ∇𝛑, P, -1)
 ```
 """
-function ∇∇priorprobability!(P::Probabilityvector, previousreward::Integer)
-	update_for_prior_probabilities!(P, previousreward)
+function ∇∇priorprobability!(∇∇𝛑::Matrix{<:Vector{<:Real}}, ∇𝛑::Vector{<:Vector{<:Real}}, P::Probabilityvector, previousanswer::Integer)
+	update_for_prior_probabilities!(P, previousanswer)
 	differentiate_twice_wrt_Bμσ²!(P, cld(P.Ξ,2))
 	differentiate_twice_wrt_prior_parameters!(P)
+	assign!(∇∇𝛑, P)
+	assign!(∇𝛑, P)
 end
 
 """
-	∇priorprobability(P, previousreward)
+	∇priorprobability!(∇𝛑, P, previousanswer)
 
 Compute the first-order partial derivatives of the prior probability vector
 
 MODIFIED ARGUMENT
+-`∇𝛑`: a nested array representing the second-order partial derivatives of the prior probability of the accumulator. The element `∇𝛑[m][i]` corresponds to `∂p{a(t=1) = ξ(i)} / ∂θ[m]`.The parameters are order alphabetically:
+	θ[1] = B, bound height
+	θ[2] = μ₀, additive offset to the mean that is constant across trials
+	θ[3] = σ²ᵢ, variance
+	θ[4] = wₕ, weight of the location of the previous reward
 -`P`: structure containing quantities for computing the prior and transition probabilities of the accumulator variable and the first- and second-order derivatives of these probabilities
 
 UNMODIFIED ARGUMENT
--`previousreward`: location of the reward in the previous trial
+-`previousanswer`: location of the reward in the previous trial
 """
-function ∇priorprobability!(P::Probabilityvector, previousreward::Integer)
-	update_for_prior_probabilities!(P, previousreward)
+function ∇priorprobability!(∇𝛑::Vector{<:Vector{<:Real}}, P::Probabilityvector, previousanswer::Integer)
+	update_for_prior_probabilities!(P, previousanswer)
 	differentiate_wrt_Bμσ²!(P, cld(P.Ξ,2))
 	differentiate_wrt_prior_parameters!(P)
+	assign!(∇𝛑, P)
 end
 
 """
-	priorprobability(P, previousreward)
+	priorprobability(P, previousanswer)
 
 Compute the prior probability vector
 
@@ -556,15 +628,15 @@ MODIFIED ARGUMENT
 -`P`: structure containing quantities for computing the prior and transition probabilities of the accumulator variable and the first- and second-order derivatives of these probabilities
 
 UNMODIFIED ARGUMENT
--`previousreward`: location of the reward in the previous trial
+-`previousanswer`: location of the reward in the previous trial
 """
-function priorprobability!(P::Probabilityvector, previousreward::Integer)
-	update_for_prior_probabilities!(P, previousreward)
+function priorprobability!(P::Probabilityvector, previousanswer::Integer)
+	update_for_prior_probabilities!(P, previousanswer)
 	evaluate_using_Bμσ²!(P, cld(P.Ξ,2))
 end
 
 """
-	update_for_prior_probabilities!(P, previousreward)
+	update_for_prior_probabilities!(P, previousanswer)
 
 Compute the mean, variance, and
 
@@ -572,13 +644,16 @@ MODIFIED ARGUMENT
 -`P`: structure containing quantities for computing the prior and transition probabilities of the accumulator variable and the first- and second-order derivatives of these probabilities
 
 UNMODIFIED ARGUMENT
--`previousreward`: location of the reward in the previous trial
+-`previousanswer`: location of the reward in the previous trial
 """
-function update_for_prior_probabilities!(P::Probabilityvector, previousreward::Integer)
-	P.previousreward[1] = previousreward
-	P.𝛍[cld(P.Ξ,2)] = P.μ₀ + P.wₕ*P.previousreward[1]
+function update_for_prior_probabilities!(P::Probabilityvector, previousanswer::Integer)
+	P.previousanswer[1] = previousanswer
+	P.𝛍[cld(P.Ξ,2)] = P.μ₀ + P.wₕ*P.previousanswer[1]
 	P.σ²[1] = P.σ²ᵢ
 	P.σ[1] = √P.σ²[1]
+	P.σ_Δξ[1] = P.σ[1]/P.Δξ[1]
+	P.σ2Δξ[1] = 2*P.σ[1]*P.Δξ[1]
+	P.Δξσ²2[1] = 2P.Δξ*P.σ[1]^2
 end
 
 """
@@ -592,11 +667,11 @@ MODIFIED ARGUMENT
 function differentiate_twice_wrt_prior_parameters!(P::Probabilityvector)
 	differentiate_wrt_prior_parameters!(P)
 	for i = 1:P.Ξ
-		P.d𝛑_dwₕ[i] = P.previousreward[1]*P.d𝛑_dμ[i]
-		P.d²𝛑_dBdwₕ[i] = P.previousreward[1]*P.d²𝛑_dBdμ[i]
-		P.d²𝛑_dμ₀dwₕ[i] = P.previousreward[1]*P.d²𝛑_dμdμ[i]
-		P.d²𝛑_dσ²ᵢdwₕ[i] = P.previousreward[1]*P.d²𝛑_dμdσ²[i]
-		P.d²𝛑_dwₕdwₕ[i] = P.previousreward[1]^2*P.d²𝛑_dμdμ[i]
+		P.d𝛑_dwₕ[i] = P.previousanswer[1]*P.d𝛑_dμ[i]
+		P.d²𝛑_dBdwₕ[i] = P.previousanswer[1]*P.d²𝛑_dBdμ[i]
+		P.d²𝛑_dμ₀dwₕ[i] = P.previousanswer[1]*P.d²𝛑_dμdμ[i]
+		P.d²𝛑_dσ²ᵢdwₕ[i] = P.previousanswer[1]*P.d²𝛑_dμdσ²[i]
+		P.d²𝛑_dwₕdwₕ[i] = P.previousanswer[1]^2*P.d²𝛑_dμdμ[i]
 	end
 	return nothing
 end
@@ -611,7 +686,7 @@ MODIFIED ARGUMENT
 """
 function differentiate_wrt_prior_parameters!(P::Probabilityvector)
 	for i = 1:P.Ξ
-		P.d𝛑_dwₕ[i] = P.previousreward[1]*P.d𝛑_dμ[i]
+		P.d𝛑_dwₕ[i] = P.previousanswer[1]*P.d𝛑_dμ[i]
 	end
 	return nothing
 end
@@ -910,30 +985,31 @@ julia> maxabsdiff∇∇, maxabsdiff∇ = FHMDDM.check∇∇transitionmatrix(mode
 function check∇∇transitionmatrix(model::Model)
 	@unpack Δt, Ξ = model.options
 	@unpack θnative = model
-	maxabsdiff∇∇, ∇∇auto = zeros(6,6), zeros(6,6)
-	maxabsdiff∇, ∇auto = zeros(6), zeros(6)
+	x₀ = [θnative.B[1], θnative.k[1], θnative.λ[1], θnative.ϕ[1], θnative.σ²ₐ[1], θnative.σ²ₛ[1]]
+	nparameters = length(x₀)
+	maxabsdiff∇∇, ∇∇auto = zeros(nparameters,nparameters), zeros(nparameters,nparameters)
+	maxabsdiff∇, ∇auto = zeros(nparameters), zeros(nparameters)
+	∇∇hand = map(i->zeros(Ξ,Ξ), CartesianIndices((nparameters,nparameters)));
+	∇hand = map(i->zeros(Ξ,Ξ), 1:nparameters);
 	P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
-	∇∇hand = map(i->zeros(Ξ,Ξ), CartesianIndices((6,6)));
-	∇hand = map(i->zeros(Ξ,Ξ), 1:6);
 	A = zeros(Ξ,Ξ);
 	A[1,1] = A[Ξ,Ξ] = 1.0
 	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
-	x₀ = [θnative.B[1], θnative.k[1], θnative.λ[1], θnative.ϕ[1], θnative.σ²ₐ[1], θnative.σ²ₛ[1]]
-	for i in eachindex(model.trialsets)
-		for m in eachindex(model.trialsets[i].trials)
-			trial = model.trialsets[i].trials[m]
+	for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			trial = model.trialsets[s].trials[m]
 			adaptedclicks = ∇∇adapt(trial.clicks, model.θnative.k[1], model.θnative.ϕ[1])
 			for t = 2:trial.ntimesteps
 				update_for_∇∇transition_probabilities!(P, adaptedclicks, trial.clicks, t)
 				∇∇transitionmatrix!(∇∇hand, ∇hand, A, P)
 				for j = 2:Ξ-1
 					for i = 1:Ξ
-						f(x) = transitionprobability(trial.clicks,Δt,i,j,t,Ξ,x)
+						f(x) = accumulatorprobability(trial.clicks,Δt,i,j,t,Ξ,x)
 						ForwardDiff.hessian!(∇∇auto, f, x₀)
 						ForwardDiff.gradient!(∇auto, f, x₀)
-						for q = 1:6
+						for q = 1:nparameters
 							maxabsdiff∇[q] = max(maxabsdiff∇[q], abs(∇auto[q] - ∇hand[q][i,j]))
-							for r = q:6
+							for r = q:nparameters
 								maxabsdiff∇∇[q,r] = maxabsdiff∇∇[r,q] = max(maxabsdiff∇∇[q,r], abs(∇∇auto[q,r] - ∇∇hand[q,r][i,j]))
 							end
 						end
@@ -946,7 +1022,7 @@ function check∇∇transitionmatrix(model::Model)
 end
 
 """
-    transitionprobability(clicktimes,i,j,t,x)
+    accumulatorprobability(clicktimes,i,j,t,x)
 
 Compute the transition probability of the accumulator variable `p(aₜ=i ∣ aₜ₋₁=j)`
 
@@ -970,7 +1046,7 @@ julia> x = [10.0, 0.5, -0.5, 0.8, 2.0, 0.4];
 julia> p = FHMDDM.transitionprobability(clicks,0.01,4,10,20,53,x)
 ```
 """
-function transitionprobability(clicks::Clicks,
+function accumulatorprobability(clicks::Clicks,
 							   Δt::AbstractFloat,
                                i::Integer,
                                j::Integer,
@@ -1046,6 +1122,101 @@ function probabilityvector(μ::T,
     end
     𝐩[Ξ] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
     return 𝐩
+end
+
+"""
+	check∇∇priorprobability(model)
+
+Maximum absolute difference between the automatically computed and hand-coded first and second order partial derivatives of the prior probabilities of the accumulator
+
+ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters for a factorial hidden-Markov drift-diffusion model
+
+RETURN
+-`maxabsdiff∇∇`: maximum absolute difference between the automatically and hand-coded second-order partial derivatives, across of all elements of the prior probability vector of each trial and across all trials and trialsets. Element (i,j) corresponds to the derivative with respect to the i-th and j-th parameter. The parameters that determine the transition probabilties are ordered alphabetically:
+	θ[1] = B, bound height
+	θ[2] = μ₀, additive offset to the mean that is constant across trials
+	θ[3] = σ²ᵢ, variance
+	θ[4] = wₕ, weight of the location of the previous reward
+-`maxabsdiff∇`: maximum absolute difference between the automatically and hand-coded first-order partial derivatives. The i-th element corresponds to the derivative with respect to the i-th parameter.
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true);
+julia> maxabsdiff∇∇, maxabsdiff∇ = FHMDDM.check∇∇priorprobability(model)
+```
+"""
+function check∇∇priorprobability(model::Model)
+	@unpack Δt, Ξ = model.options
+	@unpack θnative = model
+	x₀ = [θnative.B[1], θnative.μ₀[1], θnative.σ²ᵢ[1], θnative.wₕ[1]]
+	nparameters = length(x₀)
+	maxabsdiff∇∇, ∇∇auto = zeros(nparameters,nparameters), zeros(nparameters,nparameters)
+	maxabsdiff∇, ∇auto = zeros(nparameters), zeros(nparameters)
+	P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+	∇∇hand = map(i->zeros(Ξ), CartesianIndices((nparameters,nparameters)))
+	∇hand = map(i->zeros(Ξ), 1:nparameters)
+	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+	for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			@unpack previousanswer = model.trialsets[s].trials[m]
+			∇∇priorprobability!(∇∇hand, ∇hand, P, previousanswer)
+			for i = 1:Ξ
+				f(x) = accumulatorprobability(Δt,i,previousanswer,Ξ,x)
+				ForwardDiff.hessian!(∇∇auto, f, x₀)
+				ForwardDiff.gradient!(∇auto, f, x₀)
+				for q = 1:nparameters
+					maxabsdiff∇[q] = max(maxabsdiff∇[q], abs(∇auto[q] - ∇hand[q][i]))
+					for r = q:nparameters
+						maxabsdiff∇∇[q,r] = maxabsdiff∇∇[r,q] = max(maxabsdiff∇∇[q,r], abs(∇∇auto[q,r] - ∇∇hand[q,r][i]))
+					end
+				end
+			end
+		end
+	end
+	return maxabsdiff∇∇, maxabsdiff∇
+end
+
+"""
+    accumulatorprobability(Δt, i, previousanswer, Ξ, x)
+
+Compute the transition probability of the accumulator variable `p(aₜ=i ∣ aₜ₋₁=j)`
+
+INPUT
+-`clicks`: a structure containing the times and origin of each auditory click played during a trial
+-`Δt`: duration of each time step
+-`i`: state of the accumulator at time step t
+-`j`: state of the accumulator at time step t-1
+-'t': time step
+-`Ξ`: number of states into which the accumulator is discretized
+-`x`: vector containing the alphabetically concatenated values of the parameters
+
+RETURN
+-transition probability `p(aₜ=i ∣ aₜ₋₁=j)`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> x = [10.0, 0.5, 2.0, 0.8];
+julia> FHMDDM.accumulatorprobability(0.01, 26, 1, 53, x)
+	0.0542176221212666
+```
+"""
+function accumulatorprobability(Δt::AbstractFloat,
+                                i::Integer,
+								previousanswer::Real,
+								Ξ::Integer,
+                                x::Vector{<:Real})
+	@assert length(x)==4
+	B = x[1]
+    μ₀ = x[2]
+    σ²ᵢ = x[3]
+    wₕ = x[4]
+	𝛏 = B.*(2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	μ = μ₀ + previousanswer*wₕ
+	σ = √σ²ᵢ
+	probabilityvector(μ, σ, 𝛏)[i]
 end
 
 """

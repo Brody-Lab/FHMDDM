@@ -60,7 +60,10 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 	@unpack ∇∇Aᵃsilent, ∇Aᵃsilent, Aᵃsilent, Aᶜ, Aᶜᵀ, Δt, K, 𝛚, πᶜᵀ, Ξ, 𝛏 = trialinvariant # need second derivative of the silent transition matrix and silent prior probability (without including `previousreward`)
 
 	P = Probabilityvector(Δt, θnative, Ξ)
-	∇∇priorprobability!(P, trial.previousreward)
+	∇∇𝛑 = map(i->zeros(Ξ), CartesianIndices((4,4)))
+ 	∇𝛑 = map(i->zeros(Ξ), 1:4)
+	∇∇priorprobability!(∇∇𝛑, ∇𝛑, P, trial.previousreward)
+
 	# do stuff with P
 
 	if !isempty(clicks.inputtimesteps)
