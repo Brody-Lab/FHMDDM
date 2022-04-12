@@ -633,3 +633,63 @@ The post-adaptation magnitude of each click and the first- and second-order part
 	"second derivative of adapted click strengths with respect to the adaptation strength"
 	d²C_dϕdϕ::TVR2=zeros(0)
 end
+
+"""
+	Sameacrosstrials
+
+Quantities that are same across trials and used in each trial
+"""
+@with_kw struct Sameacrosstrials{MMR<:Matrix{<:Matrix{<:Real}},
+								VMR<:Vector{<:Matrix{<:Real}},
+								MR<:Matrix{<:Real},
+								R<:Real,
+								VI<:Vector{<:Integer},
+								VVI<:Vector{<:Vector{<:Integer}},
+								TI<:Integer}
+	"transition matrix of the accumulator at a time step without auditory input. Element `Aᵃsilent[q][i,j]` corresponds to the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)}"
+	Aᵃsilent::MR
+	"first-order partial derivatives of the transition matrix of the accumulator at a time step without auditory input. Element `∇Aᵃsilent[q][i,j]` corresponds to the derivative of the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)} with respect to the q-th parameter that influence the accumulator transitions."
+	∇Aᵃsilent::VMR
+	"second-order partial derivatives of the transition matrix of the accumulator at a time step without auditory input. Element `∇∇Aᵃsilent[q,r][i,j]` corresponds to the derivative of the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)} with respect to the q-th parameter and r-th parameter that influence the accumulator transitions."
+	∇∇Aᵃsilent::MMR
+	"transpose of the transition matrix of the coupling. Element Aᶜᵀ[i,j] corresponds to the transition probability p{c(t)=j ∣ c(t-1)=i}"
+	Aᶜᵀ::MR
+	"first-order partial derivatives of the transpose of the transition matrix of the coupling. Element ∇Aᶜᵀ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=j ∣ c(t-1)=i} with respect to the q-th parameter that influence coupling transitions."
+	∇Aᶜᵀ::VMR
+	"size of the time step"
+	Δt::R
+	"indices of the parameters that influence the prior probabilities of the accumulator"
+	indexθ_pa₁::VI
+	"indices of the parameters that influence the transition probabilities of the accumulator"
+	indexθ_paₜaₜ₋₁::VI
+	"indices of the parameters that influence the prior probabilities of the coupling"
+	indexθ_pc₁::VI
+	"indices of the parameters that influence the transition probabilities of the coupling variable"
+	indexθ_pcₜcₜ₋₁::VI
+	"indices of the parameters that influence the lapse rate"
+	indexθ_ψ::VI
+	"indices of the parameters in the Poisson mixture GLM in each trialset"
+	indexθ_pY::VVI
+	"number of coupling states"
+	K::TI
+	"total number of parameters in the model, including those not being fit"
+	nθ_all::TI = indexθ_pY[end][end]
+	"number of parameters that influence the prior probabilities of the accumulator"
+	nθ_pa₁::TI = length(indexθ_pa₁)
+	"number of parameters that influence the transition probabilities of the accumulator"
+	nθ_paₜaₜ₋₁::TI = length(indexθ_paₜaₜ₋₁)
+	"number of parameters that influence the prior probabilities of the coupling"
+	nθ_pc₁::TI = length(indexθ_pc₁)
+	"number of parameters that influence the transition probabilities of the coupling variable"
+	nθ_pcₜcₜ₋₁::TI = length(indexθ_pcₜcₜ₋₁)
+	"number of the parameters that influence the lapse rate"
+	nθ_ψ::TI = length(indexθ_ψ)
+	"number of parameters in the Poisson mixture GLM in each trialset"
+	nθ_pY::VI = map(indices->length(indices), indexθ_pY)
+	"transpose of the prior probability of the coupling. It is a row vector"
+	πᶜᵀ::MR
+	"first-order partial derivatives of the transpose of the prior probability of the coupling. Element ∇πᶜᵀ[q][j] corresponds to the derivative of prior probability p{c(t=1)=j} with respect to the q-th parameter that influence the prior probability of coupling."
+	∇πᶜᵀ::VMR
+	"number of accumulator states"
+	Ξ::TI
+end

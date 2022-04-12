@@ -495,6 +495,32 @@ function update_for_∇∇transition_probabilities!(P::Probabilityvector,
 end
 
 """
+	update_for_∇∇transition_probabilities!(P)
+
+Compute the intermediate quantities that are updated for obtaining the second order partial derivatives of a probability vector, at a time step when no click occured
+
+MODIFIED ARGUMENT
+-`P`: structure containing derivatives with respect to the parameters of the accumulator
+"""
+function update_for_∇∇transition_probabilities!(P::Probabilityvector)
+	update_for_∇transition_probabilities!(P)
+	P.d²Δc_dkdk[1] = 0.0
+	P.d²∑c_dkdk[1] = 0.0
+	P.d²Δc_dkdϕ[1] = 0.0
+	P.d²∑c_dkdϕ[1] = 0.0
+	P.d²Δc_dϕdϕ[1] = 0.0
+	P.d²∑c_dϕdϕ[1] = 0.0
+	P.Δξσ²2[1] = 2P.Δξ*P.σ[1]^2
+	P.d²μ_dkdk[1] = 0.0
+	P.d²μ_dkdϕ[1] = 0.0
+	P.d²μ_dϕdϕ[1] = 0.0
+	P.d²σ²_dkdk[1] = 0.0
+	P.d²σ²_dkdϕ[1] = 0.0
+	P.d²σ²_dϕdϕ[1] = 0.0
+	P.d²𝛍_dλdλ .= P.Δt^2 .* P.expλΔt .* P.𝛏 .+ P.Δc[1]*P.d³μ_dΔcdλdλ
+end
+
+"""
 	update_for_∇transition_probabilities!(P, adaptedclicks, clicks, t)
 
 Compute the intermediate quantities that are updated at each time step for obtaining the first order partial derivatives of a probability vector
@@ -532,6 +558,29 @@ function update_for_∇transition_probabilities!(P::Probabilityvector,
 end
 
 """
+	update_for_∇transition_probabilities!(P, adaptedclicks, clicks, t)
+
+Compute the intermediate quantities that are updated for obtaining the first order partial derivatives of a probability vector, at a time step when no click occured
+
+MODIFIED ARGUMENT
+-`P`: structure containing derivatives with respect to the parameters of the accumulator
+"""
+function update_for_∇transition_probabilities!(P::Probabilityvector)
+	update_for_transition_probabilities!(P)
+	P.dΔc_dk[1] = 0.0
+	P.d∑c_dk[1] = 0.0
+	P.dΔc_dϕ[1] = 0.0
+	P.d∑c_dϕ[1] = 0.0
+	P.σ2Δξ[1] = 2*P.σ[1]*P.Δξ[1]
+	P.dμ_dk[1] = 0.0
+	P.dμ_dϕ[1] = 0.0
+	P.dσ²_dk[1] = 0.0
+	P.dσ²_dϕ[1] = 0.0
+	P.d𝛍_dλ .= P.Δt .* P.expλΔt .* P.𝛏
+	return nothing
+end
+
+"""
 	update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
 
 Compute the intermediate quantities that are updated at each time step for obtaining the values of a probability vector
@@ -558,6 +607,24 @@ function update_for_transition_probabilities!(P::Probabilityvector,
 	P.σ[1] = √P.σ²[1]
 	P.σ_Δξ[1] = P.σ[1]/P.Δξ[1]
 	P.𝛍 .= P.expλΔt.*P.𝛏 .+ P.Δc[1]*P.dμ_dΔc
+	return nothing
+end
+
+"""
+	update_for_transition_probabilities!(P)
+
+Compute the intermediate quantities that are updated for obtaining the values of a probability vector, at time step when no click occured
+
+MODIFIED ARGUMENT
+-`P`: structure containing derivatives with respect to the parameters of the accumulator
+"""
+function update_for_transition_probabilities!(P::Probabilityvector)
+	P.Δc[1] = 0.0
+	P.∑c[1] = 0.0
+	P.σ²[1] = P.Δt*P.σ²ₐ
+	P.σ[1] = √P.σ²[1]
+	P.σ_Δξ[1] = P.σ[1]/P.Δξ[1]
+	P.𝛍 .= P.expλΔt.*P.𝛏
 	return nothing
 end
 
@@ -1333,12 +1400,6 @@ function expm1_div_x(x)
     y == 1. ? one(y) : (y-1.)/log(y)
 
 end
-
-
-
-
-
-
 
 
 
