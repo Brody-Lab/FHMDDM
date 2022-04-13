@@ -673,6 +673,12 @@ Quantities that are same across trials and used in each trial
 	indexθ_pY::VVI
 	"number of coupling states"
 	K::TI
+	"transpose of the prior probability of the coupling. It is a row vector"
+	πᶜᵀ::MR
+	"first-order partial derivatives of the transpose of the prior probability of the coupling. Element ∇πᶜᵀ[q][j] corresponds to the derivative of prior probability p{c(t=1)=j} with respect to the q-th parameter that influence the prior probability of coupling."
+	∇πᶜᵀ::VMR
+	"number of accumulator states"
+	Ξ::TI
 	"total number of parameters in the model, including those not being fit"
 	nθ_all::TI = indexθ_pY[end][end]
 	"number of parameters that influence the prior probabilities of the accumulator"
@@ -687,12 +693,22 @@ Quantities that are same across trials and used in each trial
 	nθ_ψ::TI = length(indexθ_ψ)
 	"number of parameters in the Poisson mixture GLM in each trialset"
 	nθ_pY::VI = map(indices->length(indices), indexθ_pY)
-	"transpose of the prior probability of the coupling. It is a row vector"
-	πᶜᵀ::MR
-	"first-order partial derivatives of the transpose of the prior probability of the coupling. Element ∇πᶜᵀ[q][j] corresponds to the derivative of prior probability p{c(t=1)=j} with respect to the q-th parameter that influence the prior probability of coupling."
-	∇πᶜᵀ::VMR
-	"number of accumulator states"
-	Ξ::TI
+	"whether a parameter influences the prior probability of the accumulator, and if so, the index of that parameter"
+	index_pa₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_pa₁] .= 1:nθ_pa₁; x; end
+	"whether a parameter influences the transition probability of the accumulator, and if so, the index of that parameter"
+	index_paₜaₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_paₜaₜ₋₁] .= 1:nθ_paₜaₜ₋₁; x; end
+	"whether a parameter influences the prior probability of the coupling, and if so, the index of that parameter"
+	index_pc₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_pc₁] .= 1:nθ_pc₁; x; end
+	"whether a parameter influences the transition probability of the coupling, and if so, the index of that parameter"
+	index_pcₜcₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_pcₜcₜ₋₁] .= 1:nθ_pcₜcₜ₋₁; x; end
+	"whether a parameter influences the prior probability of the lapse, and if so, the index of that parameter"
+	index_ψ_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_ψ] .= 1:nθ_ψ; x; end
+	"whether a parameter influences the mixture of Poisson GLM, and if so, the index of that parameter"
+	index_pY_in_θ::VVI = map(indexθ_pY) do indices
+							x = zeros(Int, nθ_all)
+							x[indices] .= 1:length(indices)
+							x
+						 end
 	"discrete values of the accumulator, un-normalized"
 	𝛏::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 end

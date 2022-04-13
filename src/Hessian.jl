@@ -67,9 +67,10 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 						 sameacrosstrials::Sameacrosstrials,
 						 trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜᵀ, ∇Aᶜᵀ, Δt, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, nθ_all, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, πᶜᵀ, ∇πᶜᵀ, Ξ = sameacrosstrials
+	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜᵀ, ∇Aᶜᵀ, Δt, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, πᶜᵀ, ∇πᶜᵀ, Ξ, nθ_all, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
 	indexθ_pY = sameacrosstrials.indexθ_pY[s]
 	nθ_pY = sameacrosstrials.nθ_pY[s]
+	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[s]
 	∇f = map(i->zeros(Ξ,K), 1:nθ_all)
 	∇∇f = map(i->zeros(Ξ,K), CartesianIndices((nθ_all,nθ_all)))
 	P = Probabilityvector(Δt, θnative, Ξ)
@@ -84,7 +85,6 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 	pY₁⨀pc₁ = pY .* πᶜᵀ
 	for i = 1:nθ_pa₁
 		q = indexθ_pa₁[i]
-		∇f[q] = ∇pa₁[i] .* pY₁⨀pc₁
 		for j = i:nθ_pa₁
 			r = indexθ_pa₁[j]
 			∇∇f[q,r] = ∇∇pa₁[i,j] .* pY₁⨀pc₁
@@ -93,11 +93,42 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 	pa₁⨀pc₁ = pa₁ .* πᶜᵀ
 	for i = 1:nθ_pY
 		q = indexθ_pY[i]
-		∇f[q] = ∇pY[i] .* pa₁⨀pc₁
 		for j = i:nθ_pY
 			r = indexθ_pY[j]
 			∇∇f[q,r] = ∇∇pY[i,j] .* pa₁⨀pc₁
 		end
+	end
+	for q = 1:nθ_all
+		for r = q:nθ_all
+			i = index_pc₁_in_θ[q]
+			j = index_pY_in_θ[r]
+			if i > 0 && j > 0
+				∇∇f[q,r] .+= ∇pY[j] .* pa₁ .* ∇πᶜᵀ[i]
+			end
+			i = index_pa₁_in_θ[q]
+			j = index_pY_in_θ[r]
+			if i > 0 && j > 0
+				∇∇f[q,r] .+= ∇pY[j] .* ∇pa₁[i] .* πᶜᵀ
+			end
+			i = index_pa₁_in_θ[q]
+			j = index_pc₁_in_θ[r]
+			if i > 0 && j > 0
+				∇∇f[q,r] .+= pY .* ∇pa₁[i] .* ∇πᶜᵀ[j]
+			end
+			i = index_pc₁_in_θ[q]
+			j = index_pa₁_in_θ[r]
+			if i > 0 && j > 0
+				∇∇f[q,r] .+= pY .* ∇pa₁[j] .* ∇πᶜᵀ[i]
+			end
+		end
+	end
+	for i = 1:nθ_pY
+		q = indexθ_pY[i]
+		∇f[q] = ∇pY[i] .* pa₁⨀pc₁
+	end
+	for i = 1:nθ_pa₁
+		q = indexθ_pa₁[i]
+		∇f[q] = ∇pa₁[i] .* pY₁⨀pc₁
 	end
 	for i = 1:nθ_pc₁
 		q = indexθ_pc₁[i]
@@ -131,12 +162,6 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 		if t==trial.ntimesteps
 			∂pY𝑑_∂ψ = ∇conditionallikelihood(pY, trial.choice, θnative.ψ[1])
 			conditionallikelihood!(pY, trial.choice, θnative.ψ[1])
-			for i = 1:nθ_pY
-				conditionallikelihood!(∇pY[i], trial.choice, θnative.ψ[1])
-				for j = i:nθ_pY
-					conditionallikelihood!(∇∇pY[i,j], trial.choice, θnative.ψ[1])
-				end
-			end
 		end
 		f⨉Aᶜᵀ = f * Aᶜᵀ
 		Aᵃ⨉f⨉Aᶜᵀ = Aᵃ * f⨉Aᶜᵀ
@@ -145,11 +170,45 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 				∇∇f[q,r] = pY .* (Aᵃ * ∇∇f[q,r] * Aᶜᵀ)
 			end
 		end
-		for i = 1:nθ_paₜaₜ₋₁
-			q = indexθ_paₜaₜ₋₁[i]
-			for j = i:nθ_paₜaₜ₋₁
-				r = indexθ_paₜaₜ₋₁[j]
-				∇∇f[q,r] .+= pY .* ((∇∇Aᵃ[i,j]*f .+ ∇Aᵃ[i]*∇f[r] .+ ∇Aᵃ[j]*∇f[q]) * Aᶜᵀ)
+		if t==trial.ntimesteps
+			dp𝑑_dψ = differentiate_p𝑑_wrt_ψ(trial.choice, K, Ξ)
+			for q = 1:nθ_all
+				for r = q:nθ_all
+					i = index_ψ_in_θ[q]
+					if i > 0
+						∇∇f[q,r] .+= ∂pY𝑑_∂ψ .* (Aᵃ * ∇f[r] * Aᶜᵀ)
+					end
+					j = index_ψ_in_θ[r]
+					if j > 0
+						∇∇f[q,r] .+= ∂pY𝑑_∂ψ .* (Aᵃ * ∇f[q] * Aᶜᵀ)
+					end
+					i = index_pcₜcₜ₋₁_in_θ[q]
+					# j = index_ψ_in_θ[r]
+					if i > 0 && j > 0
+						∇∇f[q,r] .+= ∂pY𝑑_∂ψ .* (Aᵃ * f * ∇Aᶜᵀ[i])
+					end
+					i = index_paₜaₜ₋₁_in_θ[q]
+					# j = index_ψ_in_θ[r]
+					if i > 0 && j > 0
+						∇∇f[q,r] .+= ∂pY𝑑_∂ψ .* (∇Aᵃ[i] * f * Aᶜᵀ)
+					end
+					i = index_ψ_in_θ[q]
+					j = index_paₜaₜ₋₁_in_θ[r]
+					if i > 0 && j > 0
+						∇∇f[q,r] .+= ∂pY𝑑_∂ψ .* (∇Aᵃ[j] * f * Aᶜᵀ)
+					end
+					# i = index_ψ_in_θ[q]
+					j = index_pY_in_θ[r]
+					if i > 0 && j > 0
+						∇∇f[q,r] .+= dp𝑑_dψ .* ∇pY[j] .* Aᵃ⨉f⨉Aᶜᵀ
+					end
+				end
+			end
+			for i = 1:nθ_pY
+				conditionallikelihood!(∇pY[i], trial.choice, θnative.ψ[1])
+				for j = i:nθ_pY
+					conditionallikelihood!(∇∇pY[i,j], trial.choice, θnative.ψ[1])
+				end
 			end
 		end
 		for i = 1:nθ_pY
@@ -157,20 +216,57 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 			for j = i:nθ_pY
 				r = indexθ_pY[j]
 				∇∇f[q,r] .+= ∇∇pY[i,j] .* Aᵃ⨉f⨉Aᶜᵀ
-				∇∇f[q,r] .+= ∇pY[i] .* (Aᵃ * ∇f[r] * Aᶜᵀ)
-				∇∇f[q,r] .+= ∇pY[j] .* (Aᵃ * ∇f[q] * Aᶜᵀ)
 			end
 		end
-		for i = 1:nθ_pcₜcₜ₋₁
-			q = indexθ_pcₜcₜ₋₁[i]
-			for j = i:nθ_pcₜcₜ₋₁
-				r = indexθ_pcₜcₜ₋₁[j]
-				∇∇f[q,r] .+= pY .* (Aᵃ * (∇f[r]*∇Aᶜᵀ[i] .+ ∇f[q]*∇Aᶜᵀ[j]))
+		for i = 1:nθ_paₜaₜ₋₁
+			q = indexθ_paₜaₜ₋₁[i]
+			for j = i:nθ_paₜaₜ₋₁
+				r = indexθ_paₜaₜ₋₁[j]
+				∇∇f[q,r] .+= pY .* (∇∇Aᵃ[i,j] * f⨉Aᶜᵀ)
 			end
 		end
-		if t==trial.ntimesteps
-			q = indexθ_ψ[1]
-			∇∇f[q,q] = 2 .* ∂pY𝑑_∂ψ .* (Aᵃ * ∇f[q] * Aᶜᵀ)
+		for q = 1:nθ_all
+			for r = q:nθ_all
+				i = index_pY_in_θ[q]
+				if i > 0
+					∇∇f[q,r] .+= ∇pY[i] .* (Aᵃ * ∇f[r] * Aᶜᵀ)
+				end
+				j = index_pY_in_θ[r]
+				if j > 0
+					∇∇f[q,r] .+= ∇pY[j] .* (Aᵃ * ∇f[q] * Aᶜᵀ)
+				end
+				i = index_paₜaₜ₋₁_in_θ[q]
+				if i > 0
+					∇∇f[q,r] .+= pY .* (∇Aᵃ[i] * ∇f[r] * Aᶜᵀ)
+				end
+				j = index_paₜaₜ₋₁_in_θ[r]
+				if j > 0
+					∇∇f[q,r] .+= pY .* (∇Aᵃ[j] * ∇f[q] * Aᶜᵀ)
+				end
+				i = index_pcₜcₜ₋₁_in_θ[q]
+				if i > 0
+					∇∇f[q,r] .+= pY .* (Aᵃ * ∇f[r] * ∇Aᶜᵀ[i])
+				end
+				j = index_pcₜcₜ₋₁_in_θ[r]
+				if j > 0
+					∇∇f[q,r] .+= pY .* (Aᵃ * ∇f[q] * ∇Aᶜᵀ[j])
+				end
+				i = index_paₜaₜ₋₁_in_θ[q]
+				j = index_pY_in_θ[r]
+				if i > 0 && j > 0
+					∇∇f[q,r] .+= ∇pY[j] .* (∇Aᵃ[i] * f⨉Aᶜᵀ)
+				end
+				i = index_pcₜcₜ₋₁_in_θ[q]
+				j = index_pY_in_θ[r]
+				if i > 0 && j > 0
+					∇∇f[q,r] .+= ∇pY[j] .* (Aᵃ * f * ∇Aᶜᵀ[i])
+				end
+				i = index_pcₜcₜ₋₁_in_θ[q]
+				j = index_paₜaₜ₋₁_in_θ[r]
+				if i > 0 && j > 0
+					∇∇f[q,r] .+= pY .* (∇Aᵃ[j] * f * ∇Aᶜᵀ[i])
+				end
+			end
 		end
 		for q = 1:nθ_all
 			∇f[q] = pY .* (Aᵃ * ∇f[q] * Aᶜᵀ)
@@ -319,6 +415,7 @@ EXAMPLE
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true)
 julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.compare_gradients_hessians_θnative(model)
+julia> maximum(absdiff∇∇)
 ```
 """
 function compare_gradients_hessians_θnative(model::Model)
@@ -469,6 +566,39 @@ function ∇conditionallikelihood(pY::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
 end
 
 """
+	differentiate_p𝑑_wrt_ψ(𝑑,K,Ξ)
+
+Derivative of the conditional likelihood of the choice with respect to ψ
+
+ARGUMENT
+-`𝑑`: choice: left(false) or right(true)
+-`K`: number of coupling states
+-`Ξ`: number of accumulator states
+
+RETURN
+-`dp𝑑_dψ`: a matrix whose element `dp𝑑_dψ[i,j]` represents ∂p(𝑑 ∣ a=i, c=j)/∂ψ
+"""
+function differentiate_p𝑑_wrt_ψ(𝑑::Bool, K::Integer, Ξ::Integer)
+	dp𝑑_dψ = zeros(Ξ,K)
+	if 𝑑
+		∂p𝑑_ξ⁻_∂ψ = 0.5
+		∂p𝑑_ξ⁺_∂ψ = -0.5
+	else
+		∂p𝑑_ξ⁻_∂ψ = -0.5
+		∂p𝑑_ξ⁺_∂ψ = 0.5
+	end
+	zeroindex = cld(Ξ,2)
+	for j = 1:K
+		for i = 1:zeroindex-1
+			dp𝑑_dψ[i,j] = ∂p𝑑_ξ⁻_∂ψ
+		end
+		for i = zeroindex+1:Ξ
+			dp𝑑_dψ[i,j] = ∂p𝑑_ξ⁺_∂ψ
+		end
+	end
+	return dp𝑑_dψ
+end
+"""
 	conditionallikelihood!(P, 𝑑, ψ)
 
 Multiply elements of a matrix by the conditional likelihood of the choice
@@ -549,7 +679,19 @@ function Sameacrosstrials(model::Model)
 		indexθ_pY[i] .+= counter
 		counter = indexθ_pY[i][end]
 	end
-	nθ_paₜaₜ₋₁ = 6
+	nθ_all = indexθ_pY[end][end]
+	index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = zeros(Int, nθ_all), zeros(Int, nθ_all), zeros(Int, nθ_all), zeros(Int, nθ_all), zeros(Int, nθ_all)
+	index_pa₁_in_θ[indexθ_pa₁] .= 1:length(indexθ_pa₁)
+	index_paₜaₜ₋₁_in_θ[indexθ_paₜaₜ₋₁] .= 1:length(indexθ_paₜaₜ₋₁)
+	index_pc₁_in_θ[indexθ_pc₁] .= 1:length(indexθ_pc₁)
+	index_pcₜcₜ₋₁_in_θ[indexθ_pcₜcₜ₋₁] .= 1:length(indexθ_pcₜcₜ₋₁)
+	index_ψ_in_θ[indexθ_ψ] .= 1:length(indexθ_ψ)
+	index_pY_in_θ = map(x->zeros(Int, nθ_all), indexθ_pY)
+	for i = 1:length(index_pY_in_θ)
+		index_pY_in_θ[i][indexθ_pY[i]] = 1:length(indexθ_pY[i])
+	end
+
+	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
 	P = Probabilityvector(Δt, θnative, Ξ)
 	update_for_∇∇transition_probabilities!(P)
 	∇∇Aᵃsilent = map(i->zeros(Ξ,Ξ), CartesianIndices((nθ_paₜaₜ₋₁,nθ_paₜaₜ₋₁)))
