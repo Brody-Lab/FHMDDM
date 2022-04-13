@@ -643,6 +643,7 @@ Quantities that are same across trials and used in each trial
 								VMR<:Vector{<:Matrix{<:Real}},
 								MR<:Matrix{<:Real},
 								R<:Real,
+								VR<:Vector{<:Real},
 								VI<:Vector{<:Integer},
 								VVI<:Vector{<:Vector{<:Integer}},
 								TI<:Integer}
@@ -692,4 +693,6 @@ Quantities that are same across trials and used in each trial
 	∇πᶜᵀ::VMR
 	"number of accumulator states"
 	Ξ::TI
+	"discrete values of the accumulator, un-normalized"
+	𝛏::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 end

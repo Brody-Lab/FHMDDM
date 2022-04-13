@@ -1167,7 +1167,7 @@ julia> μ=1.0; σ=2.0; Ξ=7; B=10.0; 𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 function probabilityvector(μ::T,
 						   σ::T,
 						   𝛏::Vector{T}) where {T<:Real}
-    Ξ = length(𝛏)
+	Ξ = length(𝛏)
     Ξ_1 = Ξ-1
     σ_Δξ = σ/(𝛏[2]-𝛏[1])
     𝐳 = (𝛏 .- μ)./σ
@@ -1182,13 +1182,62 @@ function probabilityvector(μ::T,
             ΔΦ[i] = Φ[i+1] - Φ[i]
         end
     end
-    𝐩 = Φ # reuse the memory
+	𝐩 = Φ
     𝐩[1] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
     for i = 2:Ξ_1
         𝐩[i] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
     end
     𝐩[Ξ] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
-    return 𝐩
+	return 𝐩
+end
+
+"""
+    transitionmatrix!(A, 𝛍, σ, 𝛏)
+
+In-place computation of the transition matrix for the discretized Fokker-Planck system for a single time step
+
+MODIFIED ARGUMENT
+-`A`: a square matrix describing the transitions of the accumulator variable at a single time step
+
+UNMODIFIED ARGUMENT
+-`𝛍`: mean of the Gaussian PDF of the accumulator variable conditioned on its value in the previous time step
+-`σ`: standard deviation of the Weiner process at this time step
+-`𝛏`: a vector specifying the equally-spaced values into which the accumulator variable is discretized
+
+RETURN
+-nothing
+"""
+function transitionmatrix!(A::Matrix{T},
+                           𝛍::Vector{<:Real},
+                           σ::Real,
+                           𝛏::Vector{<:Real}) where {T<:Real}
+	Ξ = length(𝛏)
+	Ξ_1 = Ξ-1
+	σ_Δξ = σ/(𝛏[2]-𝛏[1])
+    ΔΦ = zeros(T, Ξ_1)
+	A[1,1] = 1.0
+	A[2:Ξ,1] .= 0.0
+	A[1:Ξ_1,Ξ] .= 0.0
+	A[Ξ,Ξ] = 1.0
+    @inbounds for j = 2:Ξ_1
+        𝐳 = (𝛏 .- 𝛍[j])./σ
+        Δf = diff(normpdf.(𝐳))
+        Φ = normcdf.(𝐳)
+        C = normccdf.(𝐳) # complementary cumulative distribution function
+        for i = 1:Ξ_1
+            if 𝛍[j] <= 𝛏[i]
+                ΔΦ[i] = C[i] - C[i+1]
+            else
+                ΔΦ[i] = Φ[i+1] - Φ[i]
+            end
+        end
+        A[1,j] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
+        for i = 2:Ξ_1
+            A[i,j] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
+        end
+        A[Ξ,j] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
+    end
+    return nothing
 end
 
 """
@@ -1410,53 +1459,6 @@ end
 
 
 
-
-"""
-    transitionmatrix!(A, 𝛍, σ, 𝛏)
-
-In-place computation of the transition matrix for the discretized Fokker-Planck system for a single time step
-
-MODIFIED ARGUMENT
--`A`: a square matrix describing the transitions of the accumulator variable at a single time step
-
-UNMODIFIED ARGUMENT
--`𝛍`: mean of the Gaussian PDF of the accumulator variable conditioned on its value in the previous time step
--`σ`: standard deviation of the Weiner process at this time step
--`𝛏`: a vector specifying the equally-spaced values into which the accumulator variable is discretized
-
-RETURN
--nothing
-"""
-function transitionmatrix!(A::Matrix{T},
-                           𝛍::Vector{<:Real},
-                           σ::Real,
-                           𝛏::Vector{<:Real}) where {T<:Real}
-	Ξ = length(𝛏)
-	Ξ_1 = Ξ-1
-	σ_Δξ = σ/(𝛏[2]-𝛏[1])
-    ΔΦ = zeros(T, Ξ_1)
-	A[1,1] = 1.0
-	A[Ξ,Ξ] = 1.0
-    @inbounds for j = 2:Ξ_1
-        𝐳 = (𝛏 .- 𝛍[j])./σ
-        Δf = diff(normpdf.(𝐳))
-        Φ = normcdf.(𝐳)
-        C = normccdf.(𝐳) # complementary cumulative distribution function
-        for i = 1:Ξ_1
-            if 𝛍[j] <= 𝛏[i]
-                ΔΦ[i] = C[i] - C[i+1]
-            else
-                ΔΦ[i] = Φ[i+1] - Φ[i]
-            end
-        end
-        A[1,j] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
-        for i = 2:Ξ_1
-            A[i,j] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
-        end
-        A[Ξ,j] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
-    end
-    return nothing
-end
 
 
 """

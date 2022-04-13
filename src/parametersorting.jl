@@ -67,6 +67,85 @@ function sortparameters(concatenatedθ::Vector{<:Real},
 end
 
 """
+	sortnativeparameters(concatenatedθ, model)
+
+Sort a vector of concatenated parameter values in their native space
+
+ARGUMENT
+-`concatenatedθ`: a vector of concatenated parameter values
+
+RETURN
+-`model`: the model with new parameter values
+"""
+function sort_native_parameters(concatenatedθ::Vector{type}, model::Model) where {type<:Real}
+	θnative = Latentθ((similar(getfield(model.θnative, field), type) for field in fieldnames(Latentθ))...)
+	counter = 0
+	for field in fieldnames(Latentθ)
+		counter+=1
+		getfield(θnative, field)[1] = concatenatedθ[counter]
+	end
+	𝐮 = map(model.trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				zeros(type, length(mpGLM.θ.𝐮))
+			end
+		end
+	𝐯 = map(model.trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				zeros(type, length(mpGLM.θ.𝐯))
+			end
+		end
+	for s in eachindex(model.trialsets)
+		for n in eachindex(model.trialsets[s].mpGLMs)
+			for q in eachindex(𝐮[s][n])
+				counter +=1
+				𝐮[s][n][q] = concatenatedθ[counter]
+			end
+			for q in eachindex(𝐯[s][n])
+				counter +=1
+				𝐯[s][n][q] = concatenatedθ[counter]
+			end
+		end
+	end
+	trialsets = map(model.trialsets, 𝐮, 𝐯) do trialset, 𝐮, 𝐯
+					mpGLMs =map(trialset.mpGLMs, 𝐮, 𝐯) do mpGLM, 𝐮, 𝐯
+								MixturePoissonGLM(Δt=mpGLM.Δt, K=mpGLM.K, 𝐔=mpGLM.𝐔, 𝚽=mpGLM.𝚽, Φ=mpGLM.Φ, θ=GLMθ(𝐮=𝐮, 𝐯=𝐯), 𝐗=mpGLM.𝐗, 𝛏=mpGLM.𝛏, 𝐲=mpGLM.𝐲, 𝐲! =mpGLM.𝐲!)
+							end
+					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
+				end
+	Model(	options = model.options,
+			θnative = θnative,
+			θ₀native= model.θ₀native,
+			θreal = native2real(model.options, θnative),
+			trialsets=trialsets)
+end
+
+"""
+	concatenatenativeparameters(model)
+
+Concatenated parameters in their native space
+
+ARGUMENT
+-`model`: the model with new parameter values
+
+RETURN
+-`concatenatedθ`: a vector of concatenated parameter values
+"""
+function concatenate_native_parameters(model::Model)
+	concatenatedθ = zeros(typeof(model.θnative.B[1]), 0)
+	for field in fieldnames(Latentθ)
+		concatenatedθ = vcat(concatenatedθ, getfield(model.θnative, field))
+	end
+	for s in eachindex(model.trialsets)
+		for n in eachindex(model.trialsets[s].mpGLMs)
+			for field = (:𝐮, :𝐯)
+				concatenatedθ = vcat(concatenatedθ, getfield(model.trialsets[s].mpGLMs[n].θ, field))
+			end
+		end
+	end
+	return concatenatedθ
+end
+
+"""
 	Latentθ(concatenatedθ, index, old)
 
 Create a structure containing the parameters for the latent variable with updated values

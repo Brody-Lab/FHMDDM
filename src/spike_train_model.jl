@@ -36,18 +36,21 @@ function SpikeTrainModel(ntimesteps_each_trial::Vector{<:Integer},
 end
 
 """
-	Poissonlikelihood(λΔt, y)
+	Poissonlikelihood(Δt, L, y)
 
 Probability of a Poisson observation
 
 ARGUMENT
--`λΔt`: the expected value
--`y`: the observation
+-`Δt`: size of time step. Assumed to be a positive real number, otherwise the results are nonsensical. No error checking because this is performance-critical code.
+-`L`: linear predictor. This is a real scalar.
+-`y`: observation.
 
 OUTPUT
 -the likelihood
 """
-function Poissonlikelihood(λΔt::Real, y::Integer)
+function Poissonlikelihood(Δt::Real, L::Real, y::Integer)
+    λ = softplus(L)
+    λΔt = λ*Δt
 	if y==0
 		exp(-λΔt)
 	elseif y==1
@@ -205,7 +208,7 @@ UNMODFIED ARGUMENTS
 -`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
 -`t`: time step
 -`spiketrainmodels`: a vector whose each element is a structure containing the input and observations of the generalized linear model of a neuron
--`trialinvariant`: a structure containing quantities used in each trial
+-`sameacrosstrials`: a structure containing quantities used in each trial
 
 EXAMPLE
 ```julia-repl
@@ -214,14 +217,14 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_0
 julia> glmθs = map(x->x.θ, model.trialsets[1].mpGLMs)
 julia> t = 10
 julia> spiketrainmodels = model.trialsets[1].trials[1].spiketrainmodels
-julia> trialinvariant = Trialinvariant(model; purpose = "gradient")
+julia> sameacrosstrials = Sameacrosstrials(model)
 julia> nparameters = length(glmθs)*(length(glmθs[1].𝐮) + length(glmθs[1].𝐯))
 julia> Ξ = model.options.Ξ
 julia> K = model.options.K
 julia> pY = zeros(Ξ,K)
 julia> ∇pY = collect(zeros(Ξ,K) for n=1:nparameters)
 julia> ∇∇pY = map(index->zeros(Ξ,K), CartesianIndices((nparameters,nparameters)))
-julia> FHMDDM.∇∇conditionallikelihood!(∇∇pY, ∇pY, pY, glmθs, t, spiketrainmodels, trialinvariant)
+julia> FHMDDM.∇∇conditionallikelihood!(∇∇pY, ∇pY, pY, glmθs, t, spiketrainmodels, sameacrosstrials)
 ```
 """
 function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
@@ -230,8 +233,8 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 								  glmθs::Vector{<:GLMθ},
 								  t::Integer,
 								  spiketrainmodels::Vector{<:SpikeTrainModel},
-								  trialinvariant::Trialinvariant)
-	@unpack Δt, K, Ξ, 𝛏 = trialinvariant
+								  sameacrosstrials::Sameacrosstrials)
+	@unpack Δt, K, Ξ, 𝛏 = sameacrosstrials
 	nneurons = length(spiketrainmodels)
 	n𝐮 = length(glmθs[1].𝐮)
 	n𝐯 = length(glmθs[1].𝐯)
@@ -314,6 +317,42 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 end
 
 """
+    conditionallikelihood!
+
+Hessian of the conditional likelihood of the population spiking at one time step
+
+MODIFIED ARGUMENTS
+-`pY`: an array whose element pY[i,j] corresponds to the conditional likelihood of population spiking, given that the accumulator is in the i-th state and the coupling in the j-th state
+
+UNMODFIED ARGUMENTS
+-`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
+-`t`: time step
+-`spiketrainmodels`: a vector whose each element is a structure containing the input and observations of the generalized linear model of a neuron
+-`sameacrosstrials`: a structure containing quantities used in each trial
+"""
+function conditionallikelihood!(pY::Matrix{<:Real},
+                                Δt::Real,
+                                d𝛏_dB::Vector{<:Real},
+                                glmθs::Vector{<:GLMθ},
+                                K::Integer,
+                                t::Integer,
+                                spiketrainmodels::Vector{<:SpikeTrainModel})
+	Ξ = length(d𝛏_dB)
+	pY .= 1.0
+	for n = 1:length(glmθs)
+        𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,:] ⋅ glmθs[n].𝐮
+		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,:] ⋅ glmθs[n].𝐯
+		for i = 1:Ξ
+			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*d𝛏_dB[i]
+			pY[i,1] *= Poissonlikelihood(Δt, L, spiketrainmodels[n].𝐲[t])
+		end
+	end
+	if K > 1
+		pY[:,2] .= pY[cld(Ξ,2),1]
+    end
+end
+
+"""
 	compare_conditional_likelihood(model)
 
 Compare the automatic computed and hand-coded derivatives of the conditional likelihood of population spiking
@@ -337,7 +376,7 @@ model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/
 function compare_conditional_likelihood(model::Model)
 	@unpack trialsets = model
 	@unpack Δt, K, Ξ = model.options
-	trialinvariant = Trialinvariant(model)
+	sameacrosstrials = Sameacrosstrials(model)
 	glmθs = map(glm->glm.θ, model.trialsets[1].mpGLMs)
 	concatenatedθ = zeros(0)
 	for n in eachindex(glmθs)
@@ -353,10 +392,10 @@ function compare_conditional_likelihood(model::Model)
 	for m in eachindex(model.trialsets[1].trials)
 		trial = model.trialsets[1].trials[m]
 		for t = 1:trial.ntimesteps
-			∇∇conditionallikelihood!(Hhand, ghand, phand, glmθs, t, trial.spiketrainmodels, trialinvariant)
+			∇∇conditionallikelihood!(Hhand, ghand, phand, glmθs, t, trial.spiketrainmodels, sameacrosstrials)
 			for j = 1:Ξ
 				for k = 1:K
-					f(x) = conditionallikelihood(j,k,trial.spiketrainmodels,t,trialinvariant,x)
+					f(x) = conditionallikelihood(j,k,trial.spiketrainmodels,t,sameacrosstrials,x)
 					ForwardDiff.hessian!(Hauto, f, concatenatedθ)
 					ForwardDiff.gradient!(gauto, f, concatenatedθ)
 					Δp = max(Δp, abs(f(concatenatedθ) - phand[j,k]))
@@ -374,7 +413,7 @@ function compare_conditional_likelihood(model::Model)
 end
 
 """
-	conditionallikelihood(j,k,spiketrainmodels,t,trialinvariant,x)
+	conditionallikelihood(j,k,spiketrainmodels,t,sameacrosstrials,x)
 
 Conditional likelihood of the population spiking response, for automatic differentiation
 
@@ -383,7 +422,7 @@ ARGUMENT
 -`k`: index of the state of the coupling
 -`spiketrainmodels`: a vector whose element contains one trial's data of the Poisson mixture generalized linear model of a neuron's spike train. Each element corresponds to a neuron.
 -`t`: index of the time step
--`trialinvariant`: a structure containing quantities used in each trial
+-`sameacrosstrials`: a structure containing quantities used in each trial
 -`x`: parameters of each neuron's generalized linear model, concatenated
 
 RETURN
@@ -396,7 +435,7 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_0
 julia> nparameters = length(model.trialsets[1].mpGLMs) * (length(model.trialsets[1].mpGLMs[1].θ.𝐮) + length(model.trialsets[1].mpGLMs[1].θ.𝐯) + 1)
 julia> x = rand(MersenneTwister(1234), nparameters)
 julia>
-julia> FHMDDM.conditionallikelihood(27, 1, model.trialsets[1].trials[1].spiketrainmodels, Trialinvariant(model), x)
+julia> FHMDDM.conditionallikelihood(27, 1, model.trialsets[1].trials[1].spiketrainmodels, Sameacrosstrials(model), x)
 	0.013017384655839466
 ```
 """
@@ -404,9 +443,9 @@ function conditionallikelihood(j::Integer,
 							   k::Integer,
 							   spiketrainmodels::Vector{<:SpikeTrainModel},
 							   t::Integer,
-                               trialinvariant::Trialinvariant,
+                               sameacrosstrials::Sameacrosstrials,
 							   x::Vector{<:Real})
-    @unpack Δt, 𝛏, Ξ = trialinvariant
+    @unpack Δt, 𝛏, Ξ = sameacrosstrials
 	n𝐮 = size(spiketrainmodels[1].𝐔,2)
 	n𝐯 = size(spiketrainmodels[1].𝚽,2)
 	q = 0
