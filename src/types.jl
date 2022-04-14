@@ -712,3 +712,25 @@ Quantities that are same across trials and used in each trial
 	"discrete values of the accumulator, un-normalized"
 	𝛏::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 end
+
+"""
+	FGH
+
+a structure containing the cost function, its gradient, and its hessian
+"""
+@with_kw struct FGH{VR<:Vector{<:Real}, MR<:Matrix{<:Real}, TI<:Indexθ}
+	"value used to compute the cost function"
+	x_f::VR
+	"value used to compute the gradient of the cost function"
+	x_g::VR
+	"value used to compute the hessian of the cost function"
+	x_h::VR
+	"value of the cost function"
+	f::VR
+	"gradient of the cost function"
+	g::VR
+	"hessian of the cost function"
+	h::MR
+	"index of the parameters"
+	indexθ::TI
+end

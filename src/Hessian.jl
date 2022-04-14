@@ -1,4 +1,91 @@
 """
+	∇∇negativeloglikelihood!(h,concatenatedθ, fgh, indexθ)
+
+Hessian of the negative log-likelihood
+
+MODIFIED ARGUMENT
+-`h`: hessian matrix, with respect to only the parameters being fitted and their values in real space
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: values of the parameters in real space concatenated as a vector
+-`fgh`: structure containing the negative log-likelihood, its gradient, and its hessian, as well as the parameters values used to compute each of these quantities
+-`indexθ`: a structure for sorting (i.e., un-concatenating) the parameters
+-`model`: a structure containing the data and hyperparameters of the factorial hidden drift-diffusion model
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true)
+julia> concatenatedθ, indexθ = concatenateparameters(model)
+julia> fgh = FHMDDM.FGH(model)
+julia> h = similar(fgh.h)
+julia> FHMDDM.∇∇negativeloglikelihood!(h, concatenatedθ, fgh, model)
+```
+"""
+function ∇∇negativeloglikelihood!(h::Matrix{<:Real}, concatenatedθ::Vector{<:Real}, fgh::FGH, model::Model)
+	if concatenatedθ != fgh.x_h
+		ℓ, ∇ℓ, ∇∇ℓ = ∇∇loglikelihood!(model, concatenatedθ, indexθ)
+		fgh.f[1] = -ℓ
+		for i in eachindex(∇ℓ)
+			fgh.g[i] = -∇ℓ[i]
+		end
+		for ij in eachindex(∇∇ℓ)
+			fgh.h[ij] = -∇∇ℓ[ij]
+		end
+		copyto!(fgh.x_f, concatenatedθ)
+		copyto!(fgh.x_g, concatenatedθ)
+		copyto!(fgh.x_h, concatenatedθ)
+	end
+	if h != fgh.h
+		copyto!(h, fgh.h)
+	end
+	return nothing
+end
+
+"""
+	FGH(model)
+
+Makes a structure storing the negative log-likelihood, its gradient, its Hessian, the parameter values used to compute each of these quantities, and the index of the parameters.
+"""
+function FGH(model::Model)
+	concatenatedθ, indexθ = concatenateparameters(model)
+	ℓ, ∇ℓ, ∇∇ℓ = ∇∇loglikelihood!(model, concatenatedθ, indexθ)
+	FGH(x_f=concatenatedθ, x_g=concatenatedθ, x_h=concatenatedθ, f=[ℓ], g=∇ℓ, h=∇∇ℓ, indexθ=indexθ)
+end
+
+"""
+	∇∇loglikelihood!(model, concatenatedθ, indexθ)
+
+Sort a vector of parameters and compute the log-likelihood, its gradient, and its hessian
+
+ARGUMENT
+-`model`: a structure containing the data and hyperparameters of the factorial hidden drift-diffusion model
+-`concatenatedθ`: values of the parameters in real space concatenated as a vector
+-`indexθ`: a structure for sorting (i.e., un-concatenating) the parameters
+
+RETURN
+-`ℓ`: log-likelihood
+-`∇ℓ`: gradient of the log-likelihood with respect to fitted parameters in real space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to fitted parameters in real space
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.∇∇loglikelihood!(model, concatenatedθ, indexθ)
+```
+"""
+function ∇∇loglikelihood!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::Indexθ)
+	sortparameters!(model, concatenatedθ, indexθ)
+	ℓ, ∇ℓ, ∇∇ℓ = ∇∇loglikelihood(model)
+	native2real!(∇ℓ, ∇∇ℓ, indexθ.latentθ, model)
+	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
+	∇∇ℓ = sortparameters(indexθ.latentθ, ∇∇ℓ)
+	return ℓ, ∇ℓ, ∇∇ℓ
+end
+
+"""
 	∇∇loglikelihood(model)
 
 Hessian of the log-likelihood of data under a factorial hidden Markov drift-diffusion model (FHMDDM).
@@ -10,8 +97,8 @@ ARGUMENT
 
 RETURN
 -`ℓ`: log-likelihood
--`∇ℓ`: gradient of the log-likelihood
--`∇∇ℓ`: Hessian matrix of the log-likelihood
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in native space
 
 EXAMPLE
 ```julia-repl
@@ -39,7 +126,12 @@ function ∇∇loglikelihood(model::Model)
 			∇∇ℓ .+= output[i][m][3]
 		end
 	end
-	return ℓ, ∇ℓ, Symmetric(∇∇ℓ)
+	for i = 1:size(∇∇ℓ,1)
+		for j = i+1:size(∇∇ℓ,2)
+			∇∇ℓ[j,i] = ∇∇ℓ[i,j]
+		end
+	end
+	return ℓ, ∇ℓ, ∇∇ℓ
 end
 
 """
@@ -400,7 +492,7 @@ end
 """
 	compare_gradients_hessians_θnative(model)
 
-Compare the automatically computed and hand-coded gradients and hessians with respect the parameters in their native space
+Compare the automatically computed and hand-coded gradients and hessians with respect to the parameters in their native space
 
 ARGUMENT
 -`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
@@ -419,12 +511,73 @@ julia> maximum(absdiff∇∇)
 ```
 """
 function compare_gradients_hessians_θnative(model::Model)
-	x0 = FHMDDM.concatenate_native_parameters(model)
+	x0 = concatenate_native_parameters(model)
 	f(x) = loglikelihood_θnative(x, model)
 	ℓauto = f(x0)
 	∇auto = ForwardDiff.gradient(f, x0)
 	∇∇auto = ForwardDiff.hessian(f, x0)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood(model)
+	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand), abs.(∇∇auto .- ∇∇hand)
+end
+
+"""
+    loglikelihood(concatenatedθ, indexθ, model)
+
+Compute the log-likelihood in a way that is compatible with ForwardDiff
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: a vector of concatenated parameter values
+-`indexθ`: struct indexing of each parameter in the vector of concatenated values
+-`model`: an instance of FHM-DDM
+
+RETURN
+-log-likelihood
+"""
+function loglikelihood(concatenatedθ::Vector{<:Real}, indexθ::Indexθ, model::Model)
+	model = sortparameters(concatenatedθ, indexθ, model)
+	@unpack options, trialsets = model
+	output =map(trialsets) do trialset
+				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
+		 		map(trialset.trials) do trial #pmap
+					loglikelihood(glmθs, options, model.θnative, trial)
+				end
+			end
+	ℓ = output[1][1]
+	for i in eachindex(output)
+		for m = 2:length(output[i])
+			ℓ += output[i][m]
+		end
+	end
+	return ℓ
+end
+
+"""
+	compare_gradients_hessians(model)
+
+Compare the automatically computed and hand-coded gradients and hessians with respect to the parameters being fitted in their real space
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+
+RETURN
+-`absdiffℓ`: absolute difference in the log-likelihood evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
+-`absdiff∇`: absolute difference in the gradients
+-`absdiff∇∇`: absolute difference in the hessians
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.compare_gradients_hessians(model)
+```
+"""
+function compare_gradients_hessians(model::Model)
+	concatenatedθ, indexθ = concatenateparameters(model)
+	f(x) = loglikelihood(x, indexθ, model)
+	ℓauto = f(concatenatedθ)
+	∇auto = ForwardDiff.gradient(f, concatenatedθ)
+	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
+	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood!(model,concatenatedθ,indexθ)
 	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand), abs.(∇∇auto .- ∇∇hand)
 end
 
@@ -715,4 +868,109 @@ function Sameacrosstrials(model::Model)
 					πᶜᵀ=πᶜᵀ,
 					∇πᶜᵀ=∇πᶜᵀ,
 					Ξ=Ξ)
+end
+
+"""
+	native2real!(∇ℓ, ∇∇ℓ, latentθindex, model)
+
+Convert the gradient and hessian from being with respect to the parameters in native space to parameters in real space
+
+ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in native space
+-`latentθindex`: index of each latent parameter in the gradient and Hessian
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+MODIFIED ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in real space
+"""
+function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, latentθindex::Latentθ, model::Model)
+	firstderivatives = differentiate_native_wrt_real(model)
+	secondderivatives = differentiate_twice_native_wrt_real(model)
+	for parametername in fieldnames(Latentθ)
+		d1 = getfield(firstderivatives, parametername)[1]
+		d2 = getfield(secondderivatives, parametername)[1]
+		if d1 != 1.0
+			i = getfield(latentθindex, parametername)[1]
+			∇∇ℓ[i,:] .*= d1
+			∇∇ℓ[:,i] .*= d1
+			∇∇ℓ[i,i] += d2*∇ℓ[i]
+			∇ℓ[i] *= d1
+		end
+	end
+	return nothing
+end
+
+"""
+	differentiate_native_wrt_real(model)
+
+Derivative of each latent-variable-related parameter in its native space with respect to its value in real space
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+RETURN
+-`derivatives`: an instance of `Latentθ` containing the derivative of each parameter in its native space with respect to its value in real space
+"""
+function differentiate_native_wrt_real(model::Model)
+	@unpack options, θreal, θnative = model
+	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	f_bound_z = 1.0-2.0*options.bound_z
+	f_bound_ψ = 1.0-2.0*options.bound_ψ
+	d = Latentθ()
+	d.Aᶜ₁₁[1] = f_bound_z*tmpAᶜ₁₁*(1.0 - tmpAᶜ₁₁)
+	d.Aᶜ₂₂[1] = f_bound_z*tmpAᶜ₂₂*(1.0 - tmpAᶜ₂₂)
+	d.B[1] = θnative.B[1]*logistic(-θreal.B[1])
+	d.k[1] = θnative.k[1]
+	d.λ[1] = 1.0
+	d.μ₀[1] = 1.0
+	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	d.πᶜ₁[1] = f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
+	d.ψ[1] = f_bound_ψ*tmpψ*(1.0 - tmpψ)
+	d.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
+	d.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
+	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	d.wₕ[1] = 1.0
+	return d
+end
+
+"""
+	differentiate_twice_native_wrt_real(model)
+
+Second derivative of each latent-variable-related parameter in its native space with respect to its value in real space
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+RETURN
+-`derivatives`: an instance of `Latentθ` containing the derivative of each parameter in its native space with respect to its value in real space
+"""
+function differentiate_twice_native_wrt_real(model::Model)
+	@unpack options, θreal, θnative = model
+	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	f_bound_z = 1.0-2.0*options.bound_z
+	f_bound_ψ = 1.0-2.0*options.bound_ψ
+	d = Latentθ()
+	d.Aᶜ₁₁[1] = f_bound_z*(tmpAᶜ₁₁*(1-tmpAᶜ₁₁)^2 - tmpAᶜ₁₁^2*(1-tmpAᶜ₁₁))
+	d.Aᶜ₂₂[1] = f_bound_z*(tmpAᶜ₂₂*(1-tmpAᶜ₂₂)^2 - tmpAᶜ₂₂^2*(1-tmpAᶜ₂₂))
+	fB = logistic(θreal.B[1])
+	d.B[1] = 2options.q_B*(fB*(1-fB)^2 - fB^2*(1-fB))
+	d.k[1] = θnative.k[1]
+	d.λ[1] = 0.0
+	d.μ₀[1] = 0.0
+	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])^2 - θnative.ϕ[1]^2*(1.0 - θnative.ϕ[1])
+	d.πᶜ₁[1] = f_bound_z*(tmpπᶜ₁*(1-tmpπᶜ₁)^2 - tmpπᶜ₁^2*(1-tmpπᶜ₁))
+	d.ψ[1] = f_bound_ψ*(tmpψ*(1-tmpψ)^2 - tmpψ^2*(1-tmpψ))
+	d.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
+	d.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
+	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	d.wₕ[1] = 0.0
+	return d
 end

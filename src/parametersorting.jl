@@ -67,6 +67,65 @@ function sortparameters(concatenatedθ::Vector{<:Real},
 end
 
 """
+	sortparameters(latentθindex,∇ℓ)
+
+Return the subset of first-order partial derivatives associated with parameters being fitted
+
+ARGUMENT
+-`latentθindex`: index of each latent parameter in the gradient
+-`∇ℓ`: gradient of the log-likelihood
+
+RETURN
+-gradient of the log-likelihood with respect to only the parameters being fitted
+"""
+function sortparameters(latentθindex::Latentθ, ∇ℓ::Vector{<:Real})
+	isfitted = trues(length(∇ℓ))
+	latentparameternames = fieldnames(Latentθ)
+	isfitted[1:length(latentparameternames)] .= false
+	for parametername in latentparameternames
+		i = getfield(latentθindex, parametername)[1]
+		if i > 0
+			isfitted[i] = true
+		end
+	end
+	if any(isfitted .= false)
+		return ∇ℓ[isfitted]
+	else
+		return ∇ℓ
+	end
+end
+
+"""
+	sortparameters(latentθindex,∇∇ℓ)
+
+Return the subset of second-order partial derivatives associated with parameters being fitted
+
+ARGUMENT
+-`latentθindex`: index of each latent parameter in the hessian
+-`∇∇ℓ`: hessian of the log-likelihood
+
+RETURN
+-hessian of the log-likelihood with respect to only the parameters being fitted
+"""
+function sortparameters(latentθindex::Latentθ, ∇∇ℓ::Matrix{<:Real})
+	isfitted = trues(size(∇∇ℓ,1))
+	latentparameternames = fieldnames(Latentθ)
+	isfitted[1:length(latentparameternames)] .= false
+	for parametername in latentparameternames
+		i = getfield(latentθindex, parametername)[1]
+		if i > 0
+			isfitted[i] = true
+		end
+	end
+	if any(isfitted .= false)
+		return ∇∇ℓ[isfitted, isfitted]
+	else
+		return ∇∇ℓ
+	end
+end
+
+
+"""
 	sortnativeparameters(concatenatedθ, model)
 
 Sort a vector of concatenated parameter values in their native space
