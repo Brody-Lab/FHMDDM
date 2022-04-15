@@ -314,6 +314,87 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 			end
 		end
 	end
+	return nothing
+end
+
+"""
+	∇conditionallikelihood!
+
+Gradient of the conditional likelihood of the population spiking at one time step
+
+MODIFIED ARGUMENTS
+-`∇pY`: a nested array whose element ∇pY[q][i,j] corresponds to the partial derivative of the conditional likelihood of population spiking, given that the accumulator is in the i-th state and the coupling in the j-th state, with respect the q-th parameter
+-`pY`: an array whose element pY[i,j] corresponds to the conditional likelihood of population spiking, given that the accumulator is in the i-th state and the coupling in the j-th state
+
+UNMODFIED ARGUMENTS
+-`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
+-`t`: time step
+-`spiketrainmodels`: a vector whose each element is a structure containing the input and observations of the generalized linear model of a neuron
+-`sameacrosstrials`: a structure containing quantities used in each trial
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat")
+julia> glmθs = map(x->x.θ, model.trialsets[1].mpGLMs)
+julia> t = 10
+julia> spiketrainmodels = model.trialsets[1].trials[1].spiketrainmodels
+julia> sameacrosstrials = Sameacrosstrials(model)
+julia> nparameters = length(glmθs)*(length(glmθs[1].𝐮) + length(glmθs[1].𝐯))
+julia> Ξ = model.options.Ξ
+julia> K = model.options.K
+julia> pY = zeros(Ξ,K)
+julia> ∇pY = collect(zeros(Ξ,K) for n=1:nparameters)
+julia> FHMDDM.∇conditionallikelihood!(∇pY, pY, glmθs, t, spiketrainmodels, sameacrosstrials)
+```
+"""
+function ∇conditionallikelihood!(∇pY::Vector{<:Matrix{<:Real}},
+								pY::Matrix{<:Real},
+								glmθs::Vector{<:GLMθ},
+								t::Integer,
+								spiketrainmodels::Vector{<:SpikeTrainModel},
+								sameacrosstrials::Sameacrosstrials)
+	@unpack Δt, K, Ξ, 𝛏 = sameacrosstrials
+	nneurons = length(spiketrainmodels)
+	n𝐮 = length(glmθs[1].𝐮)
+	n𝐯 = length(glmθs[1].𝐯)
+	nparameters_per_neuron = n𝐮+n𝐯
+	nparameters = nneurons*nparameters_per_neuron
+	zeroindex = cld(Ξ,2)
+	pY .= 1.0
+	for n = 1:nneurons
+		𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,:] ⋅ glmθs[n].𝐮
+		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,:] ⋅ glmθs[n].𝐯
+		index1 = (n-1)*nparameters_per_neuron+1
+		indices𝐮 = index1 : index1+n𝐮-1
+		indices𝐯 = index1+n𝐮 : index1+n𝐮+n𝐯-1
+		for i = 1:Ξ
+			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*𝛏[i]
+			∂py_∂L, py = dPoissonlikelihood(Δt, L, spiketrainmodels[n].𝐲[t])
+			pY[i,1] *= py
+			for j=1:n𝐮
+				q = indices𝐮[j]
+				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝐔[t,j]/py #∂p(yₙ)/∂u * [1/p(yₙ)]
+			end
+			for j=1:n𝐯
+				q = indices𝐯[j]
+				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝚽[t,j]*𝛏[i]/py #∂p(yₙ)/∂v * [1/p(yₙ)]
+			end
+		end
+	end
+	for i = 1:Ξ
+		for q = 1:nparameters
+			∇pY[q][i,1] *= pY[i,1]
+		end
+	end
+	if K > 1
+		pY[:,2] .= pY[zeroindex,1]
+		indices𝐮 = vcat(collect((n-1)*nparameters_per_neuron+1:(n-1)*nparameters_per_neuron+n𝐮 for n = 1:nneurons)...)
+		for q in indices𝐮
+			∇pY[q][:,2] .= ∇pY[q][zeroindex,1]
+		end
+	end
+	return nothing
 end
 
 """
@@ -350,6 +431,7 @@ function conditionallikelihood!(pY::Matrix{<:Real},
 	if K > 1
 		pY[:,2] .= pY[cld(Ξ,2),1]
     end
+	return nothing
 end
 
 """
