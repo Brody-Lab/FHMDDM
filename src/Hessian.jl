@@ -387,6 +387,96 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 end
 
 """
+	loglikelihood(model)
+
+Log-likelihood of data under a factorial hidden Markov drift-diffusion model (FHMDDM).
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+RETURN
+-`ℓ`: log-likelihood
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> ℓ = loglikelihood(model)
+```
+"""
+function loglikelihood(model::Model)
+	sameacrosstrials = Sameacrosstrials(model)
+	@unpack trialsets = model
+	output =map(trialsets, eachindex(trialsets)) do trialset, s
+				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
+		 		map(trialset.trials) do trial #pmap
+					loglikelihood(glmθs, model.θnative, s, sameacrosstrials, trial)
+				end
+			end
+	ℓ = output[1][1]
+	for i in eachindex(output)
+		for m = 2:length(output[i])
+			ℓ += output[i][m]
+		end
+	end
+	return ℓ
+end
+
+"""
+	loglikelihood(glmθs, θnative, s, sameacrosstrials, trial)
+
+Log-likelihood of the observations from one trial, not meant for ForwardDiff
+
+ARGUMENT
+-`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
+-`θnative`: a structure containing parameters specifying the latent variables in their native space
+-`s`: index of the trialset
+-`sameacrosstrials`: a structure containing quantities used in each trial
+-`trial`: a structure containing information on the sensory stimuli, spike trains, input to each neuron's GLM, and behavioral choice
+
+RETURN
+-`ℓ`: log-likelihood
+"""
+function loglikelihood(glmθs::Vector{<:GLMθ},
+					   	θnative::Latentθ,
+						s::Integer,
+						sameacrosstrials::Sameacrosstrials,
+						trial::Trial)
+	@unpack clicks = trial
+	@unpack Aᵃsilent, Aᶜᵀ, Δt, K, πᶜᵀ, Ξ = sameacrosstrials
+	d𝛏_dB = sameacrosstrials.𝛏
+	P = Probabilityvector(Δt, θnative, Ξ)
+	priorprobability!(P, trial.previousanswer)
+	pa₁ = P.𝛑
+	pY = zeros(Ξ,K)
+	conditionallikelihood!(pY, Δt, d𝛏_dB, glmθs, K, 1, trial.spiketrainmodels)
+	f = pY .* pa₁ .* πᶜᵀ
+	ℓ = zeros(1)
+	forward!(f, ℓ)
+	if !isempty(clicks.inputtimesteps)
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+		Aᵃinput = zeros(Ξ,Ξ)
+		Aᵃinput[1,1] = Aᵃinput[Ξ, Ξ] = 1.0
+	end
+	for t=2:trial.ntimesteps
+		if t ∈ clicks.inputtimesteps
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃinput, P)
+			Aᵃ = Aᵃinput
+		else
+			Aᵃ = Aᵃsilent
+		end
+		conditionallikelihood!(pY, Δt, d𝛏_dB, glmθs, K, t, trial.spiketrainmodels)
+		if t==trial.ntimesteps
+			conditionallikelihood!(pY, trial.choice, θnative.ψ[1])
+		end
+		f = pY .* (Aᵃ * f * Aᶜᵀ)
+		forward!(f, ℓ)
+	end
+	return ℓ[1]
+end
+
+"""
 	loglikelihood_θnative(concatenatedθnative, model)
 
 Log-likelihood of the data given the complete set of parameters in their native space
