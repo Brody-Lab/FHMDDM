@@ -234,7 +234,7 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 								  t::Integer,
 								  spiketrainmodels::Vector{<:SpikeTrainModel},
 								  sameacrosstrials::Sameacrosstrials)
-	@unpack Δt, K, Ξ, 𝛏 = sameacrosstrials
+	@unpack Δt, K, Ξ, d𝛏_dB = sameacrosstrials
 	nneurons = length(spiketrainmodels)
 	n𝐮 = length(glmθs[1].𝐮)
 	n𝐯 = length(glmθs[1].𝐯)
@@ -252,7 +252,7 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 		indices_previousneurons = 1:index1-1
 		indices_subsequentneurons = index1+n𝐮+n𝐯:nparameters
 		for i = 1:Ξ
-			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*𝛏[i]
+			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*d𝛏_dB[i]
 			∂²py_∂L∂L, ∂py_∂L, py = ddPoissonlikelihood(Δt, L, spiketrainmodels[n].𝐲[t])
 			pY[i,1] *= py
 			for j=1:n𝐮
@@ -261,7 +261,7 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 			end
 			for j=1:n𝐯
 				q = indices𝐯[j]
-				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝚽[t,j]*𝛏[i]/py #∂p(yₙ)/∂v * [1/p(yₙ)]
+				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝚽[t,j]*d𝛏_dB[i]/py #∂p(yₙ)/∂v * [1/p(yₙ)]
 			end
 			for j = 1:n𝐮
 				q = indices𝐮[j]
@@ -274,14 +274,14 @@ function ∇∇conditionallikelihood!(∇∇pY::Matrix{<:Matrix{<:Real}},
 				q = indices𝐮[j]
 				for k = 1:n𝐯
 					r = indices𝐯[k]
-					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝐔[t,j] * spiketrainmodels[n].𝚽[t,k]*𝛏[i] / py
+					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝐔[t,j] * spiketrainmodels[n].𝚽[t,k]*d𝛏_dB[i] / py
 				end
 			end
 			for j = 1:n𝐯
 				q = indices𝐯[j]
 				for k = j:n𝐯
 					r = indices𝐯[k]
-					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝚽[t,j] * spiketrainmodels[n].𝚽[t,k]*𝛏[i]^2 / py
+					∇∇pY[q,r][i,1] = ∇∇pY[r,q][i,1] = ∂²py_∂L∂L * spiketrainmodels[n].𝚽[t,j] * spiketrainmodels[n].𝚽[t,k]*d𝛏_dB[i]^2 / py
 				end
 			end
 			for q in indices_thisneuron
@@ -354,7 +354,7 @@ function ∇conditionallikelihood!(∇pY::Vector{<:Matrix{<:Real}},
 								t::Integer,
 								spiketrainmodels::Vector{<:SpikeTrainModel},
 								sameacrosstrials::Sameacrosstrials)
-	@unpack Δt, K, Ξ, 𝛏 = sameacrosstrials
+	@unpack Δt, K, Ξ, d𝛏_dB = sameacrosstrials
 	nneurons = length(spiketrainmodels)
 	n𝐮 = length(glmθs[1].𝐮)
 	n𝐯 = length(glmθs[1].𝐯)
@@ -363,13 +363,19 @@ function ∇conditionallikelihood!(∇pY::Vector{<:Matrix{<:Real}},
 	zeroindex = cld(Ξ,2)
 	pY .= 1.0
 	for n = 1:nneurons
-		𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,:] ⋅ glmθs[n].𝐮
-		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,:] ⋅ glmθs[n].𝐯
+		𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,1]*glmθs[n].𝐮[1]
+		for i=2:n𝐮
+			𝐔ₜ𝐮 += spiketrainmodels[n].𝐔[t,i]*glmθs[n].𝐮[i]
+		end
+		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,1]*glmθs[n].𝐯[1]
+		for i=2:n𝐯
+			𝚽ₜ𝐯 += spiketrainmodels[n].𝚽[t,i]*glmθs[n].𝐯[i]
+		end
 		index1 = (n-1)*nparameters_per_neuron+1
 		indices𝐮 = index1 : index1+n𝐮-1
 		indices𝐯 = index1+n𝐮 : index1+n𝐮+n𝐯-1
 		for i = 1:Ξ
-			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*𝛏[i]
+			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*d𝛏_dB[i]
 			∂py_∂L, py = dPoissonlikelihood(Δt, L, spiketrainmodels[n].𝐲[t])
 			pY[i,1] *= py
 			for j=1:n𝐮
@@ -378,7 +384,7 @@ function ∇conditionallikelihood!(∇pY::Vector{<:Matrix{<:Real}},
 			end
 			for j=1:n𝐯
 				q = indices𝐯[j]
-				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝚽[t,j]*𝛏[i]/py #∂p(yₙ)/∂v * [1/p(yₙ)]
+				∇pY[q][i,1] = ∂py_∂L*spiketrainmodels[n].𝚽[t,j]*d𝛏_dB[i]/py #∂p(yₙ)/∂v * [1/p(yₙ)]
 			end
 		end
 	end
@@ -389,9 +395,13 @@ function ∇conditionallikelihood!(∇pY::Vector{<:Matrix{<:Real}},
 	end
 	if K > 1
 		pY[:,2] .= pY[zeroindex,1]
-		indices𝐮 = vcat(collect((n-1)*nparameters_per_neuron+1:(n-1)*nparameters_per_neuron+n𝐮 for n = 1:nneurons)...)
-		for q in indices𝐮
-			∇pY[q][:,2] .= ∇pY[q][zeroindex,1]
+		q = 0
+		for n = 1:nneurons
+			for i = 1:n𝐮
+				q +=1
+				∇pY[q][:,2] .= ∇pY[q][zeroindex,1]
+			end
+			q+=n𝐯
 		end
 	end
 	return nothing
@@ -420,16 +430,25 @@ function conditionallikelihood!(pY::Matrix{<:Real},
                                 spiketrainmodels::Vector{<:SpikeTrainModel})
 	Ξ = length(d𝛏_dB)
 	pY .= 1.0
+	n𝐮 = length(glmθs[1].𝐮)
+	n𝐯 = length(glmθs[1].𝐯)
+	zeroindex = cld(Ξ,2)
 	for n = 1:length(glmθs)
-        𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,:] ⋅ glmθs[n].𝐮
-		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,:] ⋅ glmθs[n].𝐯
+		𝐔ₜ𝐮 = spiketrainmodels[n].𝐔[t,1]*glmθs[n].𝐮[1]
+		for i=2:n𝐮
+			𝐔ₜ𝐮 += spiketrainmodels[n].𝐔[t,i]*glmθs[n].𝐮[i]
+		end
+		𝚽ₜ𝐯 = spiketrainmodels[n].𝚽[t,1]*glmθs[n].𝐯[1]
+		for i=2:n𝐯
+			𝚽ₜ𝐯 += spiketrainmodels[n].𝚽[t,i]*glmθs[n].𝐯[i]
+		end
 		for i = 1:Ξ
 			L = 𝐔ₜ𝐮 + 𝚽ₜ𝐯*d𝛏_dB[i]
 			pY[i,1] *= Poissonlikelihood(Δt, L, spiketrainmodels[n].𝐲[t])
 		end
 	end
 	if K > 1
-		pY[:,2] .= pY[cld(Ξ,2),1]
+		pY[:,2] .= pY[zeroindex,1]
     end
 	return nothing
 end

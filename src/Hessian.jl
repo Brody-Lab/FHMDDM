@@ -103,7 +103,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
 julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.∇∇loglikelihood(model)
 ```
 """
@@ -112,7 +112,7 @@ function ∇∇loglikelihood(model::Model)
 	@unpack trialsets = model
 	output =map(trialsets, eachindex(trialsets)) do trialset, s
 				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
-		 		pmap(trialset.trials) do trial
+		 		map(trialset.trials) do trial #pmap
 					∇∇loglikelihood(glmθs, model.θnative, s, sameacrosstrials, trial)
 				end
 			end
@@ -159,12 +159,14 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 						 sameacrosstrials::Sameacrosstrials,
 						 trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜᵀ, ∇Aᶜᵀ, Δt, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, πᶜᵀ, ∇πᶜᵀ, Ξ, nθ_all, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
+	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜᵀ, ∇Aᶜᵀ, Δt, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, πᶜᵀ, ∇πᶜᵀ, Ξ, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
 	indexθ_pY = sameacrosstrials.indexθ_pY[s]
 	nθ_pY = sameacrosstrials.nθ_pY[s]
 	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[s]
-	∇f = map(i->zeros(Ξ,K), 1:nθ_all)
-	∇∇f = map(i->zeros(Ξ,K), CartesianIndices((nθ_all,nθ_all)))
+	indexθ_trialset = sameacrosstrials.indexθ_trialset[s]
+	nθ_trialset = sameacrosstrials.nθ_trialset[s]
+	∇f = map(i->zeros(Ξ,K), 1:nθ_trialset)
+	∇∇f = map(i->zeros(Ξ,K), CartesianIndices((nθ_trialset,nθ_trialset)))
 	P = Probabilityvector(Δt, θnative, Ξ)
 	∇∇pa₁ = map(i->zeros(Ξ), CartesianIndices((nθ_pa₁,nθ_pa₁)))
  	∇pa₁ = map(i->zeros(Ξ), 1:nθ_pa₁)
@@ -190,8 +192,8 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 			∇∇f[q,r] = ∇∇pY[i,j] .* pa₁⨀pc₁
 		end
 	end
-	for q = 1:nθ_all
-		for r = q:nθ_all
+	for q = 1:nθ_trialset
+		for r = q:nθ_trialset
 			i = index_pc₁_in_θ[q]
 			j = index_pY_in_θ[r]
 			if i > 0 && j > 0
@@ -228,8 +230,8 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 	end
 	f = pa₁⨀pc₁ # reuse memory
 	f .*= pY
-	∇∇ℓ = zeros(nθ_all, nθ_all)
-	∇ℓ = zeros(nθ_all)
+	∇∇ℓ = zeros(nθ_trialset, nθ_trialset)
+	∇ℓ = zeros(nθ_trialset)
 	ℓ = zeros(1)
 	forward!(∇∇f, ∇f, f, ∇∇ℓ, ∇ℓ, ℓ)
 	if !isempty(clicks.inputtimesteps)
@@ -253,20 +255,23 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 		end
 		∇∇conditionallikelihood!(∇∇pY, ∇pY, pY, glmθs, t, trial.spiketrainmodels, sameacrosstrials)
 		if t==trial.ntimesteps
-			∂pY𝑑_∂ψ = ∇conditionallikelihood(pY, trial.choice, θnative.ψ[1])
-			conditionallikelihood!(pY, trial.choice, θnative.ψ[1])
+			∂pY𝑑_∂ψ = pY₁⨀pc₁ # reuse memory
+			differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY, trial.choice)
+			p𝑑 = P.𝛑 #reuse memory
+			conditionallikelihood!(p𝑑, trial.choice, θnative.ψ[1])
+			pY .*= p𝑑
 		end
 		f⨉Aᶜᵀ = f * Aᶜᵀ
 		Aᵃ⨉f⨉Aᶜᵀ = Aᵃ * f⨉Aᶜᵀ
-		for q = 1:nθ_all
-			for r = q:nθ_all
+		for q = 1:nθ_trialset
+			for r = q:nθ_trialset
 				∇∇f[q,r] = pY .* (Aᵃ * ∇∇f[q,r] * Aᶜᵀ)
 			end
 		end
 		if t==trial.ntimesteps
 			dp𝑑_dψ = differentiate_p𝑑_wrt_ψ(trial.choice, K, Ξ)
-			for q = 1:nθ_all
-				for r = q:nθ_all
+			for q = 1:nθ_trialset
+				for r = q:nθ_trialset
 					i = index_ψ_in_θ[q]
 					if i > 0
 						∇∇f[q,r] .+= ∂pY𝑑_∂ψ .* (Aᵃ * ∇f[r] * Aᶜᵀ)
@@ -298,9 +303,9 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 				end
 			end
 			for i = 1:nθ_pY
-				conditionallikelihood!(∇pY[i], trial.choice, θnative.ψ[1])
+				∇pY[i] .*= p𝑑
 				for j = i:nθ_pY
-					conditionallikelihood!(∇∇pY[i,j], trial.choice, θnative.ψ[1])
+					∇∇pY[i,j] .*= p𝑑
 				end
 			end
 		end
@@ -318,8 +323,8 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 				∇∇f[q,r] .+= pY .* (∇∇Aᵃ[i,j] * f⨉Aᶜᵀ)
 			end
 		end
-		for q = 1:nθ_all
-			for r = q:nθ_all
+		for q = 1:nθ_trialset
+			for r = q:nθ_trialset
 				i = index_pY_in_θ[q]
 				if i > 0
 					∇∇f[q,r] .+= ∇pY[i] .* (Aᵃ * ∇f[r] * Aᶜᵀ)
@@ -361,7 +366,7 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 				end
 			end
 		end
-		for q = 1:nθ_all
+		for q = 1:nθ_trialset
 			∇f[q] = pY .* (Aᵃ * ∇f[q] * Aᶜᵀ)
 		end
 		for i = 1:nθ_paₜaₜ₋₁
@@ -389,6 +394,36 @@ function ∇∇loglikelihood(glmθs::Vector{<:GLMθ},
 end
 
 """
+	∇loglikelihood!(model, concatenatedθ, indexθ)
+
+Sort a vector of parameters and compute the log-likelihood and its gradient
+
+ARGUMENT
+-`model`: a structure containing the data and hyperparameters of the factorial hidden drift-diffusion model
+-`concatenatedθ`: values of the parameters in real space concatenated as a vector
+-`indexθ`: a structure for sorting (i.e., un-concatenating) the parameters
+
+RETURN
+-`ℓ`: log-likelihood
+-`∇ℓ`: gradient of the log-likelihood with respect to fitted parameters in real space
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+julia> ℓ, ∇ℓ = FHMDDM.∇loglikelihood!(model, concatenatedθ, indexθ)
+```
+"""
+function ∇loglikelihood!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::Indexθ)
+	sortparameters!(model, concatenatedθ, indexθ)
+	ℓ, ∇ℓ = ∇loglikelihood(model)
+	native2real!(∇ℓ, indexθ.latentθ, model)
+	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
+	return ℓ, ∇ℓ
+end
+
+"""
 	∇loglikelihood(model)
 
 Gradient of the log-likelihood of data under a factorial hidden Markov drift-diffusion model (FHMDDM).
@@ -405,36 +440,40 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true)
-julia> ℓ, ∇ℓ = FHMDDM.∇∇loglikelihood(model)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> ℓ, ∇ℓ = FHMDDM.∇loglikelihood(model)
 ```
 """
 function ∇loglikelihood(model::Model)
-	sameacrosstrials = Sameacrosstrials(model)
-	@unpack trialsets = model
-	output =map(trialsets, eachindex(trialsets)) do trialset, s
-				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
-		 		pmap(trialset.trials) do trial
-					∇∇loglikelihood(glmθs, model.θnative, s, sameacrosstrials, trial)
-				end
-			end
-	ℓ = output[1][1][1]
-	∇ℓ = output[1][1][2]
-	for i in eachindex(output)
-		for m = 2:length(output[i])
-			ℓ += output[i][m][1]
-			∇ℓ .+= output[i][m][2]
+	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
+	@unpack θnative, trialsets = model
+	@unpack Δt, K, Ξ = model.options
+	Aᵃinput = zeros(Ξ,Ξ)
+	Aᵃinput[1,1] = 1.0
+	Aᵃinput[Ξ,Ξ] = 1.0
+	∇Aᵃinput = map(i->zeros(Ξ,Ξ), 1:sameacrosstrials.nθ_paₜaₜ₋₁)
+	ℓ = zeros(1)
+	∇ℓ = zeros(sameacrosstrials.nθ_alltrialsets)
+	∇f = map(i->zeros(Ξ,K), 1:sameacrosstrials.nθ_alltrialsets)
+ 	∇pa₁ = map(i->zeros(Ξ), 1:sameacrosstrials.nθ_pa₁)
+	pY = zeros(Ξ,K)
+	∇pY = collect(zeros(Ξ,K) for n=1:sameacrosstrials.nθ_pY[1])
+	P = FHMDDM.Probabilityvector(Δt, θnative, Ξ)
+	for s in eachindex(trialsets)
+		glmθs = collect(trialsets[s].mpGLMs[n].θ for n = 1:length(trialsets[s].mpGLMs))
+		for m in eachindex(trialsets[s].trials)
+			FHMDDM.∇loglikelihood!(Aᵃinput, ∇Aᵃinput, ℓ, ∇ℓ, ∇f, ∇pa₁, pY, ∇pY, P, glmθs, θnative, s, sameacrosstrials, trialsets[s].trials[m])
 		end
 	end
-	return ℓ, ∇ℓ
+	return ℓ[1], ∇ℓ
 end
 
 """
-	∇∇loglikelihood(glmθs, θnative, s, sameacrosstrials, trial)
+	∇loglikelihood(glmθs, θnative, s, sameacrosstrials, trial)
 
-Hessian of the log-likelihood of the observations from one trial
+Gradient of the log-likelihood of the observations from one trial
 
-The gradient and the log-likelihood are also returned
+The log-likelihood is also returned
 
 ARGUMENT
 -`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
@@ -446,50 +485,61 @@ ARGUMENT
 RETURN
 -`ℓ`: log-likelihood
 -`∇ℓ`: gradient of the log-likelihood
--`∇∇ℓ`: Hessian matrix of the log-likelihood
 """
-function ∇loglikelihood(glmθs::Vector{<:GLMθ},
+function ∇loglikelihood!(Aᵃinput::Matrix{<:Real},
+						∇Aᵃinput::Vector{<:Matrix{<:Real}},
+						ℓ::Vector{<:Real},
+						∇ℓ::Vector{<:Real},
+						∇f::Vector{<:Matrix{<:Real}},
+						∇pa₁::Vector{<:Vector{<:Real}},
+						pY::Matrix{<:Real},
+						∇pY::Vector{<:Matrix{<:Real}},
+						P::Probabilityvector,
+						glmθs::Vector{<:GLMθ},
 						θnative::Latentθ,
 						s::Integer,
 						sameacrosstrials::Sameacrosstrials,
 						trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃsilent, ∇Aᵃsilent, Aᶜᵀ, ∇Aᶜᵀ, Δt, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, πᶜᵀ, ∇πᶜᵀ, Ξ, nθ_all, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ = sameacrosstrials
+	@unpack Aᵃsilent, ∇Aᵃsilent, Aᶜᵀ, ∇Aᶜᵀ, Δt, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, πᶜᵀ, ∇πᶜᵀ, Ξ, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, d𝛏_dB = sameacrosstrials
 	indexθ_pY = sameacrosstrials.indexθ_pY[s]
+	indexθ_trialset = sameacrosstrials.indexθ_trialset[s]
 	nθ_pY = sameacrosstrials.nθ_pY[s]
-	∇f = map(i->zeros(Ξ,K), 1:nθ_all)
-	P = Probabilityvector(Δt, θnative, Ξ)
- 	∇pa₁ = map(i->zeros(Ξ), 1:nθ_pa₁)
+	nθ_trialset = sameacrosstrials.nθ_trialset[s]
 	∇priorprobability!(∇pa₁, P, trial.previousanswer)
 	pa₁ = P.𝛑
-	pY = zeros(Ξ,K)
-	∇pY = collect(zeros(Ξ,K) for n=1:nθ_pY)
 	∇conditionallikelihood!(∇pY, pY, glmθs, 1, trial.spiketrainmodels, sameacrosstrials)
 	pa₁⨀pc₁ = pa₁ .* πᶜᵀ
 	for i = 1:nθ_pY
 		q = indexθ_pY[i]
-		∇f[q] = ∇pY[i] .* pa₁⨀pc₁
+		for jk in eachindex(pa₁⨀pc₁)
+			∇f[q][jk] = ∇pY[i][jk] * pa₁⨀pc₁[jk]
+		end
 	end
 	pY₁⨀pc₁ = pY .* πᶜᵀ
 	for i = 1:nθ_pa₁
 		q = indexθ_pa₁[i]
-		∇f[q] = ∇pa₁[i] .* pY₁⨀pc₁
+		for j=1:Ξ
+			for k = 1:K
+				∇f[q][j,k] = ∇pa₁[i][j] * pY₁⨀pc₁[j,k]
+			end
+		end
 	end
 	for i = 1:nθ_pc₁
-		q = indexθ_pc₁[i]
-		∇f[q] .= pa₁ .* pY .* ∇πᶜᵀ[i]
+		q = indexθ_pc₁[1]
+		for j=1:Ξ
+			for k = 1:K
+				∇f[q][j,k] = pY[j,k] * pa₁[j] * ∇πᶜᵀ[i][k]
+			end
+		end
 	end
 	f = pa₁⨀pc₁ # reuse memory
 	f .*= pY
-	∇ℓ = zeros(nθ_all)
-	ℓ = zeros(1)
 	forward!(∇f, f, ∇ℓ, ℓ)
 	if !isempty(clicks.inputtimesteps)
 		adaptedclicks = ∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-		∇Aᵃinput = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
-		Aᵃinput = zeros(Ξ,Ξ)
-		Aᵃinput[1,1] = Aᵃinput[Ξ, Ξ] = 1.0
 	end
+	indexθ_trialset_but_ψ = indexθ_trialset[vcat(1:(indexθ_ψ[1]-1), indexθ_ψ[1]+1:end)]
 	for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			update_for_∇transition_probabilities!(P, adaptedclicks, clicks, t)
@@ -500,41 +550,68 @@ function ∇loglikelihood(glmθs::Vector{<:GLMθ},
 			∇Aᵃ = ∇Aᵃsilent
 			Aᵃ = Aᵃsilent
 		end
-		∇conditionallikelihood!(∇∇pY, ∇pY, pY, glmθs, t, trial.spiketrainmodels, sameacrosstrials)
+		∇conditionallikelihood!(∇pY, pY, glmθs, t, trial.spiketrainmodels, sameacrosstrials)
+		conditionallikelihood!(pY, Δt, d𝛏_dB, glmθs, K, t, trial.spiketrainmodels)
 		if t==trial.ntimesteps
-			∂pY𝑑_∂ψ = ∇conditionallikelihood(pY, trial.choice, θnative.ψ[1])
-			conditionallikelihood!(pY, trial.choice, θnative.ψ[1])
+			∂pY𝑑_∂ψ = pY₁⨀pc₁ # reuse memory
+			differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY, trial.choice)
+			p𝑑 = P.𝛑 #reuse memory
+			conditionallikelihood!(p𝑑, trial.choice, θnative.ψ[1])
+			pY .*= p𝑑
 			for i = 1:nθ_pY
-				conditionallikelihood!(∇pY[i], trial.choice, θnative.ψ[1])
+				∇pY[i] .*= p𝑑
 			end
 		end
 		f⨉Aᶜᵀ = f * Aᶜᵀ
 		Aᵃ⨉f⨉Aᶜᵀ = Aᵃ * f⨉Aᶜᵀ
-		for q = 1:nθ_all
-			∇f[q] = pY .* (Aᵃ * ∇f[q] * Aᶜᵀ)
+		Aᵃ⨉f = Aᵃ * f
+		if t == 2
+			for q in indexθ_trialset
+				if q∈indexθ_paₜaₜ₋₁[2:end]
+					∇f[q] .= 0
+				elseif q ∈ indexθ_pcₜcₜ₋₁
+					∇f[q] .= 0
+				elseif q ∈ indexθ_ψ
+					∇f[q] .= 0
+				else
+					∇f[q] = pY .* (Aᵃ * ∇f[q] * Aᶜᵀ)
+				end
+			end
+		else
+			for q in indexθ_trialset_but_ψ
+				∇f[q] = pY .* (Aᵃ * ∇f[q] * Aᶜᵀ)
+			end
 		end
 		for i = 1:nθ_paₜaₜ₋₁
 			q = indexθ_paₜaₜ₋₁[i]
-			∇f[q] .+= pY .* (∇Aᵃ[i] * f⨉Aᶜᵀ)
+			∇Aᵃ⨉f⨉Aᶜᵀ = ∇Aᵃ[i] * f⨉Aᶜᵀ
+			for jk in eachindex(pY)
+				∇f[q][jk] += pY[jk] * ∇Aᵃ⨉f⨉Aᶜᵀ[jk]
+			end
 		end
 		for i = 1:nθ_pY
 			q = indexθ_pY[i]
-			∇f[q] .+= ∇pY[i] .* Aᵃ⨉f⨉Aᶜᵀ
+			for jk in eachindex(Aᵃ⨉f⨉Aᶜᵀ)
+				∇f[q][jk] += ∇pY[i][jk] * Aᵃ⨉f⨉Aᶜᵀ[jk]
+			end
 		end
-		Aᵃ⨉f = Aᵃ * f
 		for i = 1:nθ_pcₜcₜ₋₁
 			q = indexθ_pcₜcₜ₋₁[i]
-			∇f[q] .+= pY .* (Aᵃ⨉f * ∇Aᶜᵀ[i])
+			Aᵃ⨉f⨉∇Aᶜᵀ = Aᵃ⨉f * ∇Aᶜᵀ[i]
+			for jk in eachindex(pY)
+				∇f[q][jk] += pY[jk] * Aᵃ⨉f⨉∇Aᶜᵀ[jk]
+			end
 		end
 		if t==trial.ntimesteps
-			q = indexθ_ψ[1]
-			∇f[q] = ∂pY𝑑_∂ψ .* Aᵃ⨉f⨉Aᶜᵀ
+			for jk in eachindex(∂pY𝑑_∂ψ)
+				∇f[indexθ_ψ[1]][jk] = ∂pY𝑑_∂ψ[jk] * Aᵃ⨉f⨉Aᶜᵀ[jk]
+			end
 		end
 		f = Aᵃ⨉f⨉Aᶜᵀ # reuse memory
 		f .*= pY
 		forward!(∇f, f, ∇ℓ, ℓ)
 	end
-	return ℓ[1], ∇ℓ
+	return nothing
 end
 
 """
@@ -557,17 +634,17 @@ julia> ℓ = loglikelihood(model)
 """
 function loglikelihood(model::Model)
 	sameacrosstrials = Sameacrosstrials(model)
-	@unpack trialsets = model
-	output =map(trialsets, eachindex(trialsets)) do trialset, s
-				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
-		 		pmap(trialset.trials) do trial
-					loglikelihood(glmθs, model.θnative, s, sameacrosstrials, trial)
-				end
-			end
-	ℓ = output[1][1]
-	for i in eachindex(output)
-		for m = 2:length(output[i])
-			ℓ += output[i][m]
+	@unpack options, θnative, trialsets = model
+	@unpack Δt, K, Ξ = options
+	P = Probabilityvector(Δt, θnative, Ξ)
+	pY = zeros(Ξ,K)
+	Aᵃinput = zeros(Ξ,Ξ)
+	Aᵃinput[1,1] = Aᵃinput[Ξ, Ξ] = 1.0
+	ℓ = 0.0
+	for s in eachindex(trialsets)
+		glmθs = collect(trialsets[s].mpGLMs[n].θ for n = 1:length(trialsets[s].mpGLMs))
+		for m in eachindex(trialsets[s].trials)
+			ℓ += loglikelihood!(Aᵃinput, P, pY, glmθs, model.θnative, sameacrosstrials, trialsets[s].trials[m])
 		end
 	end
 	return ℓ
@@ -588,26 +665,23 @@ ARGUMENT
 RETURN
 -`ℓ`: log-likelihood
 """
-function loglikelihood(glmθs::Vector{<:GLMθ},
+function loglikelihood!(Aᵃinput::Matrix{<:Real},
+					   P::Probabilityvector,
+						pY::Matrix{<:Real},
+						glmθs::Vector{<:GLMθ},
 					   	θnative::Latentθ,
-						s::Integer,
 						sameacrosstrials::Sameacrosstrials,
 						trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃsilent, Aᶜᵀ, Δt, K, πᶜᵀ, Ξ = sameacrosstrials
-	d𝛏_dB = sameacrosstrials.𝛏
-	P = Probabilityvector(Δt, θnative, Ξ)
+	@unpack Aᵃsilent, Aᶜᵀ, Δt, K, πᶜᵀ, Ξ, d𝛏_dB = sameacrosstrials
 	priorprobability!(P, trial.previousanswer)
 	pa₁ = P.𝛑
-	pY = zeros(Ξ,K)
 	conditionallikelihood!(pY, Δt, d𝛏_dB, glmθs, K, 1, trial.spiketrainmodels)
 	f = pY .* pa₁ .* πᶜᵀ
 	ℓ = zeros(1)
 	forward!(f, ℓ)
 	if !isempty(clicks.inputtimesteps)
 		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-		Aᵃinput = zeros(Ξ,Ξ)
-		Aᵃinput[1,1] = Aᵃinput[Ξ, Ξ] = 1.0
 	end
 	for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
@@ -619,9 +693,82 @@ function loglikelihood(glmθs::Vector{<:GLMθ},
 		end
 		conditionallikelihood!(pY, Δt, d𝛏_dB, glmθs, K, t, trial.spiketrainmodels)
 		if t==trial.ntimesteps
-			conditionallikelihood!(pY, trial.choice, θnative.ψ[1])
+			p𝑑 = P.𝛑 #reuse memory
+			conditionallikelihood!(p𝑑, trial.choice, θnative.ψ[1])
+			pY .*= p𝑑
 		end
 		f = pY .* (Aᵃ * f * Aᶜᵀ)
+		forward!(f, ℓ)
+	end
+	return ℓ[1]
+end
+
+"""
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> p𝐘𝑑 = FHMDDM.likelihood(model)
+julia> ℓ = FHMDDM.loglikelihood!(p𝐘𝑑, model)
+```
+"""
+function loglikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}}, model::Model)
+	sameacrosstrials = Sameacrosstrials(model)
+	@unpack options, θnative, trialsets = model
+	@unpack Δt, K, Ξ = options
+	likelihood!(p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
+	P = Probabilityvector(Δt, θnative, Ξ)
+	Aᵃinput = zeros(Ξ,Ξ)
+	Aᵃinput[1,1] = Aᵃinput[Ξ, Ξ] = 1.0
+	ℓ = 0.0
+	for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			ℓ += loglikelihood!(Aᵃinput, P, p𝐘𝑑[s][m], model.θnative, sameacrosstrials, model.trialsets[s].trials[m])
+		end
+	end
+	return ℓ
+end
+
+"""
+	loglikelihood(glmθs, θnative, s, sameacrosstrials, trial)
+
+Log-likelihood of the observations from one trial, not meant for ForwardDiff
+
+ARGUMENT
+-`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
+-`θnative`: a structure containing parameters specifying the latent variables in their native space
+-`s`: index of the trialset
+-`sameacrosstrials`: a structure containing quantities used in each trial
+-`trial`: a structure containing information on the sensory stimuli, spike trains, input to each neuron's GLM, and behavioral choice
+
+RETURN
+-`ℓ`: log-likelihood
+"""
+function loglikelihood!(Aᵃinput::Matrix{<:Real},
+					    P::Probabilityvector,
+						p𝐘𝑑::Vector{<:Matrix{<:Real}},
+					   	θnative::Latentθ,
+						sameacrosstrials::Sameacrosstrials,
+						trial::Trial)
+	@unpack clicks = trial
+	@unpack Aᵃsilent, Aᶜᵀ, Δt, K, πᶜᵀ, Ξ = sameacrosstrials
+	priorprobability!(P, trial.previousanswer)
+	pa₁ = P.𝛑
+	f = p𝐘𝑑[1] .* pa₁ .* πᶜᵀ
+	ℓ = zeros(1)
+	forward!(f, ℓ)
+	if !isempty(clicks.inputtimesteps)
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	end
+	for t=2:trial.ntimesteps
+		if t ∈ clicks.inputtimesteps
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃinput, P)
+			Aᵃ = Aᵃinput
+		else
+			Aᵃ = Aᵃsilent
+		end
+		f = p𝐘𝑑[t] .* (Aᵃ * f * Aᶜᵀ)
 		forward!(f, ℓ)
 	end
 	return ℓ[1]
@@ -722,7 +869,9 @@ function loglikelihood(glmθs::Vector{<:GLMθ},
 		end
 		conditionallikelihood!(pY, Δt, d𝛏_dB, glmθs, K, t, trial.spiketrainmodels)
 		if t==trial.ntimesteps
-			conditionallikelihood!(pY, trial.choice, θnative.ψ[1])
+			p𝑑 = pa₁ #reuse memory
+			conditionallikelihood!(p𝑑, trial.choice, θnative.ψ[1])
+			pY .*= p𝑑
 		end
 		f = pY .* (Aᵃ * f * Aᶜᵀ)
 		forward!(f, ℓ)
@@ -779,7 +928,7 @@ function loglikelihood(concatenatedθ::Vector{<:Real}, indexθ::Indexθ, model::
 	@unpack options, trialsets = model
 	output =map(trialsets) do trialset
 				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
-		 		pmap(trialset.trials) do trial
+		 		map(trialset.trials) do trial #pmap
 					loglikelihood(glmθs, options, model.θnative, trial)
 				end
 			end
@@ -820,6 +969,34 @@ function compare_gradients_hessians(model::Model)
 	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood!(model,concatenatedθ,indexθ)
 	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand), abs.(∇∇auto .- ∇∇hand)
+end
+
+"""
+	compare_gradients(model)
+
+Compare the automatically computed and hand-coded gradients with respect to the parameters being fitted in their real space
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+
+RETURN
+-`absdiffℓ`: absolute difference in the log-likelihood evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
+-`absdiff∇`: absolute difference in the gradients
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> absdiffℓ, absdiff∇ = FHMDDM.compare_gradients(model)
+```
+"""
+function compare_gradients(model::Model)
+	concatenatedθ, indexθ = concatenateparameters(model)
+	f(x) = loglikelihood(x, indexθ, model)
+	ℓauto = f(concatenatedθ)
+	∇auto = ForwardDiff.gradient(f, concatenatedθ)
+	ℓhand, ∇hand = FHMDDM.∇loglikelihood!(model,concatenatedθ,indexθ)
+	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand)
 end
 
 """
@@ -923,20 +1100,19 @@ function forward!(f::Matrix{<:Real},
 end
 
 """
-	∇conditionallikelihood(pY, 𝑑, ψ)
+	differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY, 𝑑, ψ)
 
 Partial derivatives of the conditional likelihood of the emissions at the last time step with respect to the lapse rate
 
 ARGUMENT
 -`pY`: conditional likelihood of the population spiking at the last time step `T`. Element `pY[i,j]` represents p{Y(T) ∣ a(T)=ξ(i), c(T)=j}
 -`𝑑`: left (false) or right (true) choice of the animal
--`ψ`: lapse rate
 
-RETURN
+MODIFIED ARGUMENT
 -`∂pY𝑑_∂ψ`: partial derivative of the emissions at the last time step (population spiking and the choice) with respect to the lapse rate. Element `∂pY𝑑_∂ψ[i,j]` represents:
 	∂p{Y(T), 𝑑 ∣ a(T)=ξ(i), c(T)=j}}/∂ψ
 """
-function ∇conditionallikelihood(pY::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
+function differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ::Matrix{<:Real}, pY::Matrix{<:Real}, 𝑑::Bool)
 	if 𝑑
 		∂p𝑑_ξ⁻_∂ψ = 0.5
 		∂p𝑑_ξ⁺_∂ψ = -0.5
@@ -944,19 +1120,17 @@ function ∇conditionallikelihood(pY::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
 		∂p𝑑_ξ⁻_∂ψ = -0.5
 		∂p𝑑_ξ⁺_∂ψ = 0.5
 	end
-	∂pY𝑑_∂ψ = copy(pY)
 	Ξ,K = size(pY)
 	zeroindex = cld(Ξ,2)
 	for j = 1:K
 		for i = 1:zeroindex-1
-			∂pY𝑑_∂ψ[i,j] *= ∂p𝑑_ξ⁻_∂ψ
+			∂pY𝑑_∂ψ[i,j] = pY[i,j]*∂p𝑑_ξ⁻_∂ψ
 		end
 		∂pY𝑑_∂ψ[zeroindex,j] = 0.0
 		for i = zeroindex+1:Ξ
-			∂pY𝑑_∂ψ[i,j] *= ∂p𝑑_ξ⁺_∂ψ
+			∂pY𝑑_∂ψ[i,j] = pY[i,j]*∂p𝑑_ξ⁺_∂ψ
 		end
 	end
-	return ∂pY𝑑_∂ψ
 end
 
 """
@@ -992,10 +1166,11 @@ function differentiate_p𝑑_wrt_ψ(𝑑::Bool, K::Integer, Ξ::Integer)
 	end
 	return dp𝑑_dψ
 end
-"""
-	conditionallikelihood!(P, 𝑑, ψ)
 
-Multiply elements of a matrix by the conditional likelihood of the choice
+"""
+	conditionallikelihood!(p𝑑, 𝑑, ψ)
+
+conditional likelihood of the choice
 
 ARGUMENT
 -`P`: a matrix whose element `P[i,j]` corresponds to the i-th accumulator state and j-th coupling state
@@ -1003,9 +1178,9 @@ ARGUMENT
 -`ψ`: lapse rate
 
 MODIFIED ARGUMENT
--`P`: Each element `P[i,j]` has been multiplied with p{𝑑 ∣ a(T)=ξ(i), c(T)=j}
+-`p𝑑`: p{𝑑 ∣ a(T)=ξ(i), c(T)=j}
 """
-function conditionallikelihood!(P::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
+function conditionallikelihood!(p𝑑::Vector{<:Real}, 𝑑::Bool, ψ::Real)
 	if 𝑑
 		p𝑑_ξ⁻ = ψ/2
 		p𝑑_ξ⁺ = 1-ψ/2
@@ -1013,102 +1188,16 @@ function conditionallikelihood!(P::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
 		p𝑑_ξ⁻ = 1-ψ/2
 		p𝑑_ξ⁺ = ψ/2
 	end
-	Ξ,K = size(P)
+	Ξ = length(p𝑑)
 	zeroindex = cld(Ξ,2)
-	for j = 1:K
-		for i = 1:zeroindex-1
-			P[i,j] *= p𝑑_ξ⁻
-		end
-		P[zeroindex,j] /= 2
-		for i = zeroindex+1:Ξ
-			P[i,j] *= p𝑑_ξ⁺
-		end
+	for i = 1:zeroindex-1
+		p𝑑[i] = p𝑑_ξ⁻
+	end
+	p𝑑[zeroindex] = 0.5
+	for i = zeroindex+1:Ξ
+		p𝑑[i] = p𝑑_ξ⁺
 	end
 	return nothing
-end
-
-"""
-	Sameacrosstrials(model)
-
-Make a structure containing quantities that are used in each trial
-
-ARGUMENT
--`model`: data, parameters, and hyperparameters of the factorial hidden-Markov drift-diffusion model
-
-RETURN
--a structure containing quantities that are used in each trial
-"""
-function Sameacrosstrials(model::Model)
-	@unpack options, θnative, θreal = model
-	@unpack Δt, K, Ξ = options
-	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
-	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
-	πᶜ₁ = θnative.πᶜ₁[1]
-	if K == 2
-		Aᶜᵀ = [Aᶜ₁₁ 1-Aᶜ₁₁; 1-Aᶜ₂₂ Aᶜ₂₂]
-		∇Aᶜᵀ = [[1.0 -1.0; 0.0 0.0], [0.0 0.0; -1.0 1.0]]
-		πᶜᵀ = [πᶜ₁ 1-πᶜ₁]
-		∇πᶜᵀ = [[1.0 -1.0]]
-	else
-		Aᶜᵀ = ones(1,1)
-		∇Aᶜᵀ = [zeros(1,1), zeros(1,1)]
-		πᶜᵀ = ones(1,1)
-		∇πᶜᵀ = [zeros(1,1)]
-	end
-	indexθ_pa₁ = [3,6,11,13]
-	indexθ_paₜaₜ₋₁ = [3,4,5,7,10,12]
-	indexθ_pc₁ = [8]
-	indexθ_pcₜcₜ₋₁ = [1,2]
-	indexθ_ψ = [9]
-	indexθ_pY = map(model.trialsets) do trialset
-		counter = 0
-		for n in eachindex(trialset.mpGLMs)
-			counter += length(trialset.mpGLMs[1].θ.𝐮)
-			counter += length(trialset.mpGLMs[1].θ.𝐯)
-		end
-		collect(1:counter)
-	end
-	counter = 13
-	for i in eachindex(indexθ_pY)
-		indexθ_pY[i] .+= counter
-		counter = indexθ_pY[i][end]
-	end
-	nθ_all = indexθ_pY[end][end]
-	index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = zeros(Int, nθ_all), zeros(Int, nθ_all), zeros(Int, nθ_all), zeros(Int, nθ_all), zeros(Int, nθ_all)
-	index_pa₁_in_θ[indexθ_pa₁] .= 1:length(indexθ_pa₁)
-	index_paₜaₜ₋₁_in_θ[indexθ_paₜaₜ₋₁] .= 1:length(indexθ_paₜaₜ₋₁)
-	index_pc₁_in_θ[indexθ_pc₁] .= 1:length(indexθ_pc₁)
-	index_pcₜcₜ₋₁_in_θ[indexθ_pcₜcₜ₋₁] .= 1:length(indexθ_pcₜcₜ₋₁)
-	index_ψ_in_θ[indexθ_ψ] .= 1:length(indexθ_ψ)
-	index_pY_in_θ = map(x->zeros(Int, nθ_all), indexθ_pY)
-	for i = 1:length(index_pY_in_θ)
-		index_pY_in_θ[i][indexθ_pY[i]] = 1:length(indexθ_pY[i])
-	end
-
-	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
-	P = Probabilityvector(Δt, θnative, Ξ)
-	update_for_∇∇transition_probabilities!(P)
-	∇∇Aᵃsilent = map(i->zeros(Ξ,Ξ), CartesianIndices((nθ_paₜaₜ₋₁,nθ_paₜaₜ₋₁)))
-	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
-	Aᵃsilent = zeros(typeof(θnative.B[1]), Ξ, Ξ)
-	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
-	∇∇transitionmatrix!(∇∇Aᵃsilent, ∇Aᵃsilent, Aᵃsilent, P)
-	Sameacrosstrials(Aᵃsilent=Aᵃsilent,
-					∇Aᵃsilent=∇Aᵃsilent,
-					∇∇Aᵃsilent=∇∇Aᵃsilent,
-					Aᶜᵀ=Aᶜᵀ,
-					∇Aᶜᵀ=∇Aᶜᵀ,
-					Δt=options.Δt,
-					indexθ_pa₁=indexθ_pa₁,
-					indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
-					indexθ_pc₁=indexθ_pc₁,
-					indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
-					indexθ_ψ=indexθ_ψ,
-					indexθ_pY=indexθ_pY,
-					K=K,
-					πᶜᵀ=πᶜᵀ,
-					∇πᶜᵀ=∇πᶜᵀ,
-					Ξ=Ξ)
 end
 
 """
@@ -1137,6 +1226,31 @@ function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, latent�
 			∇∇ℓ[i,:] .*= d1
 			∇∇ℓ[:,i] .*= d1
 			∇∇ℓ[i,i] += d2*∇ℓ[i]
+			∇ℓ[i] *= d1
+		end
+	end
+	return nothing
+end
+
+"""
+	native2real!(∇ℓ, latentθindex, model)
+
+Convert the gradient from being with respect to the parameters in native space to parameters in real space
+
+ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
+-`latentθindex`: index of each latent parameter in the gradient and Hessian
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+MODIFIED ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
+"""
+function native2real!(∇ℓ::Vector{<:Real}, latentθindex::Latentθ, model::Model)
+	firstderivatives = differentiate_native_wrt_real(model)
+	for parametername in fieldnames(Latentθ)
+		d1 = getfield(firstderivatives, parametername)[1]
+		if d1 != 1.0
+			i = getfield(latentθindex, parametername)[1]
 			∇ℓ[i] *= d1
 		end
 	end
@@ -1214,4 +1328,93 @@ function differentiate_twice_native_wrt_real(model::Model)
 	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
 	d.wₕ[1] = 0.0
 	return d
+end
+
+"""
+	Sameacrosstrials(model)
+
+Make a structure containing quantities that are used in each trial
+
+ARGUMENT
+-`model`: data, parameters, and hyperparameters of the factorial hidden-Markov drift-diffusion model
+
+RETURN
+-a structure containing quantities that are used in each trial
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> S = FHMDDM.Sameacrosstrials(model)
+```
+"""
+function Sameacrosstrials(model::Model)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack Δt, K, Ξ = options
+	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
+	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
+	πᶜ₁ = θnative.πᶜ₁[1]
+	if K == 2
+		Aᶜ = [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
+		∇Aᶜ = [[1.0 0.0; -1.0 0.0], [0.0 -1.0; 0.0 1.0]]
+		πᶜ = [πᶜ₁, 1-πᶜ₁]
+		∇πᶜ = [[1.0, -1.0]]
+	else
+		Aᶜ = ones(1,1)
+		∇Aᶜ = [zeros(1,1), zeros(1,1)]
+		πᶜ = ones(1)
+		∇πᶜ = [zeros(1)]
+	end
+	indexθ_pa₁ = [3,6,11,13]
+	indexθ_paₜaₜ₋₁ = [3,4,5,7,10,12]
+	indexθ_pc₁ = [8]
+	indexθ_pcₜcₜ₋₁ = [1,2]
+	indexθ_ψ = [9]
+	counter = 13
+	indexθ_py = map(trialset->map(mpGLM->zeros(Int,length(mpGLM.θ.𝐮)+length(mpGLM.θ.𝐯)), trialset.mpGLMs), trialsets)
+	for s in eachindex(indexθ_py)
+		for n in eachindex(indexθ_py[s])
+			for q in eachindex(indexθ_py[s][n])
+				counter += 1
+				indexθ_py[s][n][q] = counter
+			end
+		end
+	end
+	indexθ_pY = map(x->vcat(x...), indexθ_py)
+	nθ_trialset = indexθ_pY[end][end]
+	index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset)
+	index_pa₁_in_θ[indexθ_pa₁] .= 1:length(indexθ_pa₁)
+	index_paₜaₜ₋₁_in_θ[indexθ_paₜaₜ₋₁] .= 1:length(indexθ_paₜaₜ₋₁)
+	index_pc₁_in_θ[indexθ_pc₁] .= 1:length(indexθ_pc₁)
+	index_pcₜcₜ₋₁_in_θ[indexθ_pcₜcₜ₋₁] .= 1:length(indexθ_pcₜcₜ₋₁)
+	index_ψ_in_θ[indexθ_ψ] .= 1:length(indexθ_ψ)
+	index_pY_in_θ = map(x->zeros(Int, nθ_trialset), indexθ_pY)
+	for i = 1:length(index_pY_in_θ)
+		index_pY_in_θ[i][indexθ_pY[i]] = 1:length(indexθ_pY[i])
+	end
+	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
+	P = Probabilityvector(Δt, θnative, Ξ)
+	update_for_∇∇transition_probabilities!(P)
+	∇∇Aᵃsilent = map(i->zeros(Ξ,Ξ), CartesianIndices((nθ_paₜaₜ₋₁,nθ_paₜaₜ₋₁)))
+	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
+	Aᵃsilent = zeros(typeof(θnative.B[1]), Ξ, Ξ)
+	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
+	∇∇transitionmatrix!(∇∇Aᵃsilent, ∇Aᵃsilent, Aᵃsilent, P)
+	Sameacrosstrials(Aᵃsilent=Aᵃsilent,
+					∇Aᵃsilent=∇Aᵃsilent,
+					∇∇Aᵃsilent=∇∇Aᵃsilent,
+					Aᶜ=Aᶜ,
+					∇Aᶜ=∇Aᶜ,
+					Δt=options.Δt,
+					indexθ_pa₁=indexθ_pa₁,
+					indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
+					indexθ_pc₁=indexθ_pc₁,
+					indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
+					indexθ_ψ=indexθ_ψ,
+					indexθ_py=indexθ_py,
+					indexθ_pY=indexθ_pY,
+					K=K,
+					πᶜ=πᶜ,
+					∇πᶜ=∇πᶜ,
+					Ξ=Ξ)
 end

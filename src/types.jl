@@ -641,11 +641,17 @@ Quantities that are same across trials and used in each trial
 """
 @with_kw struct Sameacrosstrials{MMR<:Matrix{<:Matrix{<:Real}},
 								VMR<:Vector{<:Matrix{<:Real}},
+								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
 								MR<:Matrix{<:Real},
-								R<:Real,
+								TMR<:Transpose{<:Real, <:Matrix{<:Real}},
 								VR<:Vector{<:Real},
+								VVR<:Vector{<:Vector{<:Real}},
+								TVR<:Transpose{<:Real, <:Vector{<:Real}},
+								VTVR<:Vector{<:Transpose{<:Real, <:Vector{<:Real}}},
+								R<:Real,
 								VI<:Vector{<:Integer},
 								VVI<:Vector{<:Vector{<:Integer}},
+								VVVI<:Vector{<:Vector{<:Vector{<:Integer}}},
 								TI<:Integer}
 	"transition matrix of the accumulator at a time step without auditory input. Element `Aᵃsilent[q][i,j]` corresponds to the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)}"
 	Aᵃsilent::MR
@@ -653,10 +659,14 @@ Quantities that are same across trials and used in each trial
 	∇Aᵃsilent::VMR
 	"second-order partial derivatives of the transition matrix of the accumulator at a time step without auditory input. Element `∇∇Aᵃsilent[q,r][i,j]` corresponds to the derivative of the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)} with respect to the q-th parameter and r-th parameter that influence the accumulator transitions."
 	∇∇Aᵃsilent::MMR
+	"transition matrix of the coupling"
+	Aᶜ::MR
 	"transpose of the transition matrix of the coupling. Element Aᶜᵀ[i,j] corresponds to the transition probability p{c(t)=j ∣ c(t-1)=i}"
-	Aᶜᵀ::MR
+	Aᶜᵀ::TMR=transpose(Aᶜ)
+	"first-order partial derivatives of the transition matrix of the coupling. Element ∇Aᶜ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=i ∣ c(t-1)=j} with respect to the q-th parameter that influence coupling transitions."
+	∇Aᶜ::VMR
 	"first-order partial derivatives of the transpose of the transition matrix of the coupling. Element ∇Aᶜᵀ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=j ∣ c(t-1)=i} with respect to the q-th parameter that influence coupling transitions."
-	∇Aᶜᵀ::VMR
+	∇Aᶜᵀ::VTMR = transpose.(∇Aᶜ)
 	"size of the time step"
 	Δt::R
 	"indices of the parameters that influence the prior probabilities of the accumulator"
@@ -669,18 +679,24 @@ Quantities that are same across trials and used in each trial
 	indexθ_pcₜcₜ₋₁::VI
 	"indices of the parameters that influence the lapse rate"
 	indexθ_ψ::VI
+	"indices of the parameters in each Poisson mixture GLM in each trialset"
+	indexθ_py::VVVI
 	"indices of the parameters in the Poisson mixture GLM in each trialset"
 	indexθ_pY::VVI
+	"indices of the parameters in each trialset"
+	indexθ_trialset::VVI = map(indexθ_pY->vcat(1:13, indexθ_pY), indexθ_pY)
 	"number of coupling states"
 	K::TI
+	"prior probability of the coupling"
+	πᶜ::VR
 	"transpose of the prior probability of the coupling. It is a row vector"
-	πᶜᵀ::MR
-	"first-order partial derivatives of the transpose of the prior probability of the coupling. Element ∇πᶜᵀ[q][j] corresponds to the derivative of prior probability p{c(t=1)=j} with respect to the q-th parameter that influence the prior probability of coupling."
-	∇πᶜᵀ::VMR
+	πᶜᵀ::TVR=transpose(πᶜ)
+	"first-order partial derivatives of the prior probability of the coupling. Element ∇πᶜ[q][i] corresponds to the derivative of prior probability p{c(t=1)=i} with respect to the q-th parameter that influence the prior probability of coupling."
+	∇πᶜ::VVR
+	"first-order partial derivatives of the transpose of the prior probability of the coupling."
+	∇πᶜᵀ::VTVR=transpose.(∇πᶜ)
 	"number of accumulator states"
 	Ξ::TI
-	"total number of parameters in the model, including those not being fit"
-	nθ_all::TI = indexθ_pY[end][end]
 	"number of parameters that influence the prior probabilities of the accumulator"
 	nθ_pa₁::TI = length(indexθ_pa₁)
 	"number of parameters that influence the transition probabilities of the accumulator"
@@ -692,25 +708,31 @@ Quantities that are same across trials and used in each trial
 	"number of the parameters that influence the lapse rate"
 	nθ_ψ::TI = length(indexθ_ψ)
 	"number of parameters in the Poisson mixture GLM in each trialset"
+	nθ_py::VVI = map(x->length.(x), indexθ_py)
+	"number of parameters in the Poisson mixture GLM in each trialset"
 	nθ_pY::VI = map(indices->length(indices), indexθ_pY)
+	"total number of parameters in the model, including those not being fit"
+	nθ_trialset::VI = length.(indexθ_trialset)
+	"total number of parameters in the model, including those not being fit"
+	nθ_alltrialsets::TI = sum(nθ_trialset)
 	"whether a parameter influences the prior probability of the accumulator, and if so, the index of that parameter"
-	index_pa₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_pa₁] .= 1:nθ_pa₁; x; end
+	index_pa₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_pa₁] .= 1:nθ_pa₁; x; end
 	"whether a parameter influences the transition probability of the accumulator, and if so, the index of that parameter"
-	index_paₜaₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_paₜaₜ₋₁] .= 1:nθ_paₜaₜ₋₁; x; end
+	index_paₜaₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_paₜaₜ₋₁] .= 1:nθ_paₜaₜ₋₁; x; end
 	"whether a parameter influences the prior probability of the coupling, and if so, the index of that parameter"
-	index_pc₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_pc₁] .= 1:nθ_pc₁; x; end
+	index_pc₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_pc₁] .= 1:nθ_pc₁; x; end
 	"whether a parameter influences the transition probability of the coupling, and if so, the index of that parameter"
-	index_pcₜcₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_pcₜcₜ₋₁] .= 1:nθ_pcₜcₜ₋₁; x; end
+	index_pcₜcₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_pcₜcₜ₋₁] .= 1:nθ_pcₜcₜ₋₁; x; end
 	"whether a parameter influences the prior probability of the lapse, and if so, the index of that parameter"
-	index_ψ_in_θ::VI = let x = zeros(Int, nθ_all); x[indexθ_ψ] .= 1:nθ_ψ; x; end
+	index_ψ_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_ψ] .= 1:nθ_ψ; x; end
 	"whether a parameter influences the mixture of Poisson GLM, and if so, the index of that parameter"
 	index_pY_in_θ::VVI = map(indexθ_pY) do indices
-							x = zeros(Int, nθ_all)
+							x = zeros(Int, nθ_alltrialsets)
 							x[indices] .= 1:length(indices)
 							x
 						 end
 	"discrete values of the accumulator, un-normalized"
-	𝛏::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
+	d𝛏_dB::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 end
 
 """
@@ -733,4 +755,43 @@ a structure containing the cost function, its gradient, and its hessian
 	h::MR
 	"index of the parameters"
 	indexθ::TI
+end
+
+"""
+	Memoryforhessian
+
+Pre-allocated memory for computing the hessian as the jacobian of the expectation conjugate gradient
+"""
+@with_kw struct Memoryforhessian{VR<:Vector{<:Real},
+								MR<:Matrix{<:Real},
+								VVR<:Vector{<:Vector{<:Real}},
+								VMR<:Vector{<:Matrix{<:Real}},
+								MVR<:Matrix{<:Vector{<:Real}},
+								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
+								VMMR<:Vector{<:Matrix{<:Matrix{<:Real}}},
+								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
+								VVMMR<:Vector{<:Vector{<:Matrix{<:Matrix{<:Real}}}},
+								PT<:Probabilityvector}
+	ℓ::VR = zeros(1)
+	∇ℓ::VR
+	∇∇ℓ::MR
+	Aᵃinput::VMR
+	∇Aᵃinput::VVMR
+	∇∇Aᵃinput::VMMR
+	D::VR
+	∇D::VVR
+	∂pY𝑑_∂ψ::MR
+	f::VMR
+	∇f::VVMR
+	∇b::VMR
+	∇η::VMR
+	L::VVMR
+	λ::VVMR
+	∇logpy::VVVMR
+	∇∇logpy::VVMMR
+	∇pa₁::VVR
+	∇∇pa₁::MVR
+	pY::VMR
+	∇pY::VVMR
+	P::PT
 end

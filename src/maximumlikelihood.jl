@@ -153,23 +153,18 @@ RETURN
 """
 function loglikelihood!(model::Model,
 						shared::Shared,
-					    concatenatedθ::Vector{<:Real}; useparallel=false)
+					    concatenatedθ::Vector{<:Real})
 	if concatenatedθ != shared.concatenatedθ
 		update!(model, shared, concatenatedθ)
 	end
 	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-	ℓ = map(model.trialsets, shared.p𝐘𝑑) do trialset, p𝐘𝑑
-			if useparallel
-				pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-					loglikelihood(p𝐘𝑑, model.θnative, trial, trialinvariant)
-				end
-			else
-				map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-					loglikelihood(p𝐘𝑑, model.θnative, trial, trialinvariant)
-				end
-			end
+	ℓ = 0.0
+	for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			ℓ += loglikelihood(shared.p𝐘𝑑[s][m], model.θnative, model.trialsets[s].trials[m], trialinvariant)
 		end
-	return sum(sum(ℓ))
+	end
+	ℓ
 end
 
 """
@@ -192,7 +187,7 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 					   trialinvariant::Trialinvariant)
 	@unpack clicks = trial
 	@unpack Aᵃsilent, Aᶜᵀ, Δt, πᶜᵀ, 𝛏, Ξ = trialinvariant
-	C = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	C = adapt(clicks, θnative.k[1], θnative.ϕ[1]).C
 	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
 	σ = √θnative.σ²ᵢ[1]
 	πᵃ = probabilityvector(μ, σ, 𝛏)
@@ -448,7 +443,8 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 	dAᵃdB = map(x->zeros(T, Ξ,Ξ), clicks.inputtimesteps)
 	Δc = zeros(T, n_steps_with_input)
 	∑c = zeros(T, n_steps_with_input)
-	C, dCdk, dCdϕ = ∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	adaptedclicks = ∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	@unpack C, dC_dk, dC_dϕ = adaptedclicks
 	for i in 1:n_steps_with_input
 		t = clicks.inputtimesteps[i]
 		cL = sum(C[clicks.left[t]])
@@ -499,10 +495,10 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 			else
 				dμdλ = 𝛏ᵀΔtexpλΔt .+ Δc[i].*d²μ_dΔcdλ
 				dℓdσ²ₛ += ∑_χᵃ_dlogAᵃdσ²*∑c[i]
-				dcLdϕ = sum(dCdϕ[clicks.left[t]])
-				dcRdϕ = sum(dCdϕ[clicks.right[t]])
-				dcLdk = sum(dCdk[clicks.left[t]])
-				dcRdk = sum(dCdk[clicks.right[t]])
+				dcLdϕ = sum(dC_dϕ[clicks.left[t]])
+				dcRdϕ = sum(dC_dϕ[clicks.right[t]])
+				dcLdk = sum(dC_dk[clicks.left[t]])
+				dcRdk = sum(dC_dk[clicks.right[t]])
 				dσ²dϕ = θnative.σ²ₛ[1]*(dcLdϕ + dcRdϕ)
 				dσ²dk = θnative.σ²ₛ[1]*(dcLdk + dcRdk)
 				dℓdϕ += ∑_χᵃ_dlogAᵃdμ*dμ_dΔc*(dcRdϕ - dcLdϕ) + ∑_χᵃ_dlogAᵃdσ²*dσ²dϕ

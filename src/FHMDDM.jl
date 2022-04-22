@@ -106,5 +106,6 @@ include("sampling.jl")
 include("save.jl")
 include("spike_train_model.jl")
 include("tests.jl")
+include("two_pass_Hessian.jl")
 
 end # module
