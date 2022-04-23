@@ -673,6 +673,8 @@ Quantities that are same across trials and used in each trial
 	indexθ_pa₁::VI
 	"indices of the parameters that influence the transition probabilities of the accumulator"
 	indexθ_paₜaₜ₋₁::VI
+	"indices of the parameters that influence the transition probabilities of the accumulator"
+	indexθ_paₜaₜ₋₁only::VI = setdiff(indexθ_paₜaₜ₋₁, indexθ_pa₁)
 	"indices of the parameters that influence the prior probabilities of the coupling"
 	indexθ_pc₁::VI
 	"indices of the parameters that influence the transition probabilities of the coupling variable"

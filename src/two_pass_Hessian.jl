@@ -85,14 +85,14 @@ function twopasshessian(model::Model)
 	@unpack trialsets = model
 	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
 	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
-	for s in eachindex(trialsets)
+	@inbounds for s in eachindex(trialsets)
 		glmθs = collect(trialsets[s].mpGLMs[n].θ for n = 1:length(trialsets[s].mpGLMs))
 		for m in eachindex(trialsets[s].trials)
 			twopasshessian!(memoryforhessian, glmθs, s, sameacrosstrials, model.θnative, trialsets[s].trials[m])
 		end
 	end
 	@unpack ℓ, ∇ℓ, ∇∇ℓ = memoryforhessian
-	for i = 1:size(∇∇ℓ,1)
+	@inbounds for i = 1:size(∇∇ℓ,1)
 		for j = i+1:size(∇∇ℓ,2)
 			∇∇ℓ[j,i] = ∇∇ℓ[i,j]
 		end
@@ -129,7 +129,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	@unpack L, λ, ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
 	@unpack d𝛏_dB, Δt, K, Ξ = sameacrosstrials
 	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
-	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ,  nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
+	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ,  nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
 	indexθ_py = sameacrosstrials.indexθ_py[s]
 	nθ_py = sameacrosstrials.nθ_py[s]
 	indexθ_pY = sameacrosstrials.indexθ_pY[s]
@@ -141,14 +141,14 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	@unpack clicks, spiketrainmodels = trial
 	adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	# conditional likelihood of population spiking and its gradient; gradient and Hessian of the conditional log-likelihood of individual neurons' spiking
-	for n in eachindex(L)
+	@inbounds for n in eachindex(L)
 		FHMDDM.conditional_linear_predictor!(L[n], d𝛏_dB, spiketrainmodels[n], glmθs[n])
 		for t = 1:trial.ntimesteps
 			FHMDDM.conditionalrate!(λ[n][t], L[n][t])
 			FHMDDM.∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], L[n][t], λ[n][t], Δt, d𝛏_dB, t, trial.spiketrainmodels[n])
 		end
 	end
-	for t = 1:trial.ntimesteps
+	@inbounds for t = 1:trial.ntimesteps
 		for jk in eachindex(pY[t])
 			pY[t][jk] = FHMDDM.Poissonlikelihood(λ[1][t][jk]*Δt, spiketrainmodels[1].𝐲[t])
 			for n=2:nneurons
@@ -169,46 +169,46 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	end
 	differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], trial.choice)
 	conditionallikelihood!(pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
-	for i in eachindex(∇pY[trial.ntimesteps])
+	@inbounds for i in eachindex(∇pY[trial.ntimesteps])
 		conditionallikelihood!(∇pY[trial.ntimesteps][i], trial.choice, θnative.ψ[1])
 	end
 	# first forward step
-	for q in eachindex(∇f[1])
+	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
 	end
 	FHMDDM.∇∇priorprobability!(∇∇pa₁, ∇pa₁, P, trial.previousanswer)
 	pa₁ = copy(P.𝛑) # save for later
 	pY₁⨀pc₁ = pY[1] .* πᶜᵀ
 	pa₁⨀pc₁ = pa₁ .* πᶜᵀ
-	for i = 1:nθ_pY
+	@inbounds for i = 1:nθ_pY
 		for j=1:Ξ
 			for k = 1:K
 				∇f[1][indexθ_pY[i]][j,k] = ∇pY[1][i][j,k]*pa₁⨀pc₁[j,k]
 			end
 		end
 	end
-	for i = 1:nθ_pa₁
+	@inbounds for i = 1:nθ_pa₁
 		for j=1:Ξ
 			for k = 1:K
 				∇f[1][indexθ_pa₁[i]][j,k] = pY₁⨀pc₁[j,k]*∇pa₁[i][j]
 			end
 		end
 	end
-	for i = 1:nθ_pc₁
+	@inbounds for i = 1:nθ_pc₁
 		for j=1:Ξ
 			for k = 1:K
 				∇f[1][indexθ_pc₁[1]][j,k] = pY[1][j,k]*pa₁[j]*∇πᶜ[i][k]
 			end
 		end
 	end
-	for j=1:Ξ
+	@inbounds for j=1:Ξ
 		for k = 1:K
 			f[1][j,k] = pY[1][j,k] * pa₁⨀pc₁[j,k]
 		end
 	end
 	D[1] = sum(f[1])
 	forward!(∇D[1], f[1], ∇f[1], ℓ, ∇ℓ, D[1])
-	for t=2:trial.ntimesteps
+	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			update_for_∇∇transition_probabilities!(P, adaptedclicks, clicks, t)
 			∇∇transitionmatrix!(∇∇Aᵃinput[t], ∇Aᵃinput[t], Aᵃinput[t], P)
@@ -249,7 +249,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 		forward!(∇D[t], f[t], ∇f[t], ℓ, ∇ℓ, D[t])
 	end
 	bₜ = ones(Ξ,K)
-	for t = trial.ntimesteps:-1:1
+	@inbounds for t = trial.ntimesteps:-1:1
 		γ = f[t] # resuse memory
 		∇γ = ∇f[trial.ntimesteps] # resuse memory
 		if t == trial.ntimesteps
@@ -291,8 +291,10 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 					∇b[q] = (Aᵃₜ₊₁ᵀ * (bₜ₊₁⨀pYₜ₊₁*∇Aᶜ[i_cₜ] .+ (∇b[q].*pY[t+1]) * Aᶜ) .- bₜ.*∇D[t+1][q])./D[t+1]
 				elseif i_y > 0
 					∇b[q] = (Aᵃₜ₊₁ᵀ * (bₜ₊₁.*∇pY[t+1][i_y] .+ (∇b[q].*pY[t+1])) * Aᶜ .- bₜ.*∇D[t+1][q])./D[t+1]
-				elseif (i_ψ > 0) && (t == trial.ntimesteps-1)
-					∇b[q] = (Aᵃₜ₊₁ᵀ * (bₜ₊₁.*∂pY𝑑_∂ψ) * Aᶜ .- bₜ.*∇D[t+1][q])./D[t+1]
+				elseif i_ψ > 0
+					if t == trial.ntimesteps-1
+						∇b[q] = (Aᵃₜ₊₁ᵀ * (bₜ₊₁.*∂pY𝑑_∂ψ) * Aᶜ .- bₜ.*∇D[t+1][q])./D[t+1]
+					end
 				else
 					∇b[q] = (Aᵃₜ₊₁ᵀ*(∇b[q].*pY[t+1])*Aᶜ .- bₜ.*∇D[t+1][q])./D[t+1]
 				end
@@ -319,24 +321,20 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 				q = indexθ_paₜaₜ₋₁[i]
 				η = sum_product_over_states(D[t], f[t-1], bₜ, pY[t], ∇Aᵃ[i], Aᶜ)
 				∇ℓ[q] += η
-				for r in indexθ_trialset
- 					if (r >= q) && r != indexθ_ψ[1]
-						∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇f[t-1][r], bₜ, pY[t], ∇Aᵃ[i], Aᶜ)
-						∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], ∇b[r], pY[t], ∇Aᵃ[i], Aᶜ)
-						∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
-						j = index_pY_in_θ[r]
-						if j > 0
-							∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], bₜ, ∇pY[t][j], ∇Aᵃ[i], Aᶜ)
-						end
-						j = index_paₜaₜ₋₁_in_θ[r]
-						if j > 0
-							∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], bₜ, pY[t], ∇∇Aᵃ[i,j], Aᶜ)
-						end
-						j = index_pcₜcₜ₋₁_in_θ[r]
-						if j > 0
-							∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], bₜ, pY[t], ∇Aᵃ[i], ∇Aᶜ[j])
-						end
-					end
+				for j=i:nθ_paₜaₜ₋₁
+					r = indexθ_paₜaₜ₋₁[j]
+					∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇f[t-1][r], bₜ, pY[t], ∇Aᵃ[i], Aᶜ)
+					∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], ∇b[r], pY[t], ∇Aᵃ[i], Aᶜ)
+					∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
+					∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], bₜ, pY[t], ∇∇Aᵃ[i,j], Aᶜ)
+				end
+				for j = 1:nθ_pcₜcₜ₋₁
+					r = indexθ_pcₜcₜ₋₁[j]
+					indices = (r > q) ? CartesianIndex(q,r) : CartesianIndex(r,q)
+					∇∇ℓ[indices] += sum_product_over_states(D[t], ∇f[t-1][r], bₜ, pY[t], ∇Aᵃ[i], Aᶜ)
+					∇∇ℓ[indices] += sum_product_over_states(D[t], f[t-1], ∇b[r], pY[t], ∇Aᵃ[i], Aᶜ)
+					∇∇ℓ[indices] -= η*∇D[t][r]/D[t]
+					∇∇ℓ[indices] += sum_product_over_states(D[t], f[t-1], bₜ, pY[t], ∇Aᵃ[i], ∇Aᶜ[j])
 				end
 			end
 			# the p(cₜ ∣ cₜ₋₁) term
@@ -344,20 +342,11 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 				q = indexθ_pcₜcₜ₋₁[i]
 				η = sum_product_over_states(D[t], f[t-1], bₜ, pY[t], Aᵃ, ∇Aᶜ[i])
 				∇ℓ[q] += η
-				for r in indexθ_trialset
- 					if (r >= q) && r != indexθ_ψ[1]
-						∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇f[t-1][r], bₜ, pY[t], Aᵃ, ∇Aᶜ[i])
-						∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], ∇b[r], pY[t], Aᵃ, ∇Aᶜ[i])
-						∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
-						j = index_pY_in_θ[r]
-						if j > 0
-							∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], bₜ, ∇pY[t][j], Aᵃ, ∇Aᶜ[i])
-						end
-						j = index_paₜaₜ₋₁_in_θ[r]
-						if j > 0
-							∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], bₜ, pY[t], ∇Aᵃ[j], ∇Aᶜ[i])
-						end
-					end
+				for j = i:nθ_pcₜcₜ₋₁
+					r = indexθ_pcₜcₜ₋₁[j]
+					∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇f[t-1][r], bₜ, pY[t], Aᵃ, ∇Aᶜ[i])
+					∇∇ℓ[q,r] += sum_product_over_states(D[t], f[t-1], ∇b[r], pY[t], Aᵃ, ∇Aᶜ[i])
+					∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
 				end
 			end
 		end
@@ -365,15 +354,30 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 		for n = 1:length(indexθ_py)
 			for i = 1:nθ_py[n]
 				q = indexθ_py[n][i]
-				∇ℓ[q] += sum_product_over_states(γ, ∇logpy[t][n][i])
-				for r in indexθ_trialset
-					if r >=q
-						∇∇ℓ[q,r] += sum_product_over_states(∇γ[r], ∇logpy[t][n][i])
-					end
-				end
+				∇ℓ[q] += dot(γ, ∇logpy[t][n][i])
 				for j = i:nθ_py[n]
 					r = indexθ_py[n][j]
-					∇∇ℓ[q,r] += sum_product_over_states(γ, ∇∇logpy[t][n][i,j])
+					∇∇ℓ[q,r] += dot(∇γ[r], ∇logpy[t][n][i]) + dot(γ, ∇∇logpy[t][n][i,j])
+				end
+				for m = n+1:length(indexθ_py)
+					for j = 1:nθ_py[m]
+						r = indexθ_py[m][j]
+						∇∇ℓ[q,r] += dot(∇γ[r], ∇logpy[t][n][i])
+					end
+				end
+				for r in indexθ_paₜaₜ₋₁
+					if r > q
+						∇∇ℓ[q,r] += dot(∇γ[r], ∇logpy[t][n][i])
+					else
+						∇∇ℓ[r,q] += dot(∇γ[r], ∇logpy[t][n][i])
+					end
+				end
+				for r in indexθ_pcₜcₜ₋₁
+					if r > q
+						∇∇ℓ[q,r] += dot(∇γ[r], ∇logpy[t][n][i])
+					else
+						∇∇ℓ[r,q] += dot(∇γ[r], ∇logpy[t][n][i])
+					end
 				end
 			end
 		end
@@ -381,45 +385,54 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	#last backward step
 	t = 1
 	# the p(a₁) term
-	for i = 1:nθ_pa₁
+	@inbounds for i = nθ_pa₁:-1:1 # because B comes first
 		q = indexθ_pa₁[i]
 		η = sum_product_over_states(D[t], bₜ, pY[t], ∇pa₁[i], πᶜ)
 		∇ℓ[q] += η
-		for r in indexθ_trialset
-			if (r >= q) && r != indexθ_ψ[1]
+		for j = i:-1:1
+			r = indexθ_pa₁[j]
+			∇∇ℓ[r,q] += sum_product_over_states(D[t], ∇b[r], pY[t], ∇pa₁[i], πᶜ)
+			∇∇ℓ[r,q] -= η*∇D[t][r]/D[t]
+			∇∇ℓ[r,q] += sum_product_over_states(D[t], bₜ, pY[t], ∇∇pa₁[j,i], πᶜ)
+		end
+		for index in (indexθ_paₜaₜ₋₁only, indexθ_pcₜcₜ₋₁)
+			for r in index
+				indices = r < q ? CartesianIndex(r,q) : CartesianIndex(q,r)
+				∇∇ℓ[indices] += sum_product_over_states(D[t], ∇b[r], pY[t], ∇pa₁[i], πᶜ)
+				∇∇ℓ[indices] -= η*∇D[t][r]/D[t]
+			end
+		end
+		if q ∉indexθ_paₜaₜ₋₁
+			for r in indexθ_pY
 				∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇b[r], pY[t], ∇pa₁[i], πᶜ)
 				∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
 				j = index_pY_in_θ[r]
-				if j > 0
-					∇∇ℓ[q,r] += sum_product_over_states(D[t], bₜ, ∇pY[t][j], ∇pa₁[i], πᶜ)
-				end
-				j = index_pa₁_in_θ[r]
-				if j > 0
-					∇∇ℓ[q,r] += sum_product_over_states(D[t], bₜ, pY[t], ∇∇pa₁[i,j], πᶜ)
-				end
-				j = index_pc₁_in_θ[r]
-				if j > 0
-					∇∇ℓ[q,r] += sum_product_over_states(D[t], bₜ, pY[t], ∇pa₁[i], ∇πᶜ[j])
-				end
+				∇∇ℓ[q,r] += sum_product_over_states(D[t], bₜ, ∇pY[t][j], ∇pa₁[i], πᶜ)
 			end
 		end
 	end
 	# the p(c₁) term
-	for i = 1:nθ_pc₁
+	@inbounds for i = 1:nθ_pc₁
 		q = indexθ_pc₁[i]
 		η = sum_product_over_states(D[t], bₜ, pY[t], pa₁, ∇πᶜ[i])
 		∇ℓ[q] += η
-		for r in indexθ_trialset
-			if (r >= q) && r != indexθ_ψ[1]
-				∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇b[r], pY[t], pa₁, ∇πᶜ[i])
-				∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
+		for j = i:nθ_pc₁
+			r = indexθ_pc₁[j]
+			∇∇ℓ[q,r] += sum_product_over_states(D[t], ∇b[r], pY[t], pa₁, ∇πᶜ[i])
+			∇∇ℓ[q,r] -= η*∇D[t][r]/D[t]
+		end
+		for index in (indexθ_pY, indexθ_paₜaₜ₋₁only, indexθ_pcₜcₜ₋₁, indexθ_pa₁)
+			for r in index
+				indices = r < q ? CartesianIndex(r,q) : CartesianIndex(q,r)
+				∇∇ℓ[indices] += sum_product_over_states(D[t], ∇b[r], pY[t], pa₁, ∇πᶜ[i])
+				∇∇ℓ[indices] -= η*∇D[t][r]/D[t]
 				j = index_pY_in_θ[r]
 				if j > 0
-					∇∇ℓ[q,r] += sum_product_over_states(D[t], bₜ, ∇pY[t][j], pa₁, ∇πᶜ[i])
+					∇∇ℓ[indices] += sum_product_over_states(D[t], bₜ, ∇pY[t][j], pa₁, ∇πᶜ[i])
 				end
 				j = index_pa₁_in_θ[r]
 				if j > 0
-					∇∇ℓ[q,r] += sum_product_over_states(D[t], bₜ, pY[t], ∇pa₁[j], ∇πᶜ[i])
+					∇∇ℓ[indices] += sum_product_over_states(D[t], bₜ, pY[t], ∇pa₁[j], ∇πᶜ[i])
 				end
 			end
 		end
@@ -456,10 +469,10 @@ function forward!(∇D::Vector{<:Real},
 				∇ℓ::Vector{<:Real},
 				D::Real)
 	f ./= D
-	for i in eachindex(∇D)
+	@inbounds for i in eachindex(∇D)
 		∇D[i] = sum(∇f[i])
 	end
-	for i in eachindex(∇f)
+	@inbounds for i in eachindex(∇f)
 		for jk in eachindex(∇f[i])
 			∇f[i][jk] = (∇f[i][jk] - f[jk]*∇D[i])/D
 		end
@@ -481,7 +494,7 @@ UNMODIFIED ARGUMENT
 """
 function conditionalrate!(λ::Matrix{<:Real}, L::Matrix{<:Real})
 	Ξ = size(λ,1)
-	for i = 1:Ξ
+	@inbounds for i = 1:Ξ
 		λ[i,1] = softplus(L[i,1])
 	end
 	λ[:,2] .= λ[cld(Ξ,2),1]
@@ -527,7 +540,7 @@ function conditional_linear_predictor!(L::Vector{<:Matrix{<:Real}},
 	𝚽𝐯 = 𝚽*𝐯
 	Ξ = length(d𝛏_dB)
 	zeroindex = cld(Ξ,2)
-	for t = 1:length(𝐔𝐮)
+	@inbounds for t = 1:length(𝐔𝐮)
 		for i=1:Ξ-1
 			L[t][i,1] = 𝐔𝐮[t] + 𝚽𝐯[t]*d𝛏_dB[i]
 		end
@@ -571,7 +584,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 	dL_d𝐯 = zeros(n𝐯)
 	Ξ = size(L,1)
 	zeroindex = cld(Ξ,2)
-	for i = 1:Ξ
+	@inbounds for i = 1:Ξ
 		dlogp_dL, d²logp_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, L[i,1], λ[i,1], 𝐲[t])
 		for j=1:n𝐮
 			∇logpy[j][i,1] = dlogp_dL*𝐔[t,j]
@@ -595,7 +608,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 		end
 	end
 	n𝐮𝐯 = n𝐮+n𝐯
-	for j = 1:n𝐮𝐯
+	@inbounds for j = 1:n𝐮𝐯
 		∇logpy[j][:,2] .= ∇logpy[j][zeroindex,1]
 		for k = j:n𝐮𝐯
 			∇∇logpy[j,k][:,2] .= ∇∇logpy[j,k][zeroindex,1]
@@ -679,7 +692,7 @@ function conditionallikelihood!(pY::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
 	end
 	Ξ,K = size(pY)
 	zeroindex = cld(Ξ,2)
-	for j = 1:K
+	@inbounds for j = 1:K
 		for i = 1:zeroindex-1
 			pY[i,j] *= p𝑑_ξ⁻
 		end
@@ -707,7 +720,7 @@ RETURN
 function sum_product_over_states(D::Real, fₜ₋₁::Matrix{<:Real}, bₜ::Matrix{<:Real}, Y::Matrix{<:Real}, A::Matrix{<:Real}, C::Matrix{<:Real})
 	s = 0.0
 	Ξ,K = size(fₜ₋₁)
-	for iaₜ = 1:Ξ
+	@inbounds for iaₜ = 1:Ξ
 		for icₜ = 1:K
 			for iaₜ₋₁ = 1:Ξ
 				for icₜ₋₁ = 1:K
@@ -735,35 +748,12 @@ RETURN
 function sum_product_over_states(D::Real, b::Matrix{<:Real}, Y::Matrix{<:Real}, A::Vector{<:Real}, C::Vector{<:Real})
 	s = 0.0
 	Ξ,K = size(b)
-	for iaₜ = 1:Ξ
+	@inbounds for iaₜ = 1:Ξ
 		for icₜ = 1:K
 			s += b[iaₜ,icₜ]*Y[iaₜ,icₜ]*A[iaₜ]*C[icₜ]
 		end
 	end
 	return s/D
-end
-
-"""
-	sum_product_over_states(γ,Y)
-
-Multiply terms across different states of the latent variables at consecutive time step and sum
-
-ARGUMENT
--`γ`: element γ[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the coupling at time t
--`Y`: similar to η, element Y[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the coupling at time t
-
-RETURN
--`s`: sum of the product across all states of the two latent variables at two consecutive time steps
-"""
-function sum_product_over_states(γ::Matrix{<:Real}, Y::Matrix{<:Real})
-	s = 0.0
-	Ξ,K = size(γ)
-	for j = 1:Ξ
-		for k = 1:K
-			s+= γ[j,k]*Y[j,k]
-		end
-	end
-	return s
 end
 
 """
@@ -790,7 +780,7 @@ function expectation_derivative_logp𝑑_wrt_ψ(choice::Bool, γ::Array{<:Real},
 	Ξ = size(γ,1)
 	zeroindex = cld(Ξ,2)
 	edll = 0.0 # expectation of the derivative of the log-likelihood
-	for j = 1:size(γ,2)
+	@inbounds for j = 1:size(γ,2)
 		for i = 1:zeroindex-1
 			edll += γ[i,j]*dlogp𝑑_dψ_ξ⁻
 		end
@@ -825,7 +815,7 @@ function expectation_second_derivative_logp𝑑_wrt_ψ(choice::Bool, γ::Array{<
 	Ξ = size(γ,1)
 	zeroindex = cld(Ξ,2)
 	ed²ll = 0.0 # expectation of the second derivative of the log-likelihood
-	for j = 1:size(γ,2)
+	@inbounds for j = 1:size(γ,2)
 		for i = 1:zeroindex-1
 			ed²ll += γ[i,j]*d²logp𝑑_dψdψ_ξ⁻
 		end
