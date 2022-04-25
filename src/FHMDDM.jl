@@ -69,7 +69,6 @@ export  adapt, # module-specific functions and types in this module that we can 
         real2native!,
         rectifya,
         relative_loglikelihood,
-        Shared,
         sample,
         sampleemissions,
         save,

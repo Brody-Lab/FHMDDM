@@ -322,6 +322,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	concatenatedθ::VF
 	"a structure indicating the index of each model parameter in the vector of concatenated values"
 	indexθ::TI
+	"log-likelihood"
+	ℓ::VF = fill(NaN,1)
 	"Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
 	p𝐘𝑑::VVVMF
 end
@@ -723,28 +725,6 @@ Quantities that are same across trials and used in each trial
 						 end
 	"discrete values of the accumulator, un-normalized"
 	d𝛏_dB::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
-end
-
-"""
-	FGH
-
-a structure containing the cost function, its gradient, and its hessian
-"""
-@with_kw struct FGH{VR<:Vector{<:Real}, MR<:Matrix{<:Real}, TI<:Indexθ}
-	"value used to compute the cost function"
-	x_f::VR
-	"value used to compute the gradient of the cost function"
-	x_g::VR
-	"value used to compute the hessian of the cost function"
-	x_h::VR
-	"value of the cost function"
-	f::VR
-	"gradient of the cost function"
-	g::VR
-	"hessian of the cost function"
-	h::MR
-	"index of the parameters"
-	indexθ::TI
 end
 
 """

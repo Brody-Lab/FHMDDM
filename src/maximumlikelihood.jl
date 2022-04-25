@@ -150,21 +150,30 @@ UNMODIFIED ARGUMENT
 
 RETURN
 -log-likelihood
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_25_test/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+julia> shared = FHMDDM.Shared(model)
+julia> ℓ = loglikelihood!(model, shared, shared.concatenatedθ)
+```
 """
 function loglikelihood!(model::Model,
 						shared::Shared,
 					    concatenatedθ::Vector{<:Real})
-	if concatenatedθ != shared.concatenatedθ
+	if (concatenatedθ != shared.concatenatedθ) || isnan(shared.ℓ[1])
 		update!(model, shared, concatenatedθ)
-	end
-	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-	ℓ = 0.0
-	for s in eachindex(model.trialsets)
-		for m in eachindex(model.trialsets[s].trials)
-			ℓ += loglikelihood(shared.p𝐘𝑑[s][m], model.θnative, model.trialsets[s].trials[m], trialinvariant)
+		trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+		shared.ℓ[1] = 0.0
+		for s in eachindex(model.trialsets)
+			for m in eachindex(model.trialsets[s].trials)
+				shared.ℓ[1] += loglikelihood(shared.p𝐘𝑑[s][m], model.θnative, model.trialsets[s].trials[m], trialinvariant)
+			end
 		end
 	end
-	ℓ
+	shared.ℓ[1]
 end
 
 """
@@ -226,6 +235,14 @@ UNMODIFIED ARGUMENT
 
 RETURN
 -log-likelihood
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_25_test/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+julia> ℓ = loglikelihood(concatenatedθ, indexθ, model)
+```
 """
 function loglikelihood(	concatenatedθ::Vector{<:Real},
 					    indexθ::Indexθ,
