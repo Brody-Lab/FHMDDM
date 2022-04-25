@@ -12,18 +12,11 @@ RETURN
 -`𝐩`: a vector by which the conditional likelihood of the spike train and the prior likelihood of the regression weights are multiplied against
 """
 function likelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack Δt, 𝐲, 𝐲! = mpGLM
-    𝐗𝐰 = linearpredictor(mpGLM, j, k)
-    𝐩 = 𝐗𝐰 # reuse memory
+    @unpack Δt, 𝐲 = mpGLM
+    𝐋 = linearpredictor(mpGLM, j, k)
+    𝐩 = 𝐋 # reuse memory
     for i=1:length(𝐩)
-        λΔt = softplus(𝐗𝐰[i])*Δt
-        if 𝐲[i]==0
-            𝐩[i] = exp(-λΔt)
-        elseif 𝐲[i]==1
-            𝐩[i] = λΔt/exp(λΔt)
-        else
-            𝐩[i] = λΔt^𝐲[i] / exp(λΔt) / 𝐲![i]
-        end
+        𝐩[i] = poissonlikelihood(Δt, 𝐋[i], 𝐲[i])
     end
     return 𝐩
 end
@@ -45,17 +38,10 @@ RETURN
 -`nothing`
 """
 function likelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack Δt, 𝐲, 𝐲! = mpGLM
-    𝐗𝐰 = linearpredictor(mpGLM, j, k)
+    @unpack Δt, 𝐲 = mpGLM
+    𝐋 = linearpredictor(mpGLM, j, k)
     for i=1:length(𝐩)
-        λΔt = softplus(𝐗𝐰[i])*Δt
-        if 𝐲[i]==0
-            𝐩[i] *= exp(-λΔt)
-        elseif 𝐲[i]==1
-            𝐩[i] *= λΔt/exp(λΔt)
-        else
-            𝐩[i] *= λΔt^𝐲[i] / exp(λΔt) / 𝐲![i]
-        end
+		𝐩[i] *= poissonlikelihood(Δt, 𝐋[i], 𝐲[i])
     end
     return nothing
 end
@@ -73,13 +59,14 @@ ARGUMENT
 OUTPUT
 -the likelihood
 """
-function Poissonlikelihood(λΔt::Real, y::Integer, y!::Integer)
+function poissonlikelihood(Δt::Real, L::Real, y::Integer)
+	λΔt = softplus(L)*Δt
 	if y==0
-		exp(-λΔt)
+		1/exp(λΔt)
 	elseif y==1
 		λΔt/exp(λΔt)
 	else
-		λΔt^y / exp(λΔt) / y!
+		λΔt^y / exp(λΔt) / factorial(y)
 	end
 end
 
@@ -97,132 +84,9 @@ RETURN
 -`𝛌`: a vector whose element 𝛌[t] corresponds to the t-th time bin in the trialset
 """
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack 𝐔, 𝐗, 𝛏 = mpGLM
-    @unpack 𝐮, 𝐯, a, b = mpGLM.θ
-    if k == 1 && 𝛏[j] != 0.0
-        ξ = transformaccumulator(b[1], 𝛏[j])
-        if 𝛏[j] < 0
-            𝐰 = vcat(𝐮, ξ.*𝐯)
-        else
-            𝐰 = vcat(𝐮, rectifya(a[1]).*ξ.*𝐯)
-        end
-        𝐗*𝐰
-    else
-        𝐔*𝐮
-    end
-end
-
-"""
-    transformaccumulator
-
-Nonlinearly transform the normalized values of the accumulator
-
-ARGUMENT
--`ξ`: value of the accumulator: expected to be between -1 and 1
--`b`: parameter specifying the transformation
-
-RETURN
--transformed value of the accumulator
-"""
-function transformaccumulator(b::Real, ξ::Real)
-    if b == 0.0
-        ξ
-    else
-        if ξ < 0
-            if b > 709.0 # 709 is close to which exp returns Inf for a 64-bit floating point number
-                ξ == -1.0 ? -1.0 : 0.0
-            else
-                -expm1(-b*ξ)/expm1(b)
-                # (exp(-b*ξ)-1.0)/(1.0-exp(b))
-            end
-        elseif ξ > 0
-            if b > 709.0
-                ξ == 1.0 ? 1.0 : 0.0
-            else
-                expm1(b*ξ)/expm1(b)
-                # (1.0-exp(b*ξ))/(1.0-exp(b))
-            end
-        else
-            0.0
-        end
-    end
-end
-
-"""
-    dtransformaccumulator
-
-Derivative of the nonlinear transformation of the normalized values of the accumulator with respect to b
-
-ARGUMENT
--`ξ`: value of the accumulator: expected to be between -1 and 1
--`b`: parameter specifying the transformation
-
-RETURN
--transformed value of the accumulator
-"""
-function dtransformaccumulator(b::Real, ξ::Real)
-    if ξ == -1.0 || ξ == 0.0 || ξ == 1.0 || b > 709.0 # 709 is close to which exp returns Inf for a 64-bit floating point number
-        0.0
-    elseif abs(b) < 1e-6
-        ξ < 0 ? (-ξ^2-ξ)/2 : (ξ^2-ξ)/2
-    elseif ξ < 0
-        eᵇ = exp(b)
-        eᵇm1 = expm1(b)
-        e⁻ᵇˣ = exp(-b*ξ)
-        e⁻ᵇˣm1 = expm1(-b*ξ)
-        if b < 1
-            (ξ*e⁻ᵇˣ*eᵇm1 + e⁻ᵇˣm1*eᵇ)/eᵇm1^2
-        else
-            ξ*e⁻ᵇˣ/eᵇm1 + e⁻ᵇˣm1/(eᵇ-2+exp(-b))
-        end
-    elseif ξ > 0
-        eᵇ = exp(b)
-        eᵇm1 = expm1(b)
-        eᵇˣ = exp(b*ξ)
-        eᵇˣm1 = expm1(b*ξ)
-        if b < 1
-            ξ*eᵇˣ/eᵇm1 - eᵇˣm1*eᵇ/eᵇm1^2
-        else
-            ξ*eᵇˣ/eᵇm1 - eᵇˣm1/(eᵇ-2+exp(-b))
-        end
-    end
-end
-
-"""
-    rectifya(a)
-
-Map a parameter from real space to positive values
-
-A value of 0 in real space corresponds to 1.0
-
-ARGUMENT:
--`a`: parameter in real space
-
-OUTPUT
--positive-valued parameter
-"""
-function rectifya(a::Real)
-    # softplus(a+log(exp(1)-1.0))
-    # 0.2 + 4.5 *logistic(a + logit(8.0/45.0))
-    a+1.0
-end
-
-"""
-    drectifya(a)
-
-Derivative of the mapping of a parameter from real space to positive values
-
-ARGUMENT:
--`a`: parameter in real space
-
-OUTPUT
--the derivative
-"""
-function drectifya(a::Real)
-    # logistic(a+log(exp(1)-1.0))
-    # logistica = logistic(a + logit(8.0/45.0))
-    # 4.5*logistica*(1.0-logistica)
-    1.0
+    @unpack 𝐇, 𝐔, 𝐕, d𝛏_dB = mpGLM
+    @unpack 𝐡, 𝐮, 𝐯, 𝐰 = mpGLM.θ
+	𝐇*𝐡 .+ 𝐔*𝐮[k] .+ (𝐕*𝐯[k]).*d𝛏_dB[j] .+ 𝐰[k]
 end
 
 """
@@ -616,4 +480,80 @@ function GLMθ(K::Integer,
 			 𝐰 = 1.0 .- 2.0.*rand(K),
 			 𝐮 = collect(1.0 .- 2.0.*rand(n𝐮) for k=1:K),
 			 𝐯 = collect(1.0 .- 2.0.*rand(n𝐯) for k=1:K))
+end
+
+"""
+    transformaccumulator
+
+Nonlinearly transform the normalized values of the accumulator
+
+ARGUMENT
+-`ξ`: value of the accumulator: expected to be between -1 and 1
+-`b`: parameter specifying the transformation
+
+RETURN
+-transformed value of the accumulator
+"""
+function transformaccumulator(b::Real, ξ::Real)
+    if b == 0.0
+        ξ
+    else
+        if ξ < 0
+            if b > 709.0 # 709 is close to which exp returns Inf for a 64-bit floating point number
+                ξ == -1.0 ? -1.0 : 0.0
+            else
+                -expm1(-b*ξ)/expm1(b)
+                # (exp(-b*ξ)-1.0)/(1.0-exp(b))
+            end
+        elseif ξ > 0
+            if b > 709.0
+                ξ == 1.0 ? 1.0 : 0.0
+            else
+                expm1(b*ξ)/expm1(b)
+                # (1.0-exp(b*ξ))/(1.0-exp(b))
+            end
+        else
+            0.0
+        end
+    end
+end
+
+"""
+    dtransformaccumulator
+
+Derivative of the nonlinear transformation of the normalized values of the accumulator with respect to b
+
+ARGUMENT
+-`ξ`: value of the accumulator: expected to be between -1 and 1
+-`b`: parameter specifying the transformation
+
+RETURN
+-transformed value of the accumulator
+"""
+function dtransformaccumulator(b::Real, ξ::Real)
+    if ξ == -1.0 || ξ == 0.0 || ξ == 1.0 || b > 709.0 # 709 is close to which exp returns Inf for a 64-bit floating point number
+        0.0
+    elseif abs(b) < 1e-6
+        ξ < 0 ? (-ξ^2-ξ)/2 : (ξ^2-ξ)/2
+    elseif ξ < 0
+        eᵇ = exp(b)
+        eᵇm1 = expm1(b)
+        e⁻ᵇˣ = exp(-b*ξ)
+        e⁻ᵇˣm1 = expm1(-b*ξ)
+        if b < 1
+            (ξ*e⁻ᵇˣ*eᵇm1 + e⁻ᵇˣm1*eᵇ)/eᵇm1^2
+        else
+            ξ*e⁻ᵇˣ/eᵇm1 + e⁻ᵇˣm1/(eᵇ-2+exp(-b))
+        end
+    elseif ξ > 0
+        eᵇ = exp(b)
+        eᵇm1 = expm1(b)
+        eᵇˣ = exp(b*ξ)
+        eᵇˣm1 = expm1(b*ξ)
+        if b < 1
+            ξ*eᵇˣ/eᵇm1 - eᵇˣm1*eᵇ/eᵇm1^2
+        else
+            ξ*eᵇˣ/eᵇm1 - eᵇˣm1/(eᵇ-2+exp(-b))
+        end
+    end
 end

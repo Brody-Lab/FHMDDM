@@ -8,10 +8,17 @@ ARGUMENT
 
 RETURN
 -`p𝐘𝑑`: Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true);
+julia> p = likelihood(model)
+```
 """
 function likelihood(model::Model)
 	@unpack K, Ξ = model.options
-	T = eltype(model.trialsets[1].mpGLMs[1].θ.𝐮)
+	T = eltype(model.trialsets[1].mpGLMs[1].θ.𝐰)
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t
@@ -46,20 +53,12 @@ function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 	zeroindex = cld(Ξ,2)
     @inbounds for i in eachindex(p𝐘𝑑)
 		N = length(trialsets[i].mpGLMs)
-		𝐩decoupled = likelihood(trialsets[i].mpGLMs[1], zeroindex, 2)
-		for n = 2:N
-			likelihood!(𝐩decoupled, trialsets[i].mpGLMs[n], zeroindex, 2)
-		end
 	    for j = 1:Ξ
 	        for k = 1:K
-	            if k == 2 || j==zeroindex
-					𝐩 = 𝐩decoupled
-				else
-					𝐩 = likelihood(trialsets[i].mpGLMs[1], j, k)
-		            for n = 2:N
-					    likelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
-		            end
-				end
+				𝐩 = likelihood(trialsets[i].mpGLMs[1], j, k)
+	            for n = 2:N
+				    likelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
+	            end
 	            t = 0
 	            for m in eachindex(p𝐘𝑑[i])
 	                for tₘ in eachindex(p𝐘𝑑[i][m])
