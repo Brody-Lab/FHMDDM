@@ -13,6 +13,12 @@ OPTIONAL ARGUMENT
 
 RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true);
+```
 """
 function Model(datapath::String; randomize::Bool=false)
     dataMAT = matopen(datapath);
@@ -151,33 +157,22 @@ OUTPUT
 function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
     ntimesteps = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
-
 	units = vec(trialset["units"])
     𝐘 = map(x->convert.(Int64, vec(x["y"])), units)
     @assert sum(ntimesteps) == length(𝐘[1])
-    𝐔ₕ = map(x->x["Xautoreg"], units)
-    𝐔ₑ = trialset["Xtiming"]
-	@unpack Ξ = options
-	𝛏normalized = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1) # if not normalized, the denominator is `Ξ-2`
-	𝚽, Φ = temporal_bases_values(options, ntimesteps)
-	if all(isempty.(𝐔ₕ))
-		𝐗 = hcat(𝐔ₑ,𝚽)
-		mpGLMs = map(𝐘) do 𝐲
-					θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(size(𝐔ₑ,2)),
-							 𝐯 = 1.0 .- 2.0.*rand(size(𝚽,2)))
-					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, θ=θ, 𝐔=𝐔ₑ, 𝛏=𝛏normalized, 𝐗=𝐗, 𝐲=𝐲)
-				 end
-	else
-		mpGLMs = map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
-					𝐔 = hcat(𝐔ₕ, 𝐔ₑ)
-					𝐗 = hcat(𝐔, 𝚽)
-					θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(size(𝐔,2)),
-							 𝐯 = 1.0 .- 2.0.*rand(size(𝚽,2)))
-					MixturePoissonGLM(Δt=options.Δt, K=options.K, 𝚽=𝚽, Φ=Φ, θ=θ, 𝐔=𝐔, 𝐗=𝐗, 𝛏=𝛏normalized, 𝐲=𝐲)
-	             end
-	end
-
-	set_of_spiketrainmodels = SpikeTrainModel(ntimesteps, 𝚽, 𝐔ₑ, 𝐔ₕ, 𝐘)
+	@unpack K, Ξ = options
+	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	𝐕, Φ = temporal_bases_values(options, ntimesteps)
+	mpGLMs = map(units, 𝐘) do unit, 𝐲
+				MixturePoissonGLM(Δt=options.Δt,
+								Φ=Φ,
+								θ=GLMθ(K, unit["Xautoreg"], trialset["Xtiming"], 𝐕),
+								𝐇=unit["Xautoreg"],
+								𝐔=trialset["Xtiming"],
+								𝐕=𝐕,
+								d𝛏_dB=d𝛏_dB,
+								𝐲=𝐲)
+			 end
 	rawclicktimes = map(x->x["clicktimes"], rawtrials)
     L = map(rawclicktimes) do x
 			leftclicks = x["L"]
@@ -187,16 +182,14 @@ function Trialset(options::Options, trialset::Dict)
 			rightclicks = x["R"]
 			typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
 		end
-	choice = map(x->x["choice"], rawtrials)
 	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
     previousanswer = vec(convert.(Int64, trialset["lagged"]["answer"]))
     clicks = map((L,R,ntimesteps)->Clicks(options.a_latency_s, options.Δt,L,ntimesteps,R), L, R, ntimesteps)
-    trials = map(clicks, choice, ntimesteps, previousanswer, set_of_spiketrainmodels) do clicks, choice, ntimesteps, previousanswer, spiketrainmodels
+    trials = map(clicks, rawtrials, ntimesteps, previousanswer) do clicks, rawtrial, ntimesteps, previousanswer
                 Trial(clicks=clicks,
-                      choice=choice,
+                      choice=rawtrial["choice"],
                       ntimesteps=ntimesteps,
-                      previousanswer=previousanswer,
-					  spiketrainmodels = spiketrainmodels)
+                      previousanswer=previousanswer)
              end
 
     Trialset(mpGLMs=mpGLMs, trials=trials)

@@ -590,3 +590,30 @@ function differentiate_twice_negative_loglikelihood(Δt::AbstractFloat, xw::Real
         f₂*Δt
     end
 end
+
+"""
+	GLMθ(K, 𝐇, 𝐔, 𝐕)
+
+Randomly initiate the parameters for a mixture of Poisson generalized linear model
+
+ARGUMENT
+-`K`: number of coupling states
+-`𝐇`: time-varying inputs from spike history
+-`𝐔`: time-varying inputs from trial events
+-`𝐕`: time-varying inputs from the accumulator
+
+OUTPUT
+-an instance of `GLMθ`
+"""
+function GLMθ(K::Integer,
+			𝐇::Matrix{<:AbstractFloat},
+			𝐔::Matrix{<:AbstractFloat},
+			𝐕::Matrix{<:AbstractFloat})
+	n𝐡 = size(𝐇,2)
+	n𝐮 = size(𝐔,2)
+	n𝐯 = size(𝐕,2)
+	θ = GLMθ(𝐡 = 1.0 .- 2.0.*rand(n𝐡),
+			 𝐰 = 1.0 .- 2.0.*rand(K),
+			 𝐮 = collect(1.0 .- 2.0.*rand(n𝐮) for k=1:K),
+			 𝐯 = collect(1.0 .- 2.0.*rand(n𝐯) for k=1:K))
+end

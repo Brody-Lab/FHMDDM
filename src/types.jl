@@ -164,8 +164,7 @@ Spike trains are not included. In sampled data, the generatives values of the la
 @with_kw struct Trial{TB<:Bool,
                       TC<:Clicks,
                       TI<:Integer,
-                      VI<:Vector{<:Integer},
-					  VS<:Vector{<:SpikeTrainModel}}
+                      VI<:Vector{<:Integer}}
     "information on the auditory clicks"
     clicks::TC
     "behavioral choice"
@@ -174,8 +173,6 @@ Spike trains are not included. In sampled data, the generatives values of the la
     ntimesteps::TI
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
-	"vector of whose each element is a structure containing the input and observations of the mixture of poisson GLMs of the spike train of a neuron in this trial"
-	spiketrainmodels::VS
     "generative values of the accumulator index variable (𝐚). This is nonempty only in sampled data"
     a::VI=Vector{Int}(undef,0)
     "generative values of the coupling variable (𝐜). This is nonempty only in sampled data"
@@ -185,15 +182,15 @@ end
 """
 	GLMθ
 """
-@with_kw struct GLMθ{TVR<:Vector{<:Real}}
-	"regression coefficients of the accumulator-independent regressors"
-    𝐮::TVR
-    "Time-varying weighte. Element 𝐯[i] corresponds to the weight of the i-th temporal basis"
-    𝐯::TVR
-    "The exponent `e^a` specifies the ratio of right to left weight"
-	a::TVR=zeros(eltype(𝐮),1)
-	"Parameter specifying how the accumulator is nonlinearly transformed before inputted into the generalized linear model"
-	b::TVR=zeros(eltype(𝐮),1)
+@with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
+	"state-independent linear filter of the spike history input"
+	𝐡::VR
+	"state-dependent constants"
+	𝐰::VR
+	"state-dependent linear filter of the time-varying input from events in the trial"
+    𝐮::VVR
+    "state-dependent linear filters of the time varying input from the accumulator "
+    𝐯::VVR
 end
 
 """
@@ -201,32 +198,27 @@ end
 
 Mixture of Poisson generalized linear model
 """
-@with_kw struct MixturePoissonGLM{TF<:AbstractFloat,
-                                  TI<:Integer,
-                                  TVF<:Vector{<:AbstractFloat},
-								  TVI<:Vector{<:Integer},
+@with_kw struct MixturePoissonGLM{F<:AbstractFloat,
+                                  VF<:Vector{<:AbstractFloat},
+								  VI<:Vector{<:Integer},
 								  Tθ<:GLMθ,
-                                  TMF<:Matrix{<:AbstractFloat}}
+                                  MF<:Matrix{<:AbstractFloat}}
     "size of the time bin"
-    Δt::TF
-    "Number of coupling states"
-    K::TI
-    "Columns of the design matrix that are invariant to the accumulator variable and correspond to regressors related to spike history or timing of events. Each column is scaled such that the maximum of the absolute value is 1."
-    𝐔::TMF
-    "Temporal bases values. Element 𝚽[t,i] corresponds to the value of the i-th temporal basis at the t-th time bin"
-    𝚽::TMF
+    Δt::F
+	"Time-varying input from spike history. Element 𝐇[t,i] corresponds to the i-th temporal basis function at time step t."
+	𝐇::MF
+    "Time-varying input from the events in the trial. Element 𝐔[t,i] corresponds to the i-th temporal basis function at time step t. Each column is scaled such that the maximum of the absolute value is 1."
+    𝐔::MF
+    "Time-varying weight of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
+    𝐕::MF
     "Temporal bases"
-    Φ::TMF
-	"parameters"
+    Φ::MF
+	"parameters (𝐡, 𝐰, 𝐮, 𝐯)"
 	θ::Tθ
-	"full design matrix"
-	𝐗::TMF
 	"Normalized values of the accumulator"
-    𝛏::TVF
-    "response variable"
-    𝐲::TVI
-    "factorial of the response variable"
-    𝐲!::TVI = factorial.(𝐲)
+    d𝛏_dB::VF
+    "Poisson observations"
+    𝐲::VI
 end
 
 """
