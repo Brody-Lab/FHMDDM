@@ -923,23 +923,25 @@ UNMODIFIED ARGUMENT
 RETURN
 -log-likelihood
 """
-function loglikelihood(concatenatedθ::Vector{<:Real}, indexθ::Indexθ, model::Model)
-	model = sortparameters(concatenatedθ, indexθ, model)
-	@unpack options, trialsets = model
-	output =map(trialsets) do trialset
-				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
-		 		map(trialset.trials) do trial #pmap
-					loglikelihood(glmθs, options, model.θnative, trial)
-				end
-			end
-	ℓ = output[1][1]
-	for i in eachindex(output)
-		for m = 2:length(output[i])
-			ℓ += output[i][m]
-		end
-	end
-	return ℓ
-end
+# function loglikelihood(concatenatedθ::Vector{<:Real},
+# 					   indexθ::Indexθ,
+# 					   model::Model)
+# 	model = sortparameters(concatenatedθ, indexθ, model)
+# 	@unpack options, trialsets = model
+# 	output =map(trialsets) do trialset
+# 				glmθs = collect(trialset.mpGLMs[n].θ for n = 1:length(trialset.mpGLMs))
+# 		 		map(trialset.trials) do trial #pmap
+# 					loglikelihood(glmθs, options, model.θnative, trial)
+# 				end
+# 			end
+# 	ℓ = output[1][1]
+# 	for i in eachindex(output)
+# 		for m = 2:length(output[i])
+# 			ℓ += output[i][m]
+# 		end
+# 	end
+# 	return ℓ
+# end
 
 """
 	compare_gradients_hessians(model)

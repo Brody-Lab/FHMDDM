@@ -196,17 +196,17 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 	f ./= D
 	ℓ = log(D)
 	T = eltype(p𝐘𝑑[1])
-	Aᵃ = zeros(T, Ξ, Ξ)
+	Aᵃinput = zeros(T, Ξ, Ξ)
 	@inbounds for t = 2:trial.ntimesteps
 		if isempty(clicks.inputindex[t])
-			f .= Aᵃsilent * f * Aᶜᵀ
+			Aᵃ = Aᵃsilent
 		else
 			cL = sum(C[clicks.left[t]])
 			cR = sum(C[clicks.right[t]])
-			transitionmatrix!(Aᵃ, cL, cR, trialinvariant, θnative)
-			f .= Aᵃ * f * Aᶜᵀ
+			transitionmatrix!(Aᵃinput, cL, cR, trialinvariant, θnative)
+			Aᵃ = Aᵃinput
 		end
-		f .*= p𝐘𝑑[t]
+		f = p𝐘𝑑[t].*(Aᵃ * f * Aᶜᵀ)
 		D = sum(f)
 		f ./= D
 		ℓ += log(D)
@@ -227,29 +227,29 @@ UNMODIFIED ARGUMENT
 RETURN
 -log-likelihood
 """
-# function loglikelihood(	concatenatedθ::Vector{<:Real},
-# 					    indexθ::Indexθ,
-# 						model::Model)
-# 	model = sortparameters(concatenatedθ, indexθ, model)
-# 	@unpack options, θnative, θreal, trialsets = model
-# 	@unpack Ξ, K = options
-# 	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-# 	T = eltype(concatenatedθ)
-# 	p𝐘𝑑=map(model.trialsets) do trialset
-# 			map(trialset.trials) do trial
-# 				map(1:trial.ntimesteps) do t
-# 					ones(T,Ξ,K)
-# 				end
-# 			end
-# 		end
-#     likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
-# 	ℓ = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-# 			map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-# 				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
-# 			end
-# 		end
-# 	return sum(sum(ℓ))
-# end
+function loglikelihood(	concatenatedθ::Vector{<:Real},
+					    indexθ::Indexθ,
+						model::Model)
+	model = Model(concatenatedθ, indexθ, model)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack Ξ, K = options
+	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+	T = eltype(concatenatedθ)
+	p𝐘𝑑=map(model.trialsets) do trialset
+			map(trialset.trials) do trial
+				map(1:trial.ntimesteps) do t
+					ones(T,Ξ,K)
+				end
+			end
+		end
+    likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
+	ℓ = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
+			map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
+				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
+			end
+		end
+	return sum(sum(ℓ))
+end
 
 """
     ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)

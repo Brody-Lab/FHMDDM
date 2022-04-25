@@ -483,6 +483,27 @@ function GLMθ(K::Integer,
 end
 
 """
+	similar(glmθ, elementtype)
+
+Create an uninitialized instance of GLMθ with the given element type.
+
+This is for using ForwardDiff
+
+ARGUMENT
+-`glmθ`: an instance of GLMθ
+-`elementtype`: type of the element in each field of GLMθ
+
+RETURN
+-an instance of GLMθ
+"""
+function GLMθ(glmθ::GLMθ, elementtype)
+	GLMθ(𝐡 = similar(glmθ.𝐡, elementtype),
+		 𝐮 = collect(similar(𝐮, elementtype) for 𝐮 in glmθ.𝐮),
+		 𝐯 = collect(similar(𝐯, elementtype) for 𝐯 in glmθ.𝐯),
+		 𝐰 = similar(glmθ.𝐰, elementtype))
+end
+
+"""
     transformaccumulator
 
 Nonlinearly transform the normalized values of the accumulator

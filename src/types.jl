@@ -57,12 +57,8 @@ Model settings
     Δt::TF=1e-2
 	"number of states of the coupling variable"
     K::TI = 2; 			@assert K == 1 || K == 2
-	"whether to fit the left-right scaling factor"
-	fit_a::TB=true
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
-	"whether to fit the nonlinearity factor"
-	fit_b::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=true
 	"whether to fit the parameter specifying leak or instability"
@@ -185,12 +181,12 @@ end
 @with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
 	"state-independent linear filter of the spike history input"
 	𝐡::VR
-	"state-dependent constants"
-	𝐰::VR
 	"state-dependent linear filter of the time-varying input from events in the trial"
     𝐮::VVR
     "state-dependent linear filters of the time varying input from the accumulator "
     𝐯::VVR
+	"state-dependent constants"
+	𝐰::VR
 end
 
 """
