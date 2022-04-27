@@ -15,7 +15,7 @@ function likelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, 𝐲 = mpGLM
     𝐋 = linearpredictor(mpGLM, j, k)
     𝐩 = 𝐋 # reuse memory
-    for i=1:length(𝐩)
+    @inbounds for i=1:length(𝐩)
         𝐩[i] = poissonlikelihood(Δt, 𝐋[i], 𝐲[i])
     end
     return 𝐩
@@ -40,7 +40,7 @@ RETURN
 function likelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, 𝐲 = mpGLM
     𝐋 = linearpredictor(mpGLM, j, k)
-    for i=1:length(𝐩)
+    @inbounds for i=1:length(𝐩)
 		𝐩[i] *= poissonlikelihood(Δt, 𝐋[i], 𝐲[i])
     end
     return nothing

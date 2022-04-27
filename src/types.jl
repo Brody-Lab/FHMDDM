@@ -311,24 +311,6 @@ A collection of hyperparameters and temporary quantities that are fixed across t
 end
 
 """
-	Shared
-
-Container of variables used by both the log-likelihood and gradient computation
-"""
-@with_kw struct Shared{	VF<:Vector{<:AbstractFloat},
-						VVVMF<:Vector{<:Vector{<:Vector{<:Matrix{<:AbstractFloat}}}},
-						TI<:Indexθ}
-	"a vector of the concatenated values of the parameters being fitted"
-	concatenatedθ::VF
-	"a structure indicating the index of each model parameter in the vector of concatenated values"
-	indexθ::TI
-	"log-likelihood"
-	ℓ::VF = fill(NaN,1)
-	"Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
-	p𝐘𝑑::VVVMF
-end
-
-"""
 	CVIndices
 
 Indices of trials and timesteps used for training and testing
@@ -782,4 +764,92 @@ A structure for finding the parameters that maximize the expectation under the p
 	Q::VF = zeros(1)
 	∇Q::VF = zeros(length(concatenatedθ))
 	∇∇Q::MF = zeros(length(concatenatedθ), length(concatenatedθ))
+end
+
+"""
+	Memoryforgradient
+
+Container of variables used by both the log-likelihood and gradient computation
+"""
+@with_kw struct Memoryforgradient{R<:Real,
+								TI<:Integer,
+								VI<:Vector{<:Integer},
+								VR<:Vector{<:Real},
+								TVR<:Transpose{<:Real, <:Vector{<:Real}},
+								MR<:Matrix{<:Real},
+								TMR<:Transpose{<:Real, <:Matrix{<:Real}},
+								VVR<:Vector{<:Vector{<:Real}},
+								VMR<:Vector{<:Matrix{<:Real}},
+								VTVR<:Vector{<:Transpose{<:Real, <:Vector{<:Real}}},
+								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
+								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
+								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
+								TP<:Probabilityvector,
+								Tindex<:Indexθ}
+	"transition matrix of the accumulator variable in the presence of input"
+	Aᵃinput::VMR
+	"partial derivatives of the transition matrix of the accumulator variable in the presence of input"
+	∇Aᵃinput::VVMR
+	"transition matrix of the accumulator variable in the absence of input"
+	Aᵃsilent::MR
+	"partial derivatives of the transition matrix of the accumulator variable in the absence of input"
+	∇Aᵃsilent::VMR
+	"transition matrix of the coupling"
+	Aᶜ::MR
+	"transpose of the transition matrix of the coupling. Element Aᶜᵀ[i,j] corresponds to the transition probability p{c(t)=j ∣ c(t-1)=i}"
+	Aᶜᵀ::TMR=transpose(Aᶜ)
+	"first-order partial derivatives of the transition matrix of the coupling. Element ∇Aᶜ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=i ∣ c(t-1)=j} with respect to the q-th parameter that influence coupling transitions."
+	∇Aᶜ::VMR
+	"first-order partial derivatives of the transpose of the transition matrix of the coupling. Element ∇Aᶜᵀ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=j ∣ c(t-1)=i} with respect to the q-th parameter that influence coupling transitions."
+	∇Aᶜᵀ::VTMR = transpose.(∇Aᶜ)
+	"a vector of the concatenated values of the parameters being fitted"
+	concatenatedθ::VR
+	"normalization parameters in the forward-backward algorithm"
+	D::VR
+	"forward terms"
+	f::VMR
+	"size of the time step"
+	Δt::R
+	"a structure indicating the index of each model parameter in the vector of concatenated values"
+	indexθ::Tindex
+	"indices of the parameters that influence the prior probabilities of the accumulator"
+	indexθ_pa₁::VI
+	"indices of the parameters that influence the transition probabilities of the accumulator"
+	indexθ_paₜaₜ₋₁::VI
+	"indices of the parameters that influence the prior probabilities of the coupling"
+	indexθ_pc₁::VI
+	"indices of the parameters that influence the transition probabilities of the coupling variable"
+	indexθ_pcₜcₜ₋₁::VI
+	"indices of the parameters that influence the lapse rate"
+	indexθ_ψ::VI
+	"number of coupling states"
+	K::TI
+	"log-likelihood"
+	ℓ::VR = fill(NaN,1)
+	"number of parameters that influence the prior probabilities of the accumulator"
+	nθ_pa₁::TI = length(indexθ_pa₁)
+	"number of parameters that influence the transition probabilities of the accumulator"
+	nθ_paₜaₜ₋₁::TI = length(indexθ_paₜaₜ₋₁)
+	"number of parameters that influence the prior probabilities of the coupling"
+	nθ_pc₁::TI = length(indexθ_pc₁)
+	"number of parameters that influence the transition probabilities of the coupling variable"
+	nθ_pcₜcₜ₋₁::TI = length(indexθ_pcₜcₜ₋₁)
+	"number of the parameters that influence the lapse rate"
+	nθ_ψ::TI = length(indexθ_ψ)
+	"structure for computing a probability vector"
+	P::TP
+	"partial derivative of the initial probability of the accumulator"
+	∇pa₁::VVR
+	"prior probability of the coupling"
+	πᶜ::VR
+	"transpose of the prior probability of the coupling. It is a row vector"
+	πᶜᵀ::TVR=transpose(πᶜ)
+	"first-order partial derivatives of the prior probability of the coupling. Element ∇πᶜ[q][i] corresponds to the derivative of prior probability p{c(t=1)=i} with respect to the q-th parameter that influence the prior probability of coupling."
+	∇πᶜ::VVR
+	"first-order partial derivatives of the transpose of the prior probability of the coupling."
+	∇πᶜᵀ::VTVR=transpose.(∇πᶜ)
+	"Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
+	p𝐘𝑑::VVVMR
+	"number of accumulator states"
+	Ξ::TI
 end

@@ -40,15 +40,15 @@ function maximizelikelihood!(model::Model,
 			                 show_trace::Bool=true,
 							 store_trace::Bool=true,
 			                 x_tol::AbstractFloat=0.0)
-	shared = Shared(model)
+	memory = Memoryforgradient(model)
 	@unpack K, Ξ = model.options
 	γ =	map(model.trialsets) do trialset
 			map(CartesianIndices((Ξ,K))) do index
 				zeros(trialset.ntimesteps)
 			end
 		end
-    f(concatenatedθ) = -loglikelihood!(model, shared, concatenatedθ)
-    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)
+    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ)
+    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, γ, model, memory, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -57,10 +57,10 @@ function maximizelikelihood!(model::Model,
                                   show_trace=show_trace,
 								  store_trace=store_trace,
                                   x_tol=x_tol)
-	θ₀ = copy(shared.concatenatedθ)
+	θ₀ = copy(memory.concatenatedθ)
 	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
     maximumlikelihoodθ = Optim.minimizer(optimizationresults)
-	sortparameters!(model, maximumlikelihoodθ, shared.indexθ)
+	sortparameters!(model, maximumlikelihoodθ, memory.indexθ)
 	println(optimizationresults)
 	losses, gradientnorms = fill(NaN, iterations+1), fill(NaN, iterations+1)
 	if store_trace
@@ -103,14 +103,14 @@ julia> losses, gradientnorms = maximizelikelihood!(model, Flux.ADAM())
 function maximizelikelihood!(model::Model,
 							optimizer::Flux.Optimise.AbstractOptimiser;
 							iterations::Integer = 3000)
-	shared = Shared(model)
+	memory = Memoryforgradient(model)
 	@unpack K, Ξ = model.options
 	γ =	map(model.trialsets) do trialset
 		map(CartesianIndices((Ξ,K))) do index
 			zeros(trialset.ntimesteps)
 		end
 	end
-	θ = copy(shared.concatenatedθ)
+	θ = copy(memory.concatenatedθ)
 	∇ = similar(θ)
 	local x, min_err, min_θ
 	min_err = typemax(eltype(θ)) #dummy variables
@@ -119,8 +119,8 @@ function maximizelikelihood!(model::Model,
 	optimizationtime = 0.0
 	for i = 1:iterations
 		iterationtime = @timed begin
-			x = -loglikelihood!(model, shared, θ)
-			∇negativeloglikelihood!(∇, γ, model, shared, θ)
+			x = -loglikelihood!(model, memory, θ)
+			∇negativeloglikelihood!(∇, γ, model, memory, θ)
 			losses[i] = x
 			gradientnorms[i] = norm(∇)
 			if x < min_err  # found a better solution
@@ -132,18 +132,18 @@ function maximizelikelihood!(model::Model,
 		optimizationtime += iterationtime[2]
 		println("iteration=", i, ", loss= ", losses[i], ", gradient norm= ", gradientnorms[i], ", time(s)= ", optimizationtime)
 	end
-	sortparameters!(model, min_θ, shared.indexθ)
+	sortparameters!(model, min_θ, memory.indexθ)
     return losses, gradientnorms
 end
 
 """
-    loglikelihood!(model, shared, concatenatedθ)
+    loglikelihood!(model, memory, concatenatedθ)
 
 Compute the log-likelihood
 
 ARGUMENT
 -`model`: an instance of FHM-DDM
--`shared`: a container of variables used by both the log-likelihood and gradient computation
+-`memory`: a container of variables used by both the log-likelihood and gradient computation
 
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector of concatenated parameter values
@@ -156,25 +156,25 @@ EXAMPLE
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_25_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> shared = FHMDDM.Shared(model)
-julia> ℓ = loglikelihood!(model, shared, shared.concatenatedθ)
-julia> ℓ = loglikelihood!(model, shared, rand(length(shared.concatenatedθ)))
+julia> memory = FHMDDM.Memoryforgradient(model)
+julia> ℓ = loglikelihood!(model, memory, memory.concatenatedθ)
+julia> ℓ = loglikelihood!(model, memory, rand(length(memory.concatenatedθ)))
 ```
 """
 function loglikelihood!(model::Model,
-						shared::Shared,
+						memory::Memoryforgradient,
 					    concatenatedθ::Vector{<:Real})
-	if (concatenatedθ != shared.concatenatedθ) || isnan(shared.ℓ[1])
-		update!(model, shared, concatenatedθ)
+	if (concatenatedθ != memory.concatenatedθ) || isnan(memory.ℓ[1])
+		update!(model, memory, concatenatedθ)
 		trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-		shared.ℓ[1] = 0.0
+		memory.ℓ[1] = 0.0
 		for s in eachindex(model.trialsets)
 			for m in eachindex(model.trialsets[s].trials)
-				shared.ℓ[1] += loglikelihood(shared.p𝐘𝑑[s][m], model.θnative, model.trialsets[s].trials[m], trialinvariant)
+				memory.ℓ[1] += loglikelihood(memory.p𝐘𝑑[s][m], model.θnative, model.trialsets[s].trials[m], trialinvariant)
 			end
 		end
 	end
-	shared.ℓ[1]
+	memory.ℓ[1]
 end
 
 """
@@ -270,7 +270,7 @@ function loglikelihood(	concatenatedθ::Vector{<:Real},
 end
 
 """
-    ∇negativeloglikelihood!(∇, γ, model, shared, concatenatedθ)
+    ∇negativeloglikelihood!(∇, γ, model, memory, concatenatedθ)
 
 Gradient of the negative log-likelihood of the factorial hidden Markov drift-diffusion model
 
@@ -278,7 +278,7 @@ MODIFIED INPUT
 -`∇`: a vector of partial derivatives
 -`γ`: posterior probability of the latent variables
 -`model`: a structure containing information of the factorial hidden Markov drift-diffusion model
--`shared`: structure containing variables shared between computations of the model's log-likelihood and its gradient
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
 
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: parameter values concatenated into a vetor
@@ -286,12 +286,12 @@ UNMODIFIED ARGUMENT
 function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 								 γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
 								 model::Model,
-								 shared::Shared,
+								 memory::Memoryforgradient,
 								 concatenatedθ::Vector{<:AbstractFloat})
-	if concatenatedθ != shared.concatenatedθ
-		update!(model, shared, concatenatedθ)
+	if concatenatedθ != memory.concatenatedθ
+		update!(model, memory, concatenatedθ)
 	end
-	@unpack indexθ, p𝐘𝑑 = shared
+	@unpack indexθ, p𝐘𝑑 = memory
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack K = options
 	trialinvariant = Trialinvariant(model; purpose="gradient")
@@ -339,14 +339,14 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
 end
 
 """
-    ∇negativeloglikelihood(γ, model, shared, concatenatedθ)
+    ∇negativeloglikelihood(γ, model, memory, concatenatedθ)
 
 Gradient of the negative log-likelihood implemented to be compatible with ForwardDiff
 
 MODIFIED INPUT
 -`γ`: posterior probability of the latent variables
 -`model`: a structure containing information of the factorial hidden Markov drift-diffusion model
--`shared`: structure containing variables shared between computations of the model's log-likelihood and its gradient
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
 
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: parameter values concatenated into a vetor
@@ -636,42 +636,111 @@ function Trialinvariant(model::Model; purpose="gradient")
 end
 
 """
-	Shared(model)
+	Memoryforgradient(model)
 
-Create variables that are shared by the computations of the log-likelihood and its gradient
+Create variables that are memory by the computations of the log-likelihood and its gradient
 
 ARGUMENT
 -`model`: structure with information about the factorial hidden Markov drift-diffusion model
 
 OUTPUT
--an instance of the custom type `Shared`, which contains the shared quantities
+-an instance of the custom type `Memoryforgradient`, which contains the memory quantities
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> memory = FHMDDM.Memoryforgradient(model)
+```
 """
-function Shared(model::Model)
-	@unpack K, Ξ = model.options
+function Memoryforgradient(model::Model)
+	@unpack options, θnative = model
+	@unpack Δt, K, Ξ = options
+	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
+	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
+	πᶜ₁ = θnative.πᶜ₁[1]
+	if K == 2
+		Aᶜ = [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
+		∇Aᶜ = [[1.0 0.0; -1.0 0.0], [0.0 -1.0; 0.0 1.0]]
+		πᶜ = [πᶜ₁, 1-πᶜ₁]
+		∇πᶜ = [[1.0, -1.0]]
+	else
+		Aᶜ = ones(1,1)
+		∇Aᶜ = [zeros(1,1), zeros(1,1)]
+		πᶜ = ones(1)
+		∇πᶜ = [zeros(1)]
+	end
+	indexθ_pa₁ = [3,6,11,13]
+	indexθ_paₜaₜ₋₁ = [3,4,5,7,10,12]
+	indexθ_pc₁ = [8]
+	indexθ_pcₜcₜ₋₁ = [1,2]
+	indexθ_ψ = [9]
+	nθ_pa₁ = length(indexθ_pa₁)
+	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
+	maxclicks = 0
+	maxtimesteps = 0
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			maxclicks = max(maxclicks, length(trial.clicks.time))
+			maxtimesteps = max(maxtimesteps, trial.ntimesteps)
+		end
+	end
+	Aᵃinput=map(1:maxclicks) do t
+				A = zeros(Ξ,Ξ)
+				A[1,1] = A[Ξ,Ξ] = 1.0
+				return A
+			end
+	∇Aᵃinput = collect(collect(zeros(Ξ,Ξ) for q=1:nθ_paₜaₜ₋₁) for t=1:maxclicks)
+	Aᵃsilent = zeros(Ξ, Ξ)
+	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
+	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
+	P = Probabilityvector(Δt, θnative, Ξ)
+	update_for_∇transition_probabilities!(P)
+	∇transitionmatrix!(∇Aᵃsilent, Aᵃsilent, P)
 	p𝐘𝑑 = likelihood(model)
 	concatenatedθ, indexθ = concatenateparameters(model)
-	Shared(	concatenatedθ=concatenatedθ,
-			indexθ=indexθ,
-			p𝐘𝑑=p𝐘𝑑)
+	Memoryforgradient(Aᵃinput=Aᵃinput,
+					∇Aᵃinput=∇Aᵃinput,
+					Aᵃsilent=Aᵃsilent,
+					∇Aᵃsilent=∇Aᵃsilent,
+					Aᶜ=Aᶜ,
+					∇Aᶜ=∇Aᶜ,
+					concatenatedθ=concatenatedθ,
+					D = zeros(maxtimesteps),
+					Δt=options.Δt,
+					f=collect(zeros(Ξ,K) for t=1:maxtimesteps),
+					indexθ=indexθ,
+					indexθ_pa₁=indexθ_pa₁,
+					indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
+					indexθ_pc₁=indexθ_pc₁,
+					indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
+					indexθ_ψ=indexθ_ψ,
+					K=K,
+					P=P,
+					∇pa₁ = collect(zeros(Ξ) for q=1:nθ_pa₁),
+					πᶜ=πᶜ,
+					∇πᶜ=∇πᶜ,
+					p𝐘𝑑=p𝐘𝑑,
+					Ξ=Ξ)
 end
 
 """
-	update!(model, shared, concatenatedθ)
+	update!(model, memory, concatenatedθ)
 
-Update the model and the shared quantities according to new parameter values
+Update the model and the memory quantities according to new parameter values
 
 ARGUMENT
 -`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
--`shared`: structure containing variables shared between computations of the model's log-likelihood and its gradient
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
 -`concatenatedθ`: newest values of the model's parameters
 """
 function update!(model::Model,
-				 shared::Shared,
+				 memory::Memoryforgradient,
 				 concatenatedθ::Vector{<:Real})
-	shared.concatenatedθ .= concatenatedθ
-	sortparameters!(model, shared.concatenatedθ, shared.indexθ)
-	if !isempty(shared.p𝐘𝑑[1][1][1])
-	    likelihood!(shared.p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
+	memory.concatenatedθ .= concatenatedθ
+	sortparameters!(model, memory.concatenatedθ, memory.indexθ)
+	if !isempty(memory.p𝐘𝑑[1][1][1])
+	    likelihood!(memory.p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
 	end
 	return nothing
 end

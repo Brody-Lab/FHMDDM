@@ -203,7 +203,7 @@ function concatenate_glm_parameters(model::Model, offset::Integer)
 	nglmparameters = 0
 	for trialset in trialsets
 		for mpGLM in trialset.mpGLMs
-			nglmparameters += countparameters(mpGLM)
+			nglmparameters += countparameters(mpGLM.θ)
 		end
 	end
 	concatenatedθ = zeros(nglmparameters)
