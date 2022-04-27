@@ -255,7 +255,14 @@ MODIFIED ARGUMENT
 """
 function initializeparameters!(model::Model)
 	γ = choiceposteriors(model)
-	estimatefilters!(model.trialsets, γ, model.options)
+	@unpack trialsets = model
+	concatenatedθ, indexθ = concatenateparameters(trialsets[1].mpGLMs[1].θ)
+	Opt = MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
+	for i in eachindex(trialsets)
+		for n in eachindex(trialsets[i].mpGLMs)
+			estimatefilters!(trialsets[i].mpGLMs[n], Opt, γ[i]; show_trace=show_trace)
+		end
+	end
 	return nothing
 end
 

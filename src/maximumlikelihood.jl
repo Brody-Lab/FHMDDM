@@ -158,6 +158,7 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_2
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 julia> shared = FHMDDM.Shared(model)
 julia> ℓ = loglikelihood!(model, shared, shared.concatenatedθ)
+julia> ℓ = loglikelihood!(model, shared, rand(length(shared.concatenatedθ)))
 ```
 """
 function loglikelihood!(model::Model,
@@ -327,16 +328,11 @@ function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
             end
         end
     end
-	Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
-	Pᵥ = length(trialsets[1].mpGLMs[1].θ.𝐯)
+	∇glm = zeros(countparameters(trialsets[1].mpGLMs[1].θ))
 	for i in eachindex(trialsets)
-		∇glm = pmap(mpGLM->∇negativeexpectation(γ[i], mpGLM;fit_a=options.fit_a, fit_b=options.fit_b), trialsets[i].mpGLMs)
 		for n in eachindex(trialsets[i].mpGLMs)
-			∇[indexθ.glmθ[i][n].𝐮] .= ∇glm[n][1:Pᵤ]
-			∇[indexθ.glmθ[i][n].𝐯] .= ∇glm[n][Pᵤ+1:Pᵤ+Pᵥ]
-			counter = Pᵤ+Pᵥ
-			options.fit_a && (∇[indexθ.glmθ[i][n].a] .= ∇glm[n][counter+=1])
-			options.fit_b && (∇[indexθ.glmθ[i][n].b] .= ∇glm[n][counter+=1])
+			∇negativeexpectation!(∇glm, γ[i], trialsets[i].mpGLMs[n])
+			sortparameters!(∇, indexθ.glmθ[i][n], ∇glm)
 		end
 	end
 	return nothing
@@ -410,16 +406,10 @@ function ∇negativeloglikelihood(concatenatedθ::Vector{T},
             end
         end
     end
-	Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
-	Pᵥ = length(trialsets[1].mpGLMs[1].θ.𝐯)
 	for i in eachindex(trialsets)
-		∇glm = map(mpGLM->∇negativeexpectation(γ[i], mpGLM;fit_a=options.fit_a, fit_b=options.fit_b), trialsets[i].mpGLMs) #pmap
 		for n in eachindex(trialsets[i].mpGLMs)
-			∇[indexθ.glmθ[i][n].𝐮] .= ∇glm[n][1:Pᵤ]
-			∇[indexθ.glmθ[i][n].𝐯] .= ∇glm[n][Pᵤ+1:Pᵤ+Pᵥ]
-			counter = Pᵤ+Pᵥ
-			options.fit_a && (∇[indexθ.glmθ[i][n].a] .= ∇glm[n][counter+=1])
-			options.fit_b && (∇[indexθ.glmθ[i][n].b] .= ∇glm[n][counter+=1])
+			∇glm = ∇negativeexpectation(γ[i], trialsets[i].mpGLMs[n])
+			sortparameters!(∇, indexθ.glmθ[i][n], ∇glm)
 		end
 	end
 	return ∇
@@ -480,8 +470,7 @@ function ∇loglikelihood(p𝐘𝑑::Vector{<:Matrix{T}},
 	@inbounds for t = trial.ntimesteps:-1:1
 		if t < trial.ntimesteps # backward step
 			Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
-			b .*= p𝐘𝑑[t+1]
-			b = transpose(Aᵃₜ₊₁) * b * Aᶜ / D[t+1]
+			b = transpose(Aᵃₜ₊₁) * (b .* p𝐘𝑑[t+1] ./ D[t+1]) * Aᶜ
 			fb[t] .*= b
 		end
 		if t > 1 # joint posterior over consecutive time bins, computations involving the transition matrix

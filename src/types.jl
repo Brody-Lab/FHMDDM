@@ -765,3 +765,21 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 	∇pY::VVMR
 	P::PT
 end
+
+"""
+	MixturePoissonGLM_FGH
+
+A structure for finding the parameters that maximize the expectation under the posterior probability of the log-likelihood of a GLM, as well as the expectation of the gradient and the Hessian
+"""
+@with_kw struct MixturePoissonGLM_Optimization{VF<:Vector{<:AbstractFloat},
+											   MF<:Matrix{<:AbstractFloat},
+											   Tθ<:GLMθ}
+
+	"parameter values used to compute the expectation of the log-likelihood"
+	concatenatedθ::VF
+	"index of parameters"
+	indexθ::Tθ
+	Q::VF = zeros(1)
+	∇Q::VF = zeros(length(concatenatedθ))
+	∇∇Q::MF = zeros(length(concatenatedθ), length(concatenatedθ))
+end

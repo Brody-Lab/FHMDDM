@@ -325,3 +325,34 @@ function posteriorcoupled(model::Model)
 		end
 	end
 end
+
+"""
+	randomposterior(mpGLM)
+
+Create random posterior probabilities of the latent variables for testing
+
+INPUT
+-`mpGLM`: a mixture of Poisson GLM
+
+OPTIONAL INPUT
+-`rng`: random number generator
+
+RETURN
+-`γ`: γ[j,k][t] represents p{a(t)=ξ(j), c(t)=k ∣ 𝐘}
+"""
+function randomposterior(mpGLM::MixturePoissonGLM; rng::AbstractRNG=MersenneTwister())
+	T = length(mpGLM.𝐲)
+	Ξ = length(mpGLM.d𝛏_dB)
+	K = length(mpGLM.θ.𝐰)
+	γ = map(index->zeros(T), CartesianIndices((Ξ,K)))
+	for t=1:T
+		randγₜ = rand(rng,Ξ,K)
+		randγₜ ./= sum(randγₜ)
+		for j = 1:Ξ
+			for k = 1:K
+				γ[j,k][t] = randγₜ[j,k]
+			end
+		end
+	end
+	γ
+end

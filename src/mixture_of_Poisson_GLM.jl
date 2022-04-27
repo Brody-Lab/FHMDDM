@@ -86,41 +86,7 @@ RETURN
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack 𝐇, 𝐔, 𝐕, d𝛏_dB = mpGLM
     @unpack 𝐡, 𝐮, 𝐯, 𝐰 = mpGLM.θ
-	𝐇*𝐡 .+ 𝐔*𝐮[k] .+ (𝐕*𝐯[k]).*d𝛏_dB[j] .+ 𝐰[k]
-end
-
-"""
-    estimatefilters!(trialsets, γ)
-
-Update the filters in the mixture of Poisson generalized linear models
-
-MODIFIED ARGUMENT
--`trialsets`: vector of data for each group of trials
-
-UNMODIFIED ARGUMENT
--`γ`: joint posterior likelihood of each accumulator state and each coupling state at each time bin. `γ[i][ξ,k][t]` corresponds to the joint posterior of accumulator state ξ and coupling state k at the t-th time bin concatenated across trials in the i-th trialset
-
-RETURN
--nothing
-"""
-function estimatefilters!(trialsets::Vector{<:Trialset},
-                          γ::Vector{<:Matrix{<:Vector{<:AbstractFloat}}},
-                          options::Options;
-                          show_trace::Bool=true)
-    concatentatedθ = map(trialsets, γ) do trialset, γ
-                        pmap(trialset.mpGLMs) do mpGLM
-                            estimatefilters(γ, mpGLM; show_trace=show_trace)
-                        end
-                    end
-    Pᵤ = length(trialsets[1].mpGLMs[1].θ.𝐮)
-    Pᵥ = length(trialsets[1].mpGLMs[1].θ.𝐯)
-    for i in eachindex(concatentatedθ)
-        for n in eachindex(concatentatedθ[i])
-            trialsets[i].mpGLMs[n].θ.𝐮 .= concatentatedθ[i][n][1:Pᵤ]
-            trialsets[i].mpGLMs[n].θ.𝐯 .= concatentatedθ[i][n][Pᵤ+1:Pᵤ+Pᵥ]
-        end
-    end
-    return nothing
+	𝐇*𝐡 .+ 𝐔*𝐮[k] .+ 𝐕*(𝐯[k].*d𝛏_dB[j]) .+ 𝐰[k]
 end
 
 """
@@ -140,24 +106,125 @@ OPTIONAL ARGUMENT
 RETURN
 -weights concatenated into a single vector
 """
-function estimatefilters(γ::Matrix{<:Vector{<:AbstractFloat}},
-                         mpGLM::MixturePoissonGLM;
-                         iterations::Integer=20,
-                         show_trace::Bool=true)
-    @unpack 𝐮, 𝐯 = mpGLM.θ
-    x₀ = vcat(𝐮, 𝐯)
-    f(x) = negativeexpectation(γ, mpGLM, x)
-    g!(∇, x) = ∇negativeexpectation!(∇, γ, mpGLM, x)
-    h!(𝐇, x) = 𝐇negativeexpectation!(𝐇, γ, mpGLM, x)
+function estimatefilters!(mpGLM::MixturePoissonGLM,
+						Opt::MixturePoissonGLM_Optimization,
+						γ::Matrix{<:Vector{<:AbstractFloat}};
+						iterations::Integer=20,
+						show_trace::Bool=true)
+    x₀ = concatenateparameters(mpGLM.θ)
+    f(x) = expectation_negloglikelihood(mpGLM,Opt,γ,x)
+	g!(∇, x) = expectation_∇negloglikelihood!(∇,mpGLM,Opt,γ,x)
+	h!(∇∇, x) = expectation_∇∇negloglikelihood!(∇∇,mpGLM,Opt,γ,x)
     results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
     show_trace && println("The model converged: ", Optim.converged(results))
-    return Optim.minimizer(results)
+	sortparameters!(mpGLM.θ, Optim.minimizer(results))
+	return nothing
 end
 
 """
-    negativeexpectation(γ, mpGLM, x)
+	expectation_negloglikelihood!(mpGLM, Opt, γ, concatenatedθ)
 
-Negative of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron
+Compute the negative of the expectation of the log-likelihood of a mixture of Poisson GLM
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`γ`: posterior probabilities of the latent variables
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+
+RETURN
+-negative of the expectation of the log-likelihood of a mixture of Poisson GLM
+"""
+function expectation_negloglikelihood!(mpGLM::MixturePoissonGLM,
+									Opt::MixturePoissonGLM_Optimization,
+									γ::Matrix{<:Vector{<:AbstractFloat}},
+									concatenatedθ::Vector{<:AbstractFloat})
+	update!(mpGLM, Opt, γ, concatenatedθ)
+	return -Opt.Q[1]
+end
+
+"""
+	expectation_∇negloglikelihood!(g, mpGLM, Opt, γ, concatenatedθ)
+
+Compute the gradient of the negative of the expectation of the log-likelihood of a mixture of Poisson GLM
+
+MODIFIED ARGUMENT
+-`g`: gradient
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`γ`: posterior probabilities of the latent variables
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+"""
+function expectation_∇negloglikelihood!(g::Vector{<:AbstractFloat},
+									mpGLM::MixturePoissonGLM,
+									Opt::MixturePoissonGLM_Optimization,
+									γ::Matrix{<:Vector{<:AbstractFloat}},
+									concatenatedθ::Vector{<:AbstractFloat})
+	update!(mpGLM, Opt, γ, concatenatedθ)
+	for i in eachindex(g)
+		g[i] = -Opt.∇Q[i]
+	end
+	return nothing
+end
+
+"""
+	expectation_∇∇negloglikelihood!(h, mpGLM, Opt, γ, concatenatedθ)
+
+Compute the hessian of the negative of the expectation of the log-likelihood of a mixture of Poisson GLM
+
+MODIFIED ARGUMENT
+-`h`: hessian
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`γ`: posterior probabilities of the latent variables
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+"""
+function expectation_∇∇negloglikelihood!(h::Matrix{<:AbstractFloat},
+									mpGLM::MixturePoissonGLM,
+									Opt::MixturePoissonGLM_Optimization,
+									γ::Matrix{<:Vector{<:AbstractFloat}},
+									concatenatedθ::Vector{<:AbstractFloat})
+	update!(mpGLM, Opt, γ, concatenatedθ)
+	for i in eachindex(h)
+		h[i] = -Opt.∇∇Q[i]
+	end
+	return nothing
+end
+
+"""
+	update!(mpGLM, Opt, γ, concatenatedθ)
+
+Update the expectation of the log-likelihood of a mixture of Poisson GLM and its gradient and hessian
+
+MODIFIED ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+
+ARGUMENT
+-`γ`: posterior probabilities of the latent variables
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+"""
+function update!(mpGLM::MixturePoissonGLM,
+				Opt::MixturePoissonGLM_Optimization,
+				γ::Matrix{<:Vector{<:AbstractFloat}},
+				concatenatedθ::Vector{<:AbstractFloat})
+	if concatenatedθ != Opt.concatenatedθ
+		sortparameters!(mpGLM.θ, concatenatedθ)
+		Opt.concatenatedθ .= concatenatedθ
+		expectation_∇∇loglikelihood!(Opt, γ, mpGLM)
+	end
+end
+
+"""
+    expectation_loglikelihood(γ, mpGLM, x)
+
+ForwardDiff-compatible computation of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron
+
+Ignores the log(y!) term, which does not depend on the parameters
 
 ARGUMENT
 -`γ`: posterior probability of the latent variable
@@ -167,45 +234,29 @@ ARGUMENT
 RETURN
 -expectation of the log-likelihood of the spike train of one neuron
 """
-function negativeexpectation(γ::Matrix{<:Vector{<:AbstractFloat}},
-                             mpGLM::MixturePoissonGLM,
-                             x::Vector{<:Real})
-    @unpack Δt, K, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
-    Pᵤ = size(𝐔,2)
-    Pᵥ = size(𝚽,2)
-    𝐮 = x[1:Pᵤ]
-    𝐯 = x[Pᵤ+1:Pᵤ+Pᵥ]
-    𝐔𝐮 = 𝐔*𝐮
-    T = length(𝐔𝐮)
-    Ξ = size(γ,1)
-    zeroindex = cld(Ξ,2)
-    neg𝒬 = 0.0
-    for k = 1:K
-        for i = 1:Ξ
-            if k == 2 || i == zeroindex
-                𝐗𝐰 = 𝐔𝐮
-            else
-                𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐯)
-            end
+function expectation_loglikelihood(concatenatedθ::Vector{<:Real},
+								   mpGLM::MixturePoissonGLM,
+								   γ::Matrix{<:Vector{<:AbstractFloat}})
+	mpGLM = MixturePoissonGLM(concatenatedθ, mpGLM)
+    @unpack Δt, 𝐲 = mpGLM
+    T = length(𝐲)
+    Ξ,K = size(γ)
+    Q = 0.0
+    for i = 1:Ξ
+	    for k = 1:K
+			𝐋 = linearpredictor(mpGLM,i,k)
             for t = 1:T
-                λ = softplus(𝐗𝐰[t])
-                if 𝐲[t] == 0
-                    neg𝒬 += γ[i,k][t]*(λ*Δt)
-                elseif 𝐲[t] == 1
-                    neg𝒬 += γ[i,k][t]*(λ*Δt - log(λ))
-                else
-                    neg𝒬 += γ[i,k][t]*(λ*Δt - 𝐲[t]*log(λ))
-                end
+				Q += γ[i,k][t]*poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
             end
         end
     end
-    return neg𝒬
+    return Q
 end
 
 """
-    ∇negativeexpectation!(∇, γ, mpGLM, x)
+	expectation_∇loglikelihood!(∇, γ, mpGLM)
 
-Gradient of the negative of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron
+Expectation under the posterior probability of the gradient of the log-likelihood
 
 MODIFIED ARGUMENT
 -`∇`: The gradient
@@ -213,163 +264,44 @@ MODIFIED ARGUMENT
 UNMODIFIED ARGUMENT
 -`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i,k][t] corresponds to the i-th accumulator state and the k-th coupling state in the t-th time bin in the trialset.
 -`mpGLM`: structure containing information for the mixture of Poisson GLM for one neuron
--`x`: vector of parameters for the mixture of Poisson GLM
-
-RETURN
--nothing
 """
-function ∇negativeexpectation!( ∇::Vector{<:Real},
-                                γ::Matrix{<:Vector{<:Real}},
-                                mpGLM::MixturePoissonGLM,
-                                x::Vector{<:type}) where {type<:Real}
-    @unpack Δt, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
-    Pᵤ = size(mpGLM.𝐔,2)
-    Pᵥ = size(mpGLM.𝚽,2)
-    𝐮 = x[1:Pᵤ]
-    𝐯 = x[Pᵤ+1:Pᵤ+Pᵥ]
-    Ξ = size(γ,1)
-    zeroindex = cld(Ξ,2)
-    𝐔𝐮 = 𝐔*𝐮
-    T = length(𝐲)
-    if size(γ,2) > 1 # i.e, the coupling variable has more than one state
-        ∑γdecoupled = γ[zeroindex,1] .+ sum(γ[:,2])
-    else
-        ∑γdecoupled = γ[zeroindex,1]
-    end
-    ∑𝐮 = 𝐔𝐮
-    for t in eachindex(∑𝐮)
-        ∑𝐮[t] = ∑γdecoupled[t]*differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
-    end
-    ∑𝐯 = zeros(type, T)
-    for i = 1:Ξ
-        if i == zeroindex
-            continue
-        end
-        𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐯)
-        dnegℓ = 𝐗𝐰
-        for t in eachindex(dnegℓ)
-            dnegℓ[t] = differentiate_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
-        end
-        ζ = γ[i,1] .* dnegℓ
-        ∑𝐮 .+= ζ
-        ∑𝐯 .+= 𝛏[i].*ζ
-    end
-    ∇[1:Pᵤ] = transpose(𝐔)*∑𝐮
-    ∇[Pᵤ+1:Pᵤ+Pᵥ] = transpose(𝚽)*∑𝐯
-    return nothing
+function expectation_∇loglikelihood!(∇Q::Vector{<:Real},
+									indexθ::GLMθ,
+	                                γ::Matrix{<:Vector{<:Real}},
+	                                mpGLM::MixturePoissonGLM)
+	@unpack Δt, 𝐇, 𝐔, 𝐕, d𝛏_dB, θ, 𝐲 = mpGLM
+	Ξ = size(γ,1)
+	K = length(mpGLM.θ.𝐯)
+	T = length(𝐲)
+	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
+	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
+	for i = 1:Ξ
+		for k = 1:K
+			𝐋 = linearpredictor(mpGLM,i,k)
+			for t=1:T
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
+				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+			end
+		end
+	end
+	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
+	∇Q[indexθ.𝐡] = 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	for k = 1:K
+		∇Q[indexθ.𝐮[k]] = 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
+		∇Q[indexθ.𝐯[k]] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+		∇Q[indexθ.𝐰[k]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
+	end
+	return nothing
 end
 
 """
-    ∇negativeexpectation(γ, mpGLM)
+    expectation_∇∇loglikelihood(Opt, γ, mpGLM)
 
-Gradient of the negative of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron
-
-ARGUMENT
--`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i,k][t] corresponds to the i-th accumulator state and the k-th coupling state in the t-th time bin in the trialset.
--`mpGLM`: structure containing information for the mixture of Poisson GLM for one neuron
-
-RETURN
--∇: the gradient
-"""
-function ∇negativeexpectation(γ::Matrix{<:Vector{type}},
-                              mpGLM::MixturePoissonGLM;
-                              fit_a::Bool=true,
-                              fit_b::Bool=true) where {type<:Real}
-    @unpack Δt, K, 𝐔, 𝚽, 𝐗, 𝛏, 𝐲 = mpGLM
-    @unpack 𝐮, 𝐯, a, b = mpGLM.θ
-    Ξ = size(γ,1)
-    zeroindex = (Ξ+1)/2
-    𝐔𝐮 = 𝐔*𝐮
-    fa = rectifya(a[1])
-    T = length(𝐲)
-    ∑𝐮, ∑left, ∑right = zeros(type, T), zeros(type, T), zeros(type, T)
-    fit_b && (∑b = zeros(type, T))
-    𝛈 = 𝐔𝐮 # reuse memory
-    for t in eachindex(𝛈)
-        𝛈[t] = differentiate_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
-    end
-    for k = 1:K
-        for i = 1:Ξ
-            if k == 2 || i == zeroindex
-                dnegℓ = 𝛈
-            else
-                fξ = transformaccumulator(b[1], 𝛏[i])
-                if i < zeroindex
-                    𝐰 = vcat(𝐮, fξ.*𝐯)
-                else
-                    𝐰 = vcat(𝐮, fa.*fξ.*𝐯)
-                end
-                𝐗𝐰 = 𝐗*𝐰
-                dnegℓ = 𝐗𝐰 # reuse memory
-                for t in eachindex(dnegℓ)
-                    dnegℓ[t] = differentiate_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
-                end
-            end
-            ζ = γ[i,k] .* dnegℓ
-            ∑𝐮 .+= ζ
-            if k == 1 &&  i != zeroindex
-                if i < zeroindex
-                    ∑left .+= fξ.*ζ
-                    fit_b && (∑b .+= dtransformaccumulator(b[1], 𝛏[i]).*ζ)
-                elseif i > zeroindex
-                    ∑right .+= fξ.*ζ
-                    fit_b && (∑b .+= fa.*dtransformaccumulator(b[1], 𝛏[i]).*ζ)
-                end
-            end
-        end
-    end
-    ∑𝐯 = ∑left # reuse memory
-    ∑𝐯 .+= fa.*∑right
-    𝐯ᵀ𝚽ᵀ = transpose(𝚽*𝐯)
-    Pᵤ = length(𝐮)
-    Pᵥ = length(𝐯)
-    ∇ = zeros(type, Pᵤ+Pᵥ+fit_a+fit_b)
-    ∇[1:Pᵤ] = transpose(𝐔)*∑𝐮
-    ∇[Pᵤ+1:Pᵤ+Pᵥ] = transpose(𝚽)*∑𝐯
-    counter = Pᵤ+Pᵥ
-    if fit_a
-        ∇[counter+=1] = drectifya(a[1])*(𝐯ᵀ𝚽ᵀ*∑right) # the parentheses avoid unnecessary memory allocation
-    end
-    if fit_b
-        ∇[counter+=1] = 𝐯ᵀ𝚽ᵀ*∑b
-    end
-    return ∇
-end
-
-"""
-    differentiate_negative_loglikelihood
-
-Differentiate the negative of the log-likelihood of a Poisson GLM with respect to the linear predictor
-
-The Poisson GLM is assumed to have a a softplus nonlinearity
-
-ARGUMENT
--`Δt`: duration of time step
--`xw`: linear predictor at one time step
--`y`: observation at that time step
-
-RETURN
--the derivative with respect to the linear predictor
-"""
-function differentiate_negative_loglikelihood(Δt::AbstractFloat, xw::Real, y::Integer)
-    if y > 0
-        if xw > -100.0
-            logistic(xw)*(Δt - y/softplus(xw))
-        else
-            logistic(xw)*Δt - y # the limit of logistic(x)/softplus(x) as x goes to -∞ is 1
-        end
-    else
-        logistic(xw)*Δt
-    end
-end
-
-"""
-    𝐇negativeexpection(𝐇, γ, mpGLM, x)
-
-Compute the Hessian of the negative of the terms in the expectation that depend on the GLM filters
+Compute the log-likelihood of a Poisson mixture GLM and its first and second derivatives
 
 MODIFIED ARGUMENT
--`𝐇`: Hessian matrix
+-`∇∇Q`: Hessian matrix
 
 UNMODIFIED ARGUMENT
 -`γ`: posterior probabilities of the latents
@@ -378,81 +310,188 @@ UNMODIFIED ARGUMENT
 
 RETURN
 -nothing
+
+EXAMPLE
+```julia-rep
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> mpGLM = model.trialsets[1].mpGLMs[1]
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(mpGLM.θ)
+julia> Opt = FHMDDM.MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
+julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+julia> FHMDDM.expectation_∇∇loglikelihood!(Opt, γ, mpGLM)
+julia> using ForwardDiff
+julia> f(x) = -FHMDDM.expectation_loglikelihood(x, mpGLM, γ)
+julia> fauto = f(concatenatedθ)
+julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
+julia> hauto = ForwardDiff.hessian(f, concatenatedθ)
+julia> abs(fauto + Opt.Q[1])
+	0.0
+julia> maximum(abs.(gauto .+ Opt.∇Q))
+	5.684341886080802e-14
+julia> maximum(abs.(hauto .+ Opt.∇∇Q))
+	2.4424906541753444e-14
+```
 """
-function 𝐇negativeexpectation!(𝐇::Matrix{<:AbstractFloat},
-                               γ::Matrix{<:Vector{<:AbstractFloat}},
-                               mpGLM::MixturePoissonGLM,
-                               x::Vector{<:AbstractFloat})
-    @unpack Δt, 𝐔, 𝚽, 𝛏, 𝐗, 𝐲 = mpGLM
-    Pᵤ = size(𝐔,2)
-    Pᵥ = size(𝚽,2)
-    indices𝐮 = 1:Pᵤ
-    indices𝐯 = Pᵤ+1:Pᵤ+Pᵥ
-    𝐮 = x[indices𝐮]
-    𝐯 = x[indices𝐯]
-    Ξ = size(γ,1)
-    zeroindex = cld(Ξ,2)
-    if size(γ,2) > 1 # i.e, the coupling variable has more than one state
-        ∑γdecoupled = γ[zeroindex,1] .+ sum(γ[:,2])
-    else
-        ∑γdecoupled = γ[zeroindex,1]
-    end
-    T = length(𝐲)
-    ∑𝐮𝐯, ∑𝐯𝐯 = zeros(T), zeros(T)
-    𝐔𝐮 = 𝐔*𝐮
-    ∑𝐮𝐮 = 𝐔𝐮
-    for t in eachindex(∑𝐮𝐮)
-        ∑𝐮𝐮[t] = ∑γdecoupled[t]*differentiate_twice_negative_loglikelihood(Δt, 𝐔𝐮[t], 𝐲[t])
-    end
-    for i = 1:Ξ
-        if i == zeroindex
-            continue
-        end
-        𝐗𝐰 = 𝐗*vcat(𝐮, 𝛏[i].*𝐯)
-        d²negℓ = 𝐗𝐰
-        for t in eachindex(d²negℓ)
-            d²negℓ[t] = differentiate_twice_negative_loglikelihood(Δt, 𝐗𝐰[t], 𝐲[t])
-        end
-        ζ = γ[i,1] .* d²negℓ
-        ∑𝐮𝐮 .+= ζ
-        ∑𝐯𝐯 .+= 𝛏[i]^2 .* ζ
-        ∑𝐮𝐯 .+= 𝛏[i].*ζ
-    end
-    𝐔ᵀ = transpose(𝐔)
-    𝚽ᵀ = transpose(𝚽)
-    𝐔ᵀ_∑𝐮𝐯_𝚽 = 𝐔ᵀ*(∑𝐮𝐯.*𝚽)
-    # 𝐇 .= 0
-    𝐇[indices𝐮, indices𝐮] = 𝐔ᵀ*(∑𝐮𝐮.*𝐔)
-    𝐇[indices𝐯, indices𝐯] = 𝚽ᵀ*(∑𝐯𝐯.*𝚽)
-    𝐇[indices𝐮, indices𝐯] = 𝐔ᵀ_∑𝐮𝐯_𝚽
-    𝐇[indices𝐯, indices𝐮] = transpose(𝐔ᵀ_∑𝐮𝐯_𝚽)
-    return nothing
+function expectation_∇∇loglikelihood!(Opt::MixturePoissonGLM_Optimization,
+									γ::Matrix{<:Vector{<:AbstractFloat}},
+									mpGLM::MixturePoissonGLM)
+	@unpack indexθ, Q, ∇Q, ∇∇Q = Opt
+    @unpack Δt, 𝐇, 𝐔, 𝐕, d𝛏_dB, θ, 𝐲 = mpGLM
+	d𝛏_dB² = d𝛏_dB.^2
+	Ξ,K = size(γ)
+	T = length(𝐲)
+	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
+	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(T) for k=1:K)
+	Q[1] = 0.0
+	∇Q .= 0.0
+	∇∇Q .= 0.0
+	for i = 1:Ξ
+		for k = 1:K
+			𝐋 = linearpredictor(mpGLM,i,k)
+			for t=1:T
+				d²ℓ_dL², dℓ_dL, ℓ = differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				Q[1] += γ[i,k][t]*ℓ
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
+				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
+				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+			end
+		end
+	end
+	𝐇ᵀ, 𝐔ᵀ, 𝐕ᵀ = transpose(𝐇), transpose(𝐔), transpose(𝐕)
+	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
+	∇Q[indexθ.𝐡] = 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	for k = 1:K
+		∇Q[indexθ.𝐮[k]] = 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
+		∇Q[indexθ.𝐯[k]] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+		∇Q[indexθ.𝐰[k]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
+	end
+	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
+	∇∇Q[indexθ.𝐡, indexθ.𝐡] = 𝐇ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐇)
+	for k=1:K
+		∇∇Q[indexθ.𝐡, indexθ.𝐮[k]] = 𝐇ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k].*𝐔)
+		∇∇Q[indexθ.𝐡, indexθ.𝐯[k]] = 𝐇ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+		∇∇Q[indexθ.𝐡, indexθ.𝐰[k]] = 𝐇ᵀ*∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k]
+		∇∇Q[indexθ.𝐮[k], indexθ.𝐮[k]] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k].*𝐔)
+		∇∇Q[indexθ.𝐮[k], indexθ.𝐯[k]] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+		∇∇Q[indexθ.𝐮[k], indexθ.𝐰[k]] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
+		∇∇Q[indexθ.𝐯[k], indexθ.𝐯[k]] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+		∇∇Q[indexθ.𝐯[k], indexθ.𝐰[k]] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])
+		∇∇Q[indexθ.𝐰[k], indexθ.𝐰[k]] = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
+	end
+	for q=1:size(∇∇Q,1) # update the lower triangle
+		for r=q+1:size(∇∇Q,2)
+			∇∇Q[r,q] = ∇∇Q[q,r]
+		end
+	end
+	return nothing
 end
 
 """
-    differentiate_twice_negative_loglikelihood
+    poissonloglikelihood
 
-Second derivative the negative of the log-likelihood of a Poisson GLM with respect to the linear predictor
+Differentiate the log-likelihood of a Poisson GLM with respect to the linear predictor
 
 The Poisson GLM is assumed to have a a softplus nonlinearity
 
 ARGUMENT
 -`Δt`: duration of time step
--`xw`: linear predictor at one time step
--`y`: observation at that time step
+-`L`: linear predictor
+-`y`: observation
 
 RETURN
--the derivative with respect to the linear predictor
+-log-likelihood
 """
-function differentiate_twice_negative_loglikelihood(Δt::AbstractFloat, xw::Real, y::Integer)
-    f₁ = logistic(xw) # first derivative of softplus(xw) with respect to xw
-    f₂ = f₁*(1.0-f₁) # second derivative
-    if y > 0 && xw > -50.0
-        f₀ = softplus(xw)
-        f₂*Δt - y*(f₀*f₂ - f₁^2)/f₀^2 # the limit of the second term is 0 as xw goes to -∞
+function poissonloglikelihood(Δt::AbstractFloat, L::Real, y::Integer)
+    λ = softplus(L)
+	if y == 0
+		-λ*Δt
+	elseif y == 1
+		log(λ) - λ*Δt
+	else
+		y*log(λ) - λ*Δt
+	end
+end
+
+"""
+    differentiate_loglikelihood_twice_wrt_linearpredictor
+
+First derivative of the log-likelihood of a Poisson GLM with respect to the linear predictor
+
+The Poisson GLM is assumed to have a a softplus nonlinearity
+
+ARGUMENT
+-`Δt`: duration of time step
+-`L`: linear predictor
+-`y`: observation
+
+RETURN
+-first derivative of the log-likelihood with respect to the linear predictor
+"""
+function differentiate_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, y::Integer)
+    f₁ = logistic(L)
+	if y > 0
+        if L > -100.0
+			f₀ = softplus(L)
+            f₁*(y/f₀ - Δt)
+        else
+            y - f₁*Δt # the limit of logistic(x)/softplus(x) as x goes to -∞ is 1
+        end
     else
-        f₂*Δt
+        -f₁*Δt
     end
+end
+
+"""
+    differentiate_loglikelihood_twice_wrt_linearpredictor
+
+Second derivative of the log-likelihood of a Poisson GLM with respect to the linear predictor
+
+The Poisson GLM is assumed to have a a softplus nonlinearity
+
+ARGUMENT
+-`Δt`: duration of time step
+-`L`: linear predictor
+-`y`: observation
+
+RETURN
+-second derivative of the log-likelihood with respect to the linear predictor
+-first derivative of the log-likelihood with respect to the linear predictor
+-log-likelihood
+"""
+function differentiate_loglikelihood_twice_wrt_linearpredictor(Δt::AbstractFloat, L::Real, y::Integer)
+	f₀ = softplus(L)
+    f₁ = logistic(L)
+    f₂ = f₁*(1.0-f₁)
+	if y == 0
+		ℓ = -f₀*Δt
+	elseif y == 1
+		ℓ = log(f₀) - f₀*Δt
+	else
+		ℓ = y*log(f₀) - f₀*Δt
+	end
+	if y > 0
+        if L > -100.0
+            dℓ_dL= f₁*(y/f₀ - Δt)
+        else
+            dℓ_dL = y - f₁*Δt # the limit of logistic(x)/softplus(x) as x goes to -∞ is 1
+        end
+    else
+        dℓ_dL = -f₁*Δt
+    end
+    if y > 0 && L > -50.0
+        d²ℓ_dL² = y*(f₀*f₂ - f₁^2)/f₀^2 - f₂*Δt # the limit of the second term is 0 as xw goes to -∞
+    else
+        d²ℓ_dL² = -f₂*Δt
+    end
+	return d²ℓ_dL², dℓ_dL, ℓ
 end
 
 """
@@ -483,7 +522,7 @@ function GLMθ(K::Integer,
 end
 
 """
-	similar(glmθ, elementtype)
+	GLMθ(glmθ, elementtype)
 
 Create an uninitialized instance of GLMθ with the given element type.
 
@@ -497,10 +536,10 @@ RETURN
 -an instance of GLMθ
 """
 function GLMθ(glmθ::GLMθ, elementtype)
-	GLMθ(𝐡 = similar(glmθ.𝐡, elementtype),
-		 𝐮 = collect(similar(𝐮, elementtype) for 𝐮 in glmθ.𝐮),
-		 𝐯 = collect(similar(𝐯, elementtype) for 𝐯 in glmθ.𝐯),
-		 𝐰 = similar(glmθ.𝐰, elementtype))
+	GLMθ(𝐡 = zeros(elementtype, length(glmθ.𝐡)),
+		 𝐮 = collect(zeros(elementtype, length(𝐮)) for 𝐮 in glmθ.𝐮),
+		 𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
+		 𝐰 = zeros(elementtype, length(glmθ.𝐰)))
 end
 
 """
