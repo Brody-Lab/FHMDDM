@@ -90,7 +90,7 @@ function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
 end
 
 """
-    estimatefilters(γ, mpGLM)
+    estimatefilters(γ, Opt, mpGLM)
 
 Estimate the filters of the Poisson mixture GLM of one neuron
 
@@ -105,14 +105,25 @@ OPTIONAL ARGUMENT
 
 RETURN
 -weights concatenated into a single vector
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> mpGLM = model.trialsets[1].mpGLMs[1]
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(mpGLM.θ)
+julia> Opt = FHMDDM.MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
+julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+julia> FHMDDM.estimatefilters!(mpGLM, Opt, γ)
+```
 """
 function estimatefilters!(mpGLM::MixturePoissonGLM,
 						Opt::MixturePoissonGLM_Optimization,
 						γ::Matrix{<:Vector{<:AbstractFloat}};
 						iterations::Integer=20,
 						show_trace::Bool=true)
-    x₀ = concatenateparameters(mpGLM.θ)
-    f(x) = expectation_negloglikelihood(mpGLM,Opt,γ,x)
+    x₀ = concatenateparameters(mpGLM.θ)[1]
+    f(x) = expectation_negloglikelihood!(mpGLM,Opt,γ,x)
 	g!(∇, x) = expectation_∇negloglikelihood!(∇,mpGLM,Opt,γ,x)
 	h!(∇∇, x) = expectation_∇∇negloglikelihood!(∇∇,mpGLM,Opt,γ,x)
     results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
@@ -242,7 +253,7 @@ function expectation_loglikelihood(concatenatedθ::Vector{<:Real},
     T = length(𝐲)
     Ξ,K = size(γ)
     Q = 0.0
-    for i = 1:Ξ
+    @inbounds for i = 1:Ξ
 	    for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
             for t = 1:T
@@ -264,6 +275,21 @@ MODIFIED ARGUMENT
 UNMODIFIED ARGUMENT
 -`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i,k][t] corresponds to the i-th accumulator state and the k-th coupling state in the t-th time bin in the trialset.
 -`mpGLM`: structure containing information for the mixture of Poisson GLM for one neuron
+
+EXAMPLE
+```julia-rep
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> mpGLM = model.trialsets[1].mpGLMs[1]
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(mpGLM.θ)
+julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+julia> ghand = similar(concatenatedθ)
+julia> FHMDDM.expectation_∇loglikelihood!(ghand, indexθ, γ, mpGLM)
+julia> using ForwardDiff
+julia> f(x) = FHMDDM.expectation_loglikelihood(x, mpGLM, γ)
+julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
+julia> maximum(abs.(gauto .- ghand))
+```
 """
 function expectation_∇loglikelihood!(∇Q::Vector{<:Real},
 									indexθ::GLMθ,
@@ -275,7 +301,7 @@ function expectation_∇loglikelihood!(∇Q::Vector{<:Real},
 	T = length(𝐲)
 	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
 	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
-	for i = 1:Ξ
+	@inbounds for i = 1:Ξ
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
@@ -286,8 +312,9 @@ function expectation_∇loglikelihood!(∇Q::Vector{<:Real},
 		end
 	end
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
+	𝐇ᵀ, 𝐔ᵀ, 𝐕ᵀ = transpose(𝐇), transpose(𝐔), transpose(𝐕)
 	∇Q[indexθ.𝐡] = 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
-	for k = 1:K
+	@inbounds for k = 1:K
 		∇Q[indexθ.𝐮[k]] = 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
 		∇Q[indexθ.𝐯[k]] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
 		∇Q[indexθ.𝐰[k]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
@@ -321,16 +348,13 @@ julia> Opt = FHMDDM.MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, leng
 julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
 julia> FHMDDM.expectation_∇∇loglikelihood!(Opt, γ, mpGLM)
 julia> using ForwardDiff
-julia> f(x) = -FHMDDM.expectation_loglikelihood(x, mpGLM, γ)
+julia> f(x) = FHMDDM.expectation_loglikelihood(x, mpGLM, γ)
 julia> fauto = f(concatenatedθ)
 julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
 julia> hauto = ForwardDiff.hessian(f, concatenatedθ)
-julia> abs(fauto + Opt.Q[1])
-	0.0
-julia> maximum(abs.(gauto .+ Opt.∇Q))
-	5.684341886080802e-14
-julia> maximum(abs.(hauto .+ Opt.∇∇Q))
-	2.4424906541753444e-14
+julia> abs(fauto - Opt.Q[1])
+julia> maximum(abs.(gauto .- Opt.∇Q))
+julia> maximum(abs.(hauto .- Opt.∇∇Q))
 ```
 """
 function expectation_∇∇loglikelihood!(Opt::MixturePoissonGLM_Optimization,
@@ -349,7 +373,7 @@ function expectation_∇∇loglikelihood!(Opt::MixturePoissonGLM_Optimization,
 	Q[1] = 0.0
 	∇Q .= 0.0
 	∇∇Q .= 0.0
-	for i = 1:Ξ
+	@inbounds for i = 1:Ξ
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
@@ -368,14 +392,14 @@ function expectation_∇∇loglikelihood!(Opt::MixturePoissonGLM_Optimization,
 	𝐇ᵀ, 𝐔ᵀ, 𝐕ᵀ = transpose(𝐇), transpose(𝐔), transpose(𝐕)
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	∇Q[indexθ.𝐡] = 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
-	for k = 1:K
+	@inbounds for k = 1:K
 		∇Q[indexθ.𝐮[k]] = 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
 		∇Q[indexθ.𝐯[k]] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
 		∇Q[indexθ.𝐰[k]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
 	end
 	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
 	∇∇Q[indexθ.𝐡, indexθ.𝐡] = 𝐇ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐇)
-	for k=1:K
+	@inbounds for k=1:K
 		∇∇Q[indexθ.𝐡, indexθ.𝐮[k]] = 𝐇ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k].*𝐔)
 		∇∇Q[indexθ.𝐡, indexθ.𝐯[k]] = 𝐇ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
 		∇∇Q[indexθ.𝐡, indexθ.𝐰[k]] = 𝐇ᵀ*∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k]
@@ -386,7 +410,7 @@ function expectation_∇∇loglikelihood!(Opt::MixturePoissonGLM_Optimization,
 		∇∇Q[indexθ.𝐯[k], indexθ.𝐰[k]] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])
 		∇∇Q[indexθ.𝐰[k], indexθ.𝐰[k]] = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
 	end
-	for q=1:size(∇∇Q,1) # update the lower triangle
+	@inbounds for q=1:size(∇∇Q,1) # update the lower triangle
 		for r=q+1:size(∇∇Q,2)
 			∇∇Q[r,q] = ∇∇Q[q,r]
 		end
