@@ -154,9 +154,9 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_25_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> memory = FHMDDM.Memoryforgradient(model)
+julia> memory, P = FHMDDM.Memoryforgradient(model)
 julia> ℓ = loglikelihood!(model, memory, memory.concatenatedθ)
 julia> ℓ = loglikelihood!(model, memory, rand(length(memory.concatenatedθ)))
 ```
@@ -165,12 +165,11 @@ function loglikelihood!(model::Model,
 						memory::Memoryforgradient,
 					    concatenatedθ::Vector{<:Real})
 	if (concatenatedθ != memory.concatenatedθ) || isnan(memory.ℓ[1])
-		update!(model, memory, concatenatedθ)
-		trialinvariant = Trialinvariant(model; purpose="loglikelihood")
+		P = update!(memory, model, concatenatedθ)
 		memory.ℓ[1] = 0.0
 		for s in eachindex(model.trialsets)
 			for m in eachindex(model.trialsets[s].trials)
-				memory.ℓ[1] += loglikelihood(memory.p𝐘𝑑[s][m], model.θnative, model.trialsets[s].trials[m], trialinvariant)
+				memory.ℓ[1] += loglikelihood(memory.p𝐘𝑑[s][m], memory, P, model.θnative, model.trialsets[s].trials[m])
 			end
 		end
 	end
@@ -192,29 +191,26 @@ RETURN
 -`ℓ`: log-likelihood of the data from one trial
 """
 function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
+   					   memory::Memoryforgradient,
+					   P::Probabilityvector,
 					   θnative::Latentθ,
-					   trial::Trial,
-					   trialinvariant::Trialinvariant)
+					   trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃsilent, Aᶜᵀ, Δt, πᶜᵀ, 𝛏, Ξ = trialinvariant
-	C = adapt(clicks, θnative.k[1], θnative.ϕ[1]).C
-	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
-	σ = √θnative.σ²ᵢ[1]
-	πᵃ = probabilityvector(μ, σ, 𝛏)
-	f = p𝐘𝑑[1] .* πᵃ .* πᶜᵀ
+	@unpack Aᵃinput, Aᵃsilent, Aᶜᵀ, πᶜᵀ = memory
+	adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	priorprobability!(P, trial.previousanswer)
+	pa₁ = P.𝛑
+	f = p𝐘𝑑[1] .* pa₁ .* πᶜᵀ
 	D = sum(f)
 	f ./= D
 	ℓ = log(D)
-	T = eltype(p𝐘𝑑[1])
-	Aᵃinput = zeros(T, Ξ, Ξ)
 	@inbounds for t = 2:trial.ntimesteps
 		if isempty(clicks.inputindex[t])
 			Aᵃ = Aᵃsilent
 		else
-			cL = sum(C[clicks.left[t]])
-			cR = sum(C[clicks.right[t]])
-			transitionmatrix!(Aᵃinput, cL, cR, trialinvariant, θnative)
-			Aᵃ = Aᵃinput
+			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃ, P)
 		end
 		f = p𝐘𝑑[t].*(Aᵃ * f * Aᶜᵀ)
 		D = sum(f)
@@ -645,12 +641,13 @@ ARGUMENT
 
 OUTPUT
 -an instance of the custom type `Memoryforgradient`, which contains the memory quantities
+-`P`: an instance of `Probabilityvector`
 
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> memory = FHMDDM.Memoryforgradient(model)
+julia> memory, P = FHMDDM.Memoryforgradient(model)
 ```
 """
 function Memoryforgradient(model::Model)
@@ -699,29 +696,29 @@ function Memoryforgradient(model::Model)
 	∇transitionmatrix!(∇Aᵃsilent, Aᵃsilent, P)
 	p𝐘𝑑 = likelihood(model)
 	concatenatedθ, indexθ = concatenateparameters(model)
-	Memoryforgradient(Aᵃinput=Aᵃinput,
-					∇Aᵃinput=∇Aᵃinput,
-					Aᵃsilent=Aᵃsilent,
-					∇Aᵃsilent=∇Aᵃsilent,
-					Aᶜ=Aᶜ,
-					∇Aᶜ=∇Aᶜ,
-					concatenatedθ=concatenatedθ,
-					D = zeros(maxtimesteps),
-					Δt=options.Δt,
-					f=collect(zeros(Ξ,K) for t=1:maxtimesteps),
-					indexθ=indexθ,
-					indexθ_pa₁=indexθ_pa₁,
-					indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
-					indexθ_pc₁=indexθ_pc₁,
-					indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
-					indexθ_ψ=indexθ_ψ,
-					K=K,
-					P=P,
-					∇pa₁ = collect(zeros(Ξ) for q=1:nθ_pa₁),
-					πᶜ=πᶜ,
-					∇πᶜ=∇πᶜ,
-					p𝐘𝑑=p𝐘𝑑,
-					Ξ=Ξ)
+	memory = Memoryforgradient(Aᵃinput=Aᵃinput,
+								∇Aᵃinput=∇Aᵃinput,
+								Aᵃsilent=Aᵃsilent,
+								∇Aᵃsilent=∇Aᵃsilent,
+								Aᶜ=Aᶜ,
+								∇Aᶜ=∇Aᶜ,
+								concatenatedθ=concatenatedθ,
+								D = zeros(maxtimesteps),
+								Δt=options.Δt,
+								f=collect(zeros(Ξ,K) for t=1:maxtimesteps),
+								indexθ=indexθ,
+								indexθ_pa₁=indexθ_pa₁,
+								indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
+								indexθ_pc₁=indexθ_pc₁,
+								indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
+								indexθ_ψ=indexθ_ψ,
+								K=K,
+								∇pa₁ = collect(zeros(Ξ) for q=1:nθ_pa₁),
+								πᶜ=πᶜ,
+								∇πᶜ=∇πᶜ,
+								p𝐘𝑑=p𝐘𝑑,
+								Ξ=Ξ)
+	return memory, P
 end
 
 """
@@ -729,18 +726,43 @@ end
 
 Update the model and the memory quantities according to new parameter values
 
-ARGUMENT
--`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
+MODIFIED ARGUMENT
 -`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+-`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
+
+ARGUMENT
 -`concatenatedθ`: newest values of the model's parameters
+
+RETURN
+-`P`: an instance of `Probabilityvector`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> memory, P = FHMDDM.Memoryforgradient(model)
+julia> P = update!(model, memory, rand(length(memory.concatenatedθ)))
+```
 """
-function update!(model::Model,
-				 memory::Memoryforgradient,
+function update!(memory::Memoryforgradient,
+				 model::Model,
 				 concatenatedθ::Vector{<:Real})
 	memory.concatenatedθ .= concatenatedθ
 	sortparameters!(model, memory.concatenatedθ, memory.indexθ)
 	if !isempty(memory.p𝐘𝑑[1][1][1])
 	    likelihood!(memory.p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
 	end
-	return nothing
+	@unpack options, θnative = model
+	@unpack Δt, K, Ξ = options
+	P = Probabilityvector(Δt, θnative, Ξ)
+	update_for_∇transition_probabilities!(P)
+	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
+	if K == 2
+		Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
+		Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
+		πᶜ₁ = θnative.πᶜ₁[1]
+		memory.Aᶜ .= [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
+		memory.πᶜ .= [πᶜ₁, 1-πᶜ₁]
+	end
+	return P
 end

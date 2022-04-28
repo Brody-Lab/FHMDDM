@@ -784,7 +784,6 @@ Container of variables used by both the log-likelihood and gradient computation
 								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
 								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
 								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
-								TP<:Probabilityvector,
 								Tindex<:Indexθ}
 	"transition matrix of the accumulator variable in the presence of input"
 	Aᵃinput::VMR
@@ -836,8 +835,6 @@ Container of variables used by both the log-likelihood and gradient computation
 	nθ_pcₜcₜ₋₁::TI = length(indexθ_pcₜcₜ₋₁)
 	"number of the parameters that influence the lapse rate"
 	nθ_ψ::TI = length(indexθ_ψ)
-	"structure for computing a probability vector"
-	P::TP
 	"partial derivative of the initial probability of the accumulator"
 	∇pa₁::VVR
 	"prior probability of the coupling"
