@@ -779,10 +779,12 @@ Container of variables used by both the log-likelihood and gradient computation
 								MR<:Matrix{<:Real},
 								TMR<:Transpose{<:Real, <:Matrix{<:Real}},
 								VVR<:Vector{<:Vector{<:Real}},
+								VVθ<:Vector{<:Vector{<:GLMθ}},
 								VMR<:Vector{<:Matrix{<:Real}},
 								VTVR<:Vector{<:Transpose{<:Real, <:Vector{<:Real}}},
 								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
 								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
+								VMVR<:Vector{<:Matrix{<:Vector{<:Real}}},
 								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 								Tindex<:Indexθ}
 	"transition matrix of the accumulator variable in the presence of input"
@@ -805,10 +807,10 @@ Container of variables used by both the log-likelihood and gradient computation
 	concatenatedθ::VR
 	"normalization parameters in the forward-backward algorithm"
 	D::VR
-	"forward terms"
-	f::VMR
 	"size of the time step"
 	Δt::R
+	"forward terms"
+	f::VMR
 	"a structure indicating the index of each model parameter in the vector of concatenated values"
 	indexθ::Tindex
 	"indices of the parameters that influence the prior probabilities of the accumulator"
@@ -821,10 +823,16 @@ Container of variables used by both the log-likelihood and gradient computation
 	indexθ_pcₜcₜ₋₁::VI
 	"indices of the parameters that influence the lapse rate"
 	indexθ_ψ::VI
+	"posterior probabilities: element γ[s][j,k][t] corresponds to the p{a(t)=ξ(j),c(t)=k ∣ 𝐘} for the t-th time step in the s-th trialset"
+	γ::VMVR
 	"number of coupling states"
 	K::TI
 	"log-likelihood"
 	ℓ::VR = fill(NaN,1)
+	"gradient of the log-likelihood with respect to glm parameters"
+	∇ℓglm::VVθ
+	"gradient of the log-likelihood with respect to all parameters, even those not being fit"
+	∇ℓlatent::VR
 	"number of parameters that influence the prior probabilities of the accumulator"
 	nθ_pa₁::TI = length(indexθ_pa₁)
 	"number of parameters that influence the transition probabilities of the accumulator"

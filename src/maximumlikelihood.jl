@@ -156,7 +156,7 @@ EXAMPLE
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> memory, P = FHMDDM.Memoryforgradient(model)
+julia> memory = FHMDDM.Memoryforgradient(model)
 julia> ℓ = loglikelihood!(model, memory, memory.concatenatedθ)
 julia> ℓ = loglikelihood!(model, memory, rand(length(memory.concatenatedθ)))
 ```
@@ -164,10 +164,10 @@ julia> ℓ = loglikelihood!(model, memory, rand(length(memory.concatenatedθ)))
 function loglikelihood!(model::Model,
 						memory::Memoryforgradient,
 					    concatenatedθ::Vector{<:Real})
-	if (concatenatedθ != memory.concatenatedθ) || isnan(memory.ℓ[1])
+	if concatenatedθ != memory.concatenatedθ
 		P = update!(memory, model, concatenatedθ)
 		memory.ℓ[1] = 0.0
-		for s in eachindex(model.trialsets)
+		@inbounds for s in eachindex(model.trialsets)
 			for m in eachindex(model.trialsets[s].trials)
 				memory.ℓ[1] += loglikelihood(memory.p𝐘𝑑[s][m], memory, P, model.θnative, model.trialsets[s].trials[m])
 			end
@@ -223,7 +223,7 @@ end
 """
     loglikelihood(concatenatedθ, indexθ, model)
 
-Compute the log-likelihood in a way that is compatible with ForwardDiff
+ForwardDiff-compatible computation of the log-likelihood
 
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector of concatenated parameter values
@@ -236,19 +236,24 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_25_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 julia> ℓ = loglikelihood(concatenatedθ, indexθ, model)
+julia> using ForwardDiff
+julia> f(x) = loglikelihood(x, indexθ, model)
+julia> g = ForwardDiff.gradient(f, concatenatedθ)
+
+julia> memory = FHMDDM.Memoryforgradient(model)
+julia> ℓ2 = loglikelihood!(model, memory, concatenatedθ) #ForwardDiff-incompatible
+julia> abs(ℓ2-ℓ)
 ```
 """
-function loglikelihood(	concatenatedθ::Vector{<:Real},
+function loglikelihood(	concatenatedθ::Vector{T},
 					    indexθ::Indexθ,
-						model::Model)
+						model::Model) where {T<:Real}
 	model = Model(concatenatedθ, indexθ, model)
 	@unpack options, θnative, θreal, trialsets = model
-	@unpack Ξ, K = options
-	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-	T = eltype(concatenatedθ)
+	@unpack Δt, K, Ξ = options
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t
@@ -256,13 +261,254 @@ function loglikelihood(	concatenatedθ::Vector{<:Real},
 				end
 			end
 		end
-    likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1]) # `p𝐘𝑑` is the conditional likelihood p(𝐘ₜ, d ∣ aₜ, zₜ)
-	ℓ = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-			map(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-				loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
+    likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1])
+	Aᵃinput, Aᵃsilent = zeros(T,Ξ,Ξ), zeros(T,Ξ,Ξ)
+	expλΔt = exp(θnative.λ[1]*Δt)
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
+	d𝛏_dB = (2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	𝛏 = θnative.B[1].*d𝛏_dB
+	transitionmatrix!(Aᵃsilent, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
+	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
+	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
+	πᶜ₁ = θnative.πᶜ₁[1]
+	if K == 2
+		Aᶜᵀ = [Aᶜ₁₁ 1-Aᶜ₁₁; 1-Aᶜ₂₂ Aᶜ₂₂]
+		πᶜᵀ = [πᶜ₁ 1-πᶜ₁]
+	else
+		Aᶜᵀ = ones(T,1,1)
+		πᶜᵀ = ones(T,1,1)
+	end
+	ℓ = zero(T)
+	@inbounds for s in eachindex(trialsets)
+		for m in eachindex(trialsets[s].trials)
+			trial = trialsets[s].trials[m]
+			pa₁ = probabilityvector(θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
+			f = p𝐘𝑑[s][m][1] .* pa₁ .* πᶜᵀ
+			D = sum(f)
+			f./=D
+			ℓ+=log(D)
+			adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+			for t=2:trial.ntimesteps
+				if t ∈ trial.clicks.inputtimesteps
+					cL = sum(adaptedclicks.C[trial.clicks.left[t]])
+					cR = sum(adaptedclicks.C[trial.clicks.right[t]])
+					𝛍 = expλΔt.*𝛏 .+ (cR-cL)*dμ_dΔc
+					σ = √((cR+cL)*θnative.σ²ₛ[1] + Δt*θnative.σ²ₐ[1])
+					transitionmatrix!(Aᵃinput, 𝛍, σ, 𝛏)
+					Aᵃ = Aᵃinput
+				else
+					Aᵃ = Aᵃsilent
+				end
+				f = p𝐘𝑑[s][m][t] .* (Aᵃ * f * Aᶜᵀ)
+				D = sum(f)
+				f./=D
+				ℓ+=log(D)
 			end
 		end
-	return sum(sum(ℓ))
+	end
+	ℓ
+end
+
+"""
+	∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
+
+Update the gradient of the negative log-likelihood of the model
+
+MODIFIED ARGUMENT
+-`∇nℓ`: the vector representing the gradient
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+
+ARGUMENT
+-`concatenatedθ`: values of the model's parameters concatenated into a vector
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+julia> ∇nℓ = similar(concatenatedθ)
+julia> memory = FHMDDM.Memoryforgradient(model)
+julia> FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
+julia> using ForwardDiff
+julia> f(x) = -loglikelihood(x, indexθ, model)
+julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
+julia> maximum(abs.(∇nℓ_auto .- ∇nℓ))
+```
+"""
+function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
+ 								 memory::Memoryforgradient,
+								 model::Model,
+								 concatenatedθ::Vector{<:AbstractFloat})
+	if concatenatedθ != memory.concatenatedθ
+		P = update!(memory, model, concatenatedθ)
+	end
+	∇loglikelihood!(memory,model,P)
+	indexall = 0
+	indexfit = 0
+	for field in fieldnames(Latentθ)
+		indexall+=1
+		if getfield(memory.indexθ.latentθ, field)[1] > 0
+			indexfit +=1
+			∇nℓ[indexfit] = -memory.∇ℓlatent[indexall]
+		end
+	end
+	for ∇ℓglms in memory.∇ℓglm
+		for ∇ℓglm in ∇ℓglms
+			for h in ∇ℓglm.𝐡
+				indexfit+=1
+				∇nℓ[indexfit] = -h
+			end
+			for 𝐮ₖ in ∇ℓglm.𝐮
+				for u in 𝐮ₖ
+					indexfit+=1
+					∇nℓ[indexfit] = -u
+				end
+			end
+			for 𝐯ₖ in ∇ℓglm.𝐯
+				for v in 𝐯ₖ
+					indexfit+=1
+					∇nℓ[indexfit] = -v
+				end
+			end
+			for w in ∇ℓglm.𝐰
+				indexfit+=1
+				∇nℓ[indexfit] = -w
+			end
+		end
+	end
+	return nothing
+end
+
+"""
+	∇loglikelihood!(memory, model, P)
+
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
+"""
+function ∇loglikelihood!(memory::Memoryforgradient,
+						 model::Model,
+						 P::Probabilityvector)
+	memory.ℓ .= 0.0
+	memory.∇ℓlatent .= 0.0
+	@inbounds for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			∇loglikelihood!(memory, model, P, s, m)
+		end
+	end
+	@inbounds for s in eachindex(model.trialsets)
+		for n in eachindex(model.trialsets[s].mpGLMs)
+			expectation_∇loglikelihood!(memory.∇ℓglm[s][n], memory.γ[s], model.trialsets[s].mpGLMs[n])
+		end
+	end
+	native2real!(memory.∇ℓlatent, memory.indexθ.latentθ, model)
+	return nothing
+end
+
+"""
+	∇loglikelihood!(memory, model, P, s, m)
+
+Update the gradient
+
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
+-`s`: index of the trialset
+-`m`: index of the trial
+"""
+function ∇loglikelihood!(memory::Memoryforgradient,
+						 model::Model,
+						 P::Probabilityvector,
+						 s::Integer,
+						 m::Integer)
+	trial = model.trialsets[s].trials[m]
+	p𝐘𝑑 = memory.p𝐘𝑑[s][m]
+	@unpack θnative = model
+	@unpack clicks = trial
+	@unpack inputtimesteps, inputindex = clicks
+	@unpack Aᵃinput, ∇Aᵃinput, Aᵃsilent, ∇Aᵃsilent, Aᶜ, Aᶜᵀ, ∇Aᶜ, D, f, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, ℓ, ∇ℓlatent, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, ∇pa₁, πᶜ, ∇πᶜ, Ξ = memory
+	t = 1
+	∇priorprobability!(∇pa₁, P, trial.previousanswer)
+	pa₁ = copy(P.𝛑) # save for later
+	@inbounds for j=1:Ξ
+		for k = 1:K
+			f[t][j,k] = p𝐘𝑑[t][j,k] * pa₁[j] * πᶜ[k]
+		end
+	end
+	D[t] = sum(f[t])
+	f[t] ./= D[t]
+	ℓ[1] += log(D[t])
+	adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	@inbounds for t=2:trial.ntimesteps
+		if t ∈ clicks.inputtimesteps
+			clickindex = clicks.inputindex[t][1]
+			Aᵃ = Aᵃinput[clickindex]
+			∇Aᵃ = ∇Aᵃinput[clickindex]
+			update_for_∇transition_probabilities!(P, adaptedclicks, clicks, t)
+			∇transitionmatrix!(∇Aᵃ, Aᵃ, P)
+		else
+			Aᵃ = Aᵃsilent
+			∇Aᵃ = ∇Aᵃsilent
+		end
+		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
+		D[t] = sum(f[t])
+		f[t] ./= D[t]
+		ℓ[1] += log(D[t])
+	end
+	b = ones(Ξ,K)
+	f⨀b = f # reuse memory
+	∇ℓlatent[indexθ_ψ[1]] += expectation_derivative_logp𝑑_wrt_ψ(trial.choice, f⨀b[trial.ntimesteps], θnative.ψ[1])
+	@inbounds for t = trial.ntimesteps:-1:1
+		if t < trial.ntimesteps
+			if t+1 ∈ clicks.inputtimesteps
+				clickindex = clicks.inputindex[t+1][1]
+				Aᵃₜ₊₁ = Aᵃinput[clickindex]
+			else
+				Aᵃₜ₊₁ = Aᵃsilent
+			end
+			b = transpose(Aᵃₜ₊₁) * (b.*p𝐘𝑑[t+1]./D[t+1]) * Aᶜ
+			f⨀b[t] .*= b
+		end
+		if t > 1
+			if t ∈ clicks.inputtimesteps
+				clickindex = clicks.inputindex[t][1]
+				Aᵃ = Aᵃinput[clickindex]
+				∇Aᵃ = ∇Aᵃinput[clickindex]
+			else
+				Aᵃ = Aᵃsilent
+				∇Aᵃ = ∇Aᵃsilent
+			end
+			for i = 1:nθ_paₜaₜ₋₁
+				∇ℓlatent[indexθ_paₜaₜ₋₁[i]] += sum_product_over_states(D[t], f[t-1], b, p𝐘𝑑[t], ∇Aᵃ[i], Aᶜ)
+			end
+			for i = 1:nθ_pcₜcₜ₋₁
+				∇ℓlatent[indexθ_pcₜcₜ₋₁[i]] += sum_product_over_states(D[t], f[t-1], b, p𝐘𝑑[t], Aᵃ, ∇Aᶜ[i])
+			end
+		end
+	end
+	t = 1
+	@inbounds for i = 1:nθ_pa₁
+		∇ℓlatent[indexθ_pa₁[i]] += sum_product_over_states(D[t], b, p𝐘𝑑[t], ∇pa₁[i], πᶜ)
+	end
+	@inbounds for i = 1:nθ_pc₁
+		∇ℓlatent[indexθ_pc₁[i]] += sum_product_over_states(D[t], b, p𝐘𝑑[t], pa₁, ∇πᶜ[i])
+	end
+	offset = 0
+	for i = 1:m-1
+		offset += model.trialsets[s].trials[i].ntimesteps
+	end
+	for t = 1:trial.ntimesteps
+		τ = offset+t
+		for i = 1:Ξ
+			for k = 1:K
+				memory.γ[s][i,k][τ] = f⨀b[t][i,k]
+			end
+		end
+	end
+	return nothing
 end
 
 """
@@ -647,7 +893,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> memory, P = FHMDDM.Memoryforgradient(model)
+julia> memory = FHMDDM.Memoryforgradient(model)
 ```
 """
 function Memoryforgradient(model::Model)
@@ -674,6 +920,11 @@ function Memoryforgradient(model::Model)
 	indexθ_ψ = [9]
 	nθ_pa₁ = length(indexθ_pa₁)
 	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
+	∇ℓglm = map(model.trialsets) do trialset
+				map(trialset.mpGLMs) do mpGLM
+					GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐰[1]))
+				end
+			end
 	maxclicks = 0
 	maxtimesteps = 0
 	@inbounds for trialset in model.trialsets
@@ -691,18 +942,26 @@ function Memoryforgradient(model::Model)
 	Aᵃsilent = zeros(Ξ, Ξ)
 	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
 	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
-	P = Probabilityvector(Δt, θnative, Ξ)
-	update_for_∇transition_probabilities!(P)
-	∇transitionmatrix!(∇Aᵃsilent, Aᵃsilent, P)
-	p𝐘𝑑 = likelihood(model)
+	p𝐘𝑑=map(model.trialsets) do trialset
+			map(trialset.trials) do trial
+				map(1:trial.ntimesteps) do t
+					ones(Ξ,K)
+				end
+			end
+		end
 	concatenatedθ, indexθ = concatenateparameters(model)
+	γ =	map(model.trialsets) do trialset
+			map(CartesianIndices((Ξ,K))) do index
+				zeros(trialset.ntimesteps)
+			end
+		end
 	memory = Memoryforgradient(Aᵃinput=Aᵃinput,
 								∇Aᵃinput=∇Aᵃinput,
 								Aᵃsilent=Aᵃsilent,
 								∇Aᵃsilent=∇Aᵃsilent,
 								Aᶜ=Aᶜ,
 								∇Aᶜ=∇Aᶜ,
-								concatenatedθ=concatenatedθ,
+								concatenatedθ=similar(concatenatedθ),
 								D = zeros(maxtimesteps),
 								Δt=options.Δt,
 								f=collect(zeros(Ξ,K) for t=1:maxtimesteps),
@@ -712,13 +971,16 @@ function Memoryforgradient(model::Model)
 								indexθ_pc₁=indexθ_pc₁,
 								indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
 								indexθ_ψ=indexθ_ψ,
+								γ=γ,
 								K=K,
+								∇ℓglm=∇ℓglm,
+								∇ℓlatent=zeros(13),
 								∇pa₁ = collect(zeros(Ξ) for q=1:nθ_pa₁),
 								πᶜ=πᶜ,
 								∇πᶜ=∇πᶜ,
 								p𝐘𝑑=p𝐘𝑑,
 								Ξ=Ξ)
-	return memory, P
+	return memory
 end
 
 """

@@ -376,7 +376,7 @@ function MixturePoissonGLM(concatenatedθ::Vector{T},
 							d𝛏_dB=mpGLM.d𝛏_dB,
 							𝐲=mpGLM.𝐲,
 							θ=GLMθ(mpGLM.θ, T))
-	sortparameters!(mpGLM.θ, concatenatedθ; offset=0)
+	sortparameters!(mpGLM.θ, concatenatedθ; offset=offset)
 	return mpGLM
 end
 

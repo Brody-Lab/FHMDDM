@@ -265,7 +265,7 @@ function expectation_loglikelihood(concatenatedθ::Vector{<:Real},
 end
 
 """
-	expectation_∇loglikelihood!(∇, γ, mpGLM)
+	expectation_∇loglikelihood!(∇Q, indexθ, γ, mpGLM)
 
 Expectation under the posterior probability of the gradient of the log-likelihood
 
@@ -291,13 +291,11 @@ julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
 julia> maximum(abs.(gauto .- ghand))
 ```
 """
-function expectation_∇loglikelihood!(∇Q::Vector{<:Real},
-									indexθ::GLMθ,
+function expectation_∇loglikelihood!(∇Q::GLMθ,
 	                                γ::Matrix{<:Vector{<:Real}},
 	                                mpGLM::MixturePoissonGLM)
-	@unpack Δt, 𝐇, 𝐔, 𝐕, d𝛏_dB, θ, 𝐲 = mpGLM
-	Ξ = size(γ,1)
-	K = length(mpGLM.θ.𝐯)
+	@unpack Δt, 𝐇, 𝐔, 𝐕, d𝛏_dB, 𝐲 = mpGLM
+	Ξ, K = size(γ)
 	T = length(𝐲)
 	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
 	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
@@ -313,11 +311,11 @@ function expectation_∇loglikelihood!(∇Q::Vector{<:Real},
 	end
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	𝐇ᵀ, 𝐔ᵀ, 𝐕ᵀ = transpose(𝐇), transpose(𝐔), transpose(𝐕)
-	∇Q[indexθ.𝐡] = 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	∇Q.𝐡 .= 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
 	@inbounds for k = 1:K
-		∇Q[indexθ.𝐮[k]] = 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
-		∇Q[indexθ.𝐯[k]] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-		∇Q[indexθ.𝐰[k]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
+		∇Q.𝐮[k] .= 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
+		∇Q.𝐯[k] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+		∇Q.𝐰[k] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
 	end
 	return nothing
 end
