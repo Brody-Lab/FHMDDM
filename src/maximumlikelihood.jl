@@ -24,9 +24,9 @@ RETURN
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM, Optim
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_02_18_test/data.mat"
-julia> model = Model(datapath)
+julia> using FHMDDM, LineSearches, Optim
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> model = Model(datapath; randomize=true)
 julia> losses, gradientnorms = maximizelikelihood!(model, LBFGS(linesearch = LineSearches.BackTracking()))
 ```
 """
@@ -41,14 +41,8 @@ function maximizelikelihood!(model::Model,
 							 store_trace::Bool=true,
 			                 x_tol::AbstractFloat=0.0)
 	memory = Memoryforgradient(model)
-	@unpack K, Ξ = model.options
-	γ =	map(model.trialsets) do trialset
-			map(CartesianIndices((Ξ,K))) do index
-				zeros(trialset.ntimesteps)
-			end
-		end
     f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ)
-    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, γ, model, memory, concatenatedθ)
+    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -57,10 +51,10 @@ function maximizelikelihood!(model::Model,
                                   show_trace=show_trace,
 								  store_trace=store_trace,
                                   x_tol=x_tol)
-	θ₀ = copy(memory.concatenatedθ)
+	θ₀ = concatenateparameters(model)[1]
 	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
-    maximumlikelihoodθ = Optim.minimizer(optimizationresults)
-	sortparameters!(model, maximumlikelihoodθ, memory.indexθ)
+    θₘₗ = Optim.minimizer(optimizationresults)
+	sortparameters!(model, θₘₗ, memory.indexθ)
 	println(optimizationresults)
 	losses, gradientnorms = fill(NaN, iterations+1), fill(NaN, iterations+1)
 	if store_trace
@@ -95,22 +89,16 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> import Flux
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_02_18_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
 julia> model = Model(datapath)
-julia> losses, gradientnorms = maximizelikelihood!(model, Flux.ADAM())
+julia> losses, gradientnorms = FHMDDM.maximizelikelihood!(model, Flux.ADAM())
 ```
 """
 function maximizelikelihood!(model::Model,
 							optimizer::Flux.Optimise.AbstractOptimiser;
 							iterations::Integer = 3000)
 	memory = Memoryforgradient(model)
-	@unpack K, Ξ = model.options
-	γ =	map(model.trialsets) do trialset
-		map(CartesianIndices((Ξ,K))) do index
-			zeros(trialset.ntimesteps)
-		end
-	end
-	θ = copy(memory.concatenatedθ)
+	θ = concatenateparameters(model)[1]
 	∇ = similar(θ)
 	local x, min_err, min_θ
 	min_err = typemax(eltype(θ)) #dummy variables
@@ -120,7 +108,7 @@ function maximizelikelihood!(model::Model,
 	for i = 1:iterations
 		iterationtime = @timed begin
 			x = -loglikelihood!(model, memory, θ)
-			∇negativeloglikelihood!(∇, γ, model, memory, θ)
+			∇negativeloglikelihood!(∇, memory, model, θ)
 			losses[i] = x
 			gradientnorms[i] = norm(∇)
 			if x < min_err  # found a better solution
@@ -342,6 +330,8 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 								 concatenatedθ::Vector{<:AbstractFloat})
 	if concatenatedθ != memory.concatenatedθ
 		P = update!(memory, model, concatenatedθ)
+	else
+		P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
 	end
 	∇loglikelihood!(memory,model,P)
 	indexall = 0
