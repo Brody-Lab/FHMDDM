@@ -13,6 +13,13 @@ OPTIONAL ARGUMENT
 -`show_trace`: should a trace of the optimization algorithm's state be shown?
 -`x_tol`: threshold for determining convergence in the input vector
 
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> model = Model(datapath; randomize=true)
+julia> FHMDDM.maximizechoiceLL!(model)
+```
 """
 function maximizechoiceLL!(model::Model;
 		                 extended_trace::Bool=true,
@@ -22,9 +29,9 @@ function maximizechoiceLL!(model::Model;
 		                 show_every::Integer=10,
 		                 show_trace::Bool=true,
 		                 x_tol::AbstractFloat=1e-5)
-	concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
-    f(concatenatedθ) = -loglikelihood!(model, concatenatedθ, indexθ)
-    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, model, concatenatedθ, indexθ)
+	memory = Memoryforgradient(model; choicemodel=true)
+    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ)
+    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -33,351 +40,313 @@ function maximizechoiceLL!(model::Model;
                                   show_trace=show_trace,
                                   x_tol=x_tol)
 	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
-	θ₀ = deepcopy(concatenatedθ)
+	θ₀ = concatenate_choice_related_parameters(model)[1]
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
-    maximumlikelihoodθ = Optim.minimizer(optimizationresults)
-	sortparameters!(model, maximumlikelihoodθ, indexθ)
+	θₘₗ = Optim.minimizer(optimizationresults)
+	sortparameters!(model, θₘₗ, memory.indexθ.latentθ)
 end
 
 """
-    loglikelihood!(model, concatenatedθ)
+	choiceLL!(memory, model, concatenatedθ)
 
-Compute the log-likelihood of the choices
+Log-likelihood of the choices
 
-ARGUMENT
+MODIFIED ARGUMENT
 -`model`: an instance of FHM-DDM
+-`memory`: a container of variables used by both the log-likelihood and gradient computation
 
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector of concatenated parameter values
--`indexθ`: index of each parameter after if all parameters being fitted are concatenated
 
 RETURN
 -log-likelihood
 """
-function loglikelihood!(model::Model,
-					    concatenatedθ::Vector{<:Real},
-						indexθ::Indexθ; useparallel=false)
-	sortparameters!(model, concatenatedθ, indexθ)
-	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-	ℓ = map(model.trialsets) do trialset
-			if useparallel
-				pmap(trialset.trials) do trial
-					loglikelihood(model.θnative, trial, trialinvariant)
-				end
-			else
-				map(trialset.trials) do trial
-					loglikelihood(model.θnative, trial, trialinvariant)
-				end
+function choiceLL!(memory::Memoryforgradient,
+					model::Model,
+					concatenatedθ::Vector{<:Real})
+	if concatenatedθ != memory.concatenatedθ
+		P = update_for_choiceLL!(memory, model, concatenatedθ)
+		memory.ℓ[1] = 0.0
+		@inbounds for trialset in model.trialsets
+			for trial in trialset.trials
+				choiceLL!(memory, P, model.θnative, trial)
 			end
 		end
-	return sum(sum(ℓ))
+	end
+	memory.ℓ[1]
 end
 
 """
-	loglikelihood(p𝐘𝑑, trialinvariant, θnative, trial)
+	choiceLL!(memory, P, θnative, trial)
 
-Compute the log-likelihood of the choice from one trial
+Log-likelihood of the choice in a single trial
 
-ARGUMENT
--`θnative`: model parameters in their native space
--`trial`: stimulus and behavioral information of one trial
--`trialinvariant`: a structure containing quantities that are used in each trial
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
+
+UNMODIFIED ARGUMENT
+-`θnative`: parameters of the latent variables in native space
+-`trial`: a struct containing the stimuli and behavioral response of one trial
 
 RETURN
--`ℓ`: log-likelihood of the data from one trial
+-log-likelihood
 """
-function loglikelihood(θnative::Latentθ,
-					   trial::Trial,
-					   trialinvariant::Trialinvariant)
+function choiceLL!(memory::Memoryforgradient, P::Probabilityvector, θnative::Latentθ, trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃsilent, Δt, 𝛏, Ξ = trialinvariant
-	C = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
-	σ = √θnative.σ²ᵢ[1]
-	f = probabilityvector(μ, σ, 𝛏)
-	D = sum(f)
-	f /= D
-	ℓ = log(D)
-	T = eltype(θnative.λ[1])
-	Aᵃ = zeros(T, Ξ, Ξ)
-	p𝑑 = conditional_probability_of_choice(trial.choice, θnative.ψ[1], Ξ)
+	@unpack Aᵃinput, Aᵃsilent, ℓ, πᶜᵀ = memory
+	priorprobability!(P, trial.previousanswer)
+	f = copy(P.𝛑)
+	adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	@inbounds for t = 2:trial.ntimesteps
 		if isempty(clicks.inputindex[t])
-			f = Aᵃsilent * f
+			Aᵃ = Aᵃsilent
 		else
-			cL = sum(C[clicks.left[t]])
-			cR = sum(C[clicks.right[t]])
-			stochasticmatrix!(Aᵃ, cL, cR, trialinvariant, θnative)
-			f = Aᵃ * f
+			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃ, P)
 		end
-		if t == trial.ntimesteps
-			f .*= p𝑑
-		end
-		D = sum(f)
-		f /= D
-		ℓ += log(D)
+		f = Aᵃ*f
 	end
-	return ℓ
+	conditional_probability_of_choice!(f, trial.choice, θnative.ψ[1])
+	ℓ[1] += log(sum(f))
+	return nothing
 end
 
 """
-    loglikelihoodchoices!(model, concatenatedθ)
+	choiceLL(concatenatedθ, indexθ, model)
 
-Compute the log-likelihood of the choices in a way that is compatible with ForwardDiff
+ForwardDiff-compatible computation of the log-likelihood of the choices
 
-ARGUMENT
+MODIFIED ARGUMENT
 -`model`: an instance of FHM-DDM
+-`memory`: a container of variables used by both the log-likelihood and gradient computation
+
+UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector of concatenated parameter values
--`indexθ`: index of each parameter after if all parameters being fitted are concatenated
 
 RETURN
 -log-likelihood
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
+julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)
+julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
+julia> ℓ2 = FHMDDM.choiceLL!(memory, model, concatenatedθ) #ForwardDiff-incompatible
+julia> abs(ℓ2-ℓ)
+```
 """
-function loglikelihoodchoices(concatenatedθ::Vector{<:Real},
-							  indexθ::Indexθ,
-							  model::Model)
-	model = sortparameters(concatenatedθ, indexθ, model)
-	trialinvariant = Trialinvariant(model; purpose="loglikelihood")
-	ℓ = map(model.trialsets) do trialset
-			map(trialset.trials) do trial #pmap
-				loglikelihood(model.θnative, trial, trialinvariant)
+function choiceLL(concatenatedθ::Vector{T},
+				indexθ::Latentθ,
+				model::Model) where {T<:Real}
+	model = Model(concatenatedθ, indexθ, model)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack Δt, Ξ = options
+	Aᵃinput, Aᵃsilent = zeros(T,Ξ,Ξ), zeros(T,Ξ,Ξ)
+	expλΔt = exp(θnative.λ[1]*Δt)
+	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
+	d𝛏_dB = (2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	𝛏 = θnative.B[1].*d𝛏_dB
+	transitionmatrix!(Aᵃsilent, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
+	ℓ = zero(T)
+	@inbounds for s in eachindex(trialsets)
+		for m in eachindex(trialsets[s].trials)
+			trial = trialsets[s].trials[m]
+			f = probabilityvector(θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
+			adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+			for t=2:trial.ntimesteps
+				if t ∈ trial.clicks.inputtimesteps
+					cL = sum(adaptedclicks.C[trial.clicks.left[t]])
+					cR = sum(adaptedclicks.C[trial.clicks.right[t]])
+					𝛍 = expλΔt.*𝛏 .+ (cR-cL)*dμ_dΔc
+					σ = √((cR+cL)*θnative.σ²ₛ[1] + Δt*θnative.σ²ₐ[1])
+					transitionmatrix!(Aᵃinput, 𝛍, σ, 𝛏)
+					Aᵃ = Aᵃinput
+				else
+					Aᵃ = Aᵃsilent
+				end
+				f = Aᵃ*f
 			end
+			conditional_probability_of_choice!(f, trial.choice, θnative.ψ[1])
+			ℓ+=log(sum(f))
 		end
-	return sum(sum(ℓ))
+	end
+	ℓ
+end
+
+
+"""
+	∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
+
+Update the gradient of the negative log-likelihood of choices
+
+MODIFIED ARGUMENT
+-`∇nℓ`: the vector representing the gradient
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+
+ARGUMENT
+-`concatenatedθ`: values of the model's choice-related parameters concatenated into a vector
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
+julia> ∇nℓ = similar(concatenatedθ)
+julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
+julia> FHMDDM.∇negativechoiceLL!(∇nℓ, memory, model, concatenatedθ)
+julia> using ForwardDiff
+julia> f(x) = -FHMDDM.choiceLL(x, indexθ.latentθ, model)
+julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
+julia> maximum(abs.(∇nℓ_auto .- ∇nℓ))
+
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
+julia> concatenatedθ = rand(length(concatenatedθ))
+julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)
+julia> ∇nℓ = similar(concatenatedθ)
+julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
+julia> FHMDDM.∇negativechoiceLL!(∇nℓ, memory, model, concatenatedθ)
+julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)
+julia> abs(ℓ - memory.ℓ[1])
+```
+"""
+function ∇negativechoiceLL!(∇nℓ::Vector{<:Real},
+							memory::Memoryforgradient,
+							model::Model,
+						    concatenatedθ::Vector{<:Real})
+	if concatenatedθ != memory.concatenatedθ
+		P = update_for_choiceLL!(memory, model, concatenatedθ)
+	else
+		P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+	end
+	∇choiceLL!(memory,model,P)
+	indexall = 0
+	indexfit = 0
+	for field in fieldnames(Latentθ)
+		indexall+=1
+		if (getfield(memory.indexθ.latentθ, field)[1] > 0) && (field != :Aᶜ₁₁) && (field != :Aᶜ₂₂) && (field != :πᶜ₁)
+			indexfit +=1
+			∇nℓ[indexfit] = -memory.∇ℓlatent[indexall]
+		end
+	end
+	native2real!(∇nℓ, memory.indexθ.latentθ, model)
 end
 
 """
-    ∇negativeloglikelihood!(∇, γ, model, concatenatedθ, indexθ)
+	∇choiceLL!(memory, model, P)
 
-Gradient of the negative log-likelihood of the factorial hidden Markov drift-diffusion model (FHMDDM)
+Update the gradient of the log-likelihood of the choices across trialsets
 
-MODIFIED INPUT
--`∇`: a vector of partial derivatives
--`model`: a structure containing information of the factorial hidden Markov drift-diffusion model
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
 
 UNMODIFIED ARGUMENT
--`concatenatedθ`: parameter values concatenated into a vector
--`indexθ`: index of each parameter after if all parameters being fitted are concatenated
-
+-`θnative`: parameters of the latent variables in native space
+-`trial`: a struct containing the stimuli and behavioral response of one trial
 """
-function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat},
-								 model::Model,
-								 concatenatedθ::Vector{<:AbstractFloat},
-								 indexθ::Indexθ)
-	sortparameters!(model, concatenatedθ, indexθ)
-	@unpack options, θnative, θreal, trialsets = model
-	@unpack K = options
-	trialinvariant = Trialinvariant(model; purpose="gradient")
-	gradients=map(trialsets) do trialset
-				pmap(trialset.trials) do trial
-					∇loglikelihood(θnative, trial, trialinvariant)
-				end
-			end
-	g = gradients[1][1] # reuse this memory
-	for field in fieldnames(Latentθ)
-		latent∂ = getfield(g, field)
-		for i in eachindex(gradients)
-			start = i==1 ? 2 : 1
-			for m in start:length(gradients[i])
-				latent∂[1] += getfield(gradients[i][m], field)[1]
-			end
+function ∇choiceLL!(memory::Memoryforgradient, model::Model, P::Probabilityvector)
+	memory.ℓ .= 0.0
+	memory.∇ℓlatent .= 0.0
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			∇choiceLL!(memory, P, model.θnative, trial)
 		end
 	end
-	native2real!(g, options, θnative, θreal)
-	for field in fieldnames(Latentθ)
-		index = getfield(indexθ.latentθ, field)[1]
-		if index != 0
-			∇[index] = -getfield(g,field)[1] # note the negative sign
-		end
-	end
+	return nothing
 end
 
 """
-	∇loglikelihood(trialinvariant, θnative, trial)
+	∇choiceLL!(memory, P, θnative, trial)
 
-Compute quantities needed for the gradient of the log-likelihood of the data observed in one trial
+Update the gradient of the log-likelihood of the choice in one trial
 
-ARGUMENT
--`θnative`: parameters for the latent variables in their native space
--`trial`: information on the stimuli and behavioral choice of one trial
--`trialinvariant`: structure containing quantities used across trials
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
 
-RETURN
--`latent∇`: gradient of the log-likelihood of the data observed in one trial with respect to the parameters specifying the latent variables
+UNMODIFIED ARGUMENT
+-`θnative`: parameters of the latent variables in native space
+-`trial`: a struct containing the stimuli and behavioral response of one trial
 """
-function ∇loglikelihood(θnative::Latentθ,
-						trial::Trial,
-						trialinvariant::Trialinvariant)
-	@unpack choice, clicks = trial
+function ∇choiceLL!(memory::Memoryforgradient,
+					P::Probabilityvector,
+					θnative::Latentθ,
+					trial::Trial)
+	@unpack clicks = trial
 	@unpack inputtimesteps, inputindex = clicks
-	@unpack Aᵃsilent, dAᵃsilentdμ, dAᵃsilentdσ², dAᵃsilentdB, Aᶜ, Δt, K, 𝛚, Ξ, 𝛏 = trialinvariant
-	dℓdk, dℓdλ, dℓdϕ, dℓdσ²ₐ, dℓdσ²ₛ, dℓdB = 0., 0., 0., 0., 0., 0.
-	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
-	σ = √θnative.σ²ᵢ[1]
-	πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB = zeros(Ξ), zeros(Ξ), zeros(Ξ), zeros(Ξ)
-	probabilityvector!(πᵃ, dπᵃdμ, dπᵃdσ², dπᵃdB, μ, 𝛚, σ, 𝛏)
-	n_steps_with_input = length(clicks.inputtimesteps)
-	Aᵃ = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdμ = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdσ² = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	dAᵃdB = map(x->zeros(Ξ,Ξ), clicks.inputtimesteps)
-	Δc = zeros(n_steps_with_input)
-	∑c = zeros(n_steps_with_input)
-	C, dCdk, dCdϕ = ∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	for i in 1:n_steps_with_input
-		t = clicks.inputtimesteps[i]
-		cL = sum(C[clicks.left[t]])
-		cR = sum(C[clicks.right[t]])
-		stochasticmatrix!(Aᵃ[i], dAᵃdμ[i], dAᵃdσ²[i], dAᵃdB[i], cL, cR, trialinvariant, θnative)
-		Δc[i] = cR-cL
-		∑c[i] = cL+cR
-	end
-	D, f = forward(Aᵃ, trial.choice, inputindex, πᵃ, θnative.ψ[1], trialinvariant)
-	b = ones(Ξ)
-	if θnative.λ[1] == 0.0
-		dμdΔc = 1.0
-		η = 0.0
-		𝛏ᵀΔtexpλΔt = zeros(1, length(𝛏))
-	else
-		λΔt = θnative.λ[1]*Δt
-		expλΔt = exp(λΔt)
-		dμdΔc = (expλΔt - 1.0)/λΔt
-		η = (expλΔt - dμdΔc)/θnative.λ[1]
-		𝛏ᵀΔtexpλΔt = transpose(𝛏)*Δt*expλΔt
-	end
-	p𝑑 = conditional_probability_of_choice(choice, θnative.ψ[1], Ξ)
-	@inbounds for t = trial.ntimesteps:-1:1
-		if t == trial.ntimesteps-1
-			b .*= p𝑑
-		end
-		if t < trial.ntimesteps # backward step
-			Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
-			b = transpose(Aᵃₜ₊₁) * b / D[t+1]
-		end
-		if t > 1 # joint posterior over consecutive time bins, computations involving the transition matrix
-			if isempty(inputindex[t])
-				Aᵃₜ = Aᵃsilent
-				dAᵃₜdμ = dAᵃsilentdμ
-				dAᵃₜdσ² = dAᵃsilentdσ²
-				dAᵃₜdB = dAᵃsilentdB
-			else
-				i = inputindex[t][1]
-				Aᵃₜ = Aᵃ[i]
-				dAᵃₜdμ = dAᵃdμ[i]
-				dAᵃₜdσ² = dAᵃdσ²[i]
-				dAᵃₜdB = dAᵃdB[i]
-			end
-			if t == trial.ntimesteps
-				χᵃ_Aᵃ = p𝑑.*b .* transpose(f[t-1]) ./ D[t]
-			else
-				χᵃ_Aᵃ = b .* transpose(f[t-1]) ./ D[t]
-			end
-			χᵃ_dlogAᵃdμ = χᵃ_Aᵃ .* dAᵃₜdμ # χᵃ⊙ d/dμ{log(Aᵃ)} = χᵃ⊘ Aᵃ⊙ d/dμ{Aᵃ}
-			∑_χᵃ_dlogAᵃdμ = sum(χᵃ_dlogAᵃdμ)
-			∑_χᵃ_dlogAᵃdσ² = sum(χᵃ_Aᵃ .* dAᵃₜdσ²) # similarly, χᵃ⊙ d/dσ²{log(Aᵃ)} = χᵃ⊘ Aᵃ⊙ d/dσ²{Aᵃ}
-			dℓdσ²ₐ += ∑_χᵃ_dlogAᵃdσ² # the Δt is multiplied after summing across time steps
-			dℓdB += sum(χᵃ_Aᵃ .* dAᵃₜdB)
-			if isempty(inputindex[t])
-				dμdλ = 𝛏ᵀΔtexpλΔt
-			else
-				dμdλ = 𝛏ᵀΔtexpλΔt .+ Δc[i].*η
-				dℓdσ²ₛ += ∑_χᵃ_dlogAᵃdσ²*∑c[i]
-				dcLdϕ = sum(dCdϕ[clicks.left[t]])
-				dcRdϕ = sum(dCdϕ[clicks.right[t]])
-				dcLdk = sum(dCdk[clicks.left[t]])
-				dcRdk = sum(dCdk[clicks.right[t]])
-				dσ²dϕ = θnative.σ²ₛ[1]*(dcLdϕ + dcRdϕ)
-				dσ²dk = θnative.σ²ₛ[1]*(dcLdk + dcRdk)
-				dℓdϕ += ∑_χᵃ_dlogAᵃdμ*dμdΔc*(dcRdϕ - dcLdϕ) + ∑_χᵃ_dlogAᵃdσ²*dσ²dϕ
-				dℓdk += ∑_χᵃ_dlogAᵃdμ*dμdΔc*(dcRdk - dcLdk) + ∑_χᵃ_dlogAᵃdσ²*dσ²dk
-			end
-			dℓdλ += sum(χᵃ_dlogAᵃdμ.*dμdλ)
-		end
-	end
-	dℓdσ²ₐ *= Δt
-	γᵃ₁_oslash_πᵃ = b # reuse memory
-	γᵃ₁_oslash_πᵃ ./= D[1]
-	∑_γᵃ₁_dlogπᵃdμ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdμ # similar to above, γᵃ₁⊙ d/dμ{log(πᵃ)} = γᵃ₁⊘ πᵃ⊙ d/dμ{πᵃ}
-	dℓdμ₀ = ∑_γᵃ₁_dlogπᵃdμ
-	dℓdwₕ = ∑_γᵃ₁_dlogπᵃdμ * trial.previousanswer
-	dℓdσ²ᵢ = γᵃ₁_oslash_πᵃ ⋅ dπᵃdσ²
-	dℓdB += γᵃ₁_oslash_πᵃ ⋅ dπᵃdB
-	dℓdψ = differentiateℓ_wrt_ψ(trial.choice, f[end], θnative.ψ[1])
-	Latentθ(B	= [dℓdB],
-			k	= [dℓdk],
-			λ	= [dℓdλ],
-			μ₀	= [dℓdμ₀],
-			ϕ	= [dℓdϕ],
-			ψ	= [dℓdψ],
-			σ²ₐ	= [dℓdσ²ₐ],
-			σ²ᵢ	= [dℓdσ²ᵢ],
-			σ²ₛ	 = [dℓdσ²ₛ],
-			wₕ	 = [dℓdwₕ])
-end
-
-"""
-	forward(Aᵃ, inputindex, πᵃ, p𝐘d, trialinvariant)
-
-Forward pass of the forward-backward algorithm
-
-ARGUMENT
--`Aᵃ`: transition probabilities of the accumulator variable. Aᵃ[t][j,k] ≡ p(aₜ=ξⱼ ∣ aₜ₋₁=ξₖ)
-`inputindex`: index of the time steps with auditory input. For time step `t`, if the element `inputindex[t]` is nonempty, then `Aᵃ[inputindex[t][1]]` is the transition matrix for that time step. If `inputindex[t]` is empty, then the corresponding transition matrix is `Aᵃsilent`.
--`πᵃ`: a vector of floating-point numbers specifying the prior probability of each accumulator state
--`trialinvariant`: a structure containing quantities that are used in each trial
-
-RETURN
--`D`: scaling factors with element `D[t]` ≡ p(𝐘ₜ ∣ 𝐘₁, ... 𝐘ₜ₋₁)
--`f`: Forward recursion terms. `f[t][j,k]` ≡ p(aₜ=ξⱼ, zₜ=k ∣ 𝐘₁, ... 𝐘ₜ) where 𝐘 refers to all the spike trains
-
-"""
-function forward(Aᵃ::Vector{<:Matrix{<:AbstractFloat}},
-				 choice::Bool,
- 				 inputindex::Vector{<:Vector{<:Integer}},
-				 πᵃ::Vector{<:AbstractFloat},
-				 ψ::Real,
-				 trialinvariant::Trialinvariant)
-	@unpack Aᵃsilent, Ξ, 𝛏 = trialinvariant
-	ntimesteps = length(inputindex)
-	f = map(x->zeros(Ξ), 1:ntimesteps)
-	D = zeros(ntimesteps)
-	f[1] = πᵃ
-	D[1] = sum(f[1])
-	f[1] /= D[1]
-	p𝑑 = conditional_probability_of_choice(choice, ψ, Ξ)
-	@inbounds for t = 2:ntimesteps
-		if isempty(inputindex[t])
-			Aᵃₜ = Aᵃsilent
+	@unpack Aᵃinput, ∇Aᵃinput, Aᵃsilent, ∇Aᵃsilent, D, f, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_ψ, ℓ, ∇ℓlatent, nθ_pa₁, nθ_paₜaₜ₋₁, ∇pa₁, Ξ = memory
+	t = 1
+	∇priorprobability!(∇pa₁, P, trial.previousanswer)
+	f[t] .= P.𝛑
+	adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	@inbounds for t=2:trial.ntimesteps
+		if t ∈ clicks.inputtimesteps
+			clickindex = clicks.inputindex[t][1]
+			Aᵃ = Aᵃinput[clickindex]
+			∇Aᵃ = ∇Aᵃinput[clickindex]
+			update_for_∇transition_probabilities!(P, adaptedclicks, clicks, t)
+			∇transitionmatrix!(∇Aᵃ, Aᵃ, P)
 		else
-			i = inputindex[t][1]
-			Aᵃₜ = Aᵃ[i]
+			Aᵃ = Aᵃsilent
 		end
-		f[t] = Aᵃₜ * f[t-1]
-		if t == ntimesteps
-			f[t] .*= p𝑑
-		end
-		D[t] = sum(f[t])
-		f[t] /= D[t]
+		f[t] = Aᵃ * f[t-1]
 	end
-	return D,f
+	p𝑑_a = conditional_probability_of_choice(trial.choice, θnative.ψ[1], Ξ)
+	p𝑑 = dot(p𝑑_a, f[trial.ntimesteps])
+	ℓ[1] += log(p𝑑)
+	b = p𝑑_a./p𝑑 # backward term for the last time step
+	γ = b.*f[trial.ntimesteps] # posterior probability for the last time step
+	∇ℓlatent[indexθ_ψ[1]] += expectation_derivative_logp𝑑_wrt_ψ(trial.choice, γ, θnative.ψ[1])
+	@inbounds for t = trial.ntimesteps:-1:1
+		if t < trial.ntimesteps
+			if t+1 ∈ clicks.inputtimesteps
+				clickindex = clicks.inputindex[t+1][1]
+				Aᵃₜ₊₁ = Aᵃinput[clickindex]
+			else
+				Aᵃₜ₊₁ = Aᵃsilent
+			end
+			b = transpose(Aᵃₜ₊₁) * b
+		end
+		if t > 1
+			if t ∈ clicks.inputtimesteps
+				clickindex = clicks.inputindex[t][1]
+				∇Aᵃ = ∇Aᵃinput[clickindex]
+			else
+				∇Aᵃ = ∇Aᵃsilent
+			end
+			for i = 1:nθ_paₜaₜ₋₁
+				∇ℓlatent[indexθ_paₜaₜ₋₁[i]] += (transpose(b)*∇Aᵃ[i]*f[t-1])[1]
+			end
+		end
+	end
+	@inbounds for i = 1:nθ_pa₁
+		∇ℓlatent[indexθ_pa₁[i]] += dot(b, ∇pa₁[i])
+	end
+	return nothing
 end
 
 """
-    conditional_probability_of_choice(choice, ψ, Ξ)
+    conditional_probability_of_choice!(f, choice, ψ)
 
 Probability of a choice conditioned on the accumulator state
 
 ARGUMENT
 -`choice`: the observed choice, either right (`choice`=true) or left.
 -`ψ`: the prior probability of a lapse state
--`Ξ`: number of accumulator states
 
 RETURN
--a vector whose length is equal to the number of accumulator states
+`p`: conditional probability of the choice
 """
-function conditional_probability_of_choice(choice::Bool, ψ::Real, Ξ::Integer)
-	p = zeros(typeof(ψ), Ξ)
+function conditional_probability_of_choice(choice::Bool, ψ::T, Ξ::Integer) where {T<:Real}
+	p = zeros(T, Ξ)
 	zeroindex = cld(Ξ,2)
     p[zeroindex] = 0.5
     if choice
@@ -387,5 +356,67 @@ function conditional_probability_of_choice(choice::Bool, ψ::Real, Ξ::Integer)
         p[1:zeroindex-1]   .= 1-ψ/2
         p[zeroindex+1:end] .= ψ/2
     end
-    return p
+	p
+end
+
+"""
+    conditional_probability_of_choice!(f, choice, ψ)
+
+Probability of a choice conditioned on the accumulator state
+
+MODIFIED ARGUMENT
+-`f`: the forward term
+
+ARGUMENT
+-`choice`: the observed choice, either right (`choice`=true) or left.
+-`ψ`: the prior probability of a lapse state
+"""
+function conditional_probability_of_choice!(f::Array{<:Real}, choice::Bool, ψ::Real)
+	Ξ = length(f)
+	zeroindex = cld(Ξ,2)
+    f[zeroindex] *= 0.5
+    if choice
+        f[1:zeroindex-1]   .*= ψ/2
+        f[zeroindex+1:end] .*= 1-ψ/2
+    else
+        f[1:zeroindex-1]   .*= 1-ψ/2
+        f[zeroindex+1:end] .*= ψ/2
+    end
+    return nothing
+end
+
+"""
+	update_for_choiceLL!(model, memory, concatenatedθ)
+
+Update the model and the memory quantities according to new parameter values
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+-`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
+
+ARGUMENT
+-`concatenatedθ`: newest values of the model's parameters
+
+RETURN
+-`P`: an instance of `Probabilityvector`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> memory, P = FHMDDM.Memoryforgradient(model; choicemodel=true)
+julia> P = update_for_choiceLL!(model, memory, rand(length(memory.concatenatedθ)))
+"""
+function update_for_choiceLL!(memory::Memoryforgradient,
+							 model::Model,
+							 concatenatedθ::Vector{<:Real})
+	memory.concatenatedθ .= concatenatedθ
+	sortparameters!(model, memory.concatenatedθ, memory.indexθ.latentθ)
+	real2native!(model.θnative, model.options, model.θreal)
+	@unpack options, θnative = model
+	@unpack Δt, K, Ξ = options
+	P = Probabilityvector(Δt, θnative, Ξ)
+	update_for_∇transition_probabilities!(P)
+	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
+	return P
 end

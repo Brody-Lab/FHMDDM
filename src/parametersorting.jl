@@ -22,14 +22,8 @@ julia> FHMDDM.sortparameters!(model, concatenatedθ, indexθ)
 function sortparameters!(model::Model,
 				 		 concatenatedθ::Vector{<:AbstractFloat},
 				 		 indexθ::Indexθ)
+	sortparameters!(model, concatenatedθ, indexθ.latentθ)
 	@unpack options, θnative, θreal, trialsets = model
-	for field in fieldnames(Latentθ) # `Latentθ` is the type of `indexθ.latentθ`
-		index = getfield(indexθ.latentθ, field)[1]
-		if index != 0 # an index of 0 indicates that the parameter is not being fit
-			getfield(θreal, field)[1] = concatenatedθ[index]
-		end
-	end
-	real2native!(θnative, options, θreal)
 	for i in eachindex(indexθ.glmθ)
 		for n in eachindex(indexθ.glmθ[i])
 			@unpack θ = trialsets[i].mpGLMs[n]
@@ -50,6 +44,29 @@ function sortparameters!(model::Model,
 			for q in eachindex(θ.𝐰)
 				θ.𝐰[q] = concatenatedθ[index.𝐰[q]]
 			end
+		end
+	end
+	return nothing
+end
+
+"""
+	sortparameters!(model, concatenatedθ, indexθ)
+
+Sort the parameters of the latent variables
+
+MODIFIED ARGUMENT
+-`model`: a factorial hidden Markov drift-diffusion model
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: a vector of concatenated values of the latent paraeters
+-`indexθ`: struct indexing of each latentparameter in the vector of concatenated values
+"""
+function sortparameters!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::Latentθ)
+	@unpack θreal = model
+	for field in fieldnames(Latentθ) # `Latentθ` is the type of `indexθ.latentθ`
+		index = getfield(indexθ, field)[1]
+		if index != 0 # an index of 0 indicates that the parameter is not being fit
+			getfield(θreal, field)[1] = concatenatedθ[index]
 		end
 	end
 	return nothing
@@ -251,12 +268,19 @@ ARGUMENT
 RETURN
 -`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
 -`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true)
+julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
+```
 """
 function concatenate_choice_related_parameters(model::Model)
     @unpack options, θreal, trialsets = model
 	concatenatedθ = zeros(0)
     counter = 0
-	latentθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
+	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
 	tofit = true
 	for field in fieldnames(Latentθ)
 		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
@@ -271,19 +295,15 @@ function concatenate_choice_related_parameters(model::Model)
 		end
 		if tofit
 			counter += 1
-			getfield(latentθ, field)[1] = counter
+			getfield(indexθ, field)[1] = counter
 			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
 		else
-			getfield(latentθ, field)[1] = 0
+			getfield(indexθ, field)[1] = 0
 		end
 	end
-	glmθ = 	map(model.trialsets) do trialset
-				map(trialset.mpGLMs) do mpGLM
-					GLMθ((zeros(Int64, length(getfield(mpGLM.θ, field))) for field in fieldnames(GLMθ))...)
-				end
-			end
-    indexθ = Indexθ(latentθ=latentθ, glmθ=glmθ)
-    return concatenatedθ, indexθ
+
+	index_glmθ = concatenate_glm_parameters(model, length(concatenatedθ))[2]
+    return concatenatedθ, Indexθ(latentθ=indexθ, glmθ = index_glmθ)
 end
 
 """
@@ -323,6 +343,31 @@ function Model(concatenatedθ::Vector{<:Real},
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=trialsets)
+end
+
+"""
+	Model(concatenatedθ, indexθ, model)
+
+Create a new model using the concatenated parameter values
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: a vector of concatenated parameter values
+-`indexθ`: struct indexing of each parameter in the vector of concatenated values
+-`model`: the model with old parameter values
+
+RETURN
+-`model`: the model with new parameter values
+```
+"""
+function Model(concatenatedθ::Vector{<:Real},
+	 		   indexθ::Latentθ,
+			   model::Model)
+	θreal = Latentθ(concatenatedθ, indexθ, model.θreal)
+	Model(	options = model.options,
+			θnative = real2native(model.options, θreal),
+			θ₀native=model.θ₀native,
+			θreal = θreal,
+			trialsets=model.trialsets)
 end
 
 """

@@ -1192,13 +1192,12 @@ ARGUMENT
 MODIFIED ARGUMENT
 -`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
 """
-function native2real!(∇ℓ::Vector{<:Real}, latentθindex::Latentθ, model::Model)
+function native2real!(∇ℓ::Vector{<:Real}, indexθ::Latentθ, model::Model)
 	firstderivatives = differentiate_native_wrt_real(model)
 	for parametername in fieldnames(Latentθ)
-		d1 = getfield(firstderivatives, parametername)[1]
-		if d1 != 1.0
-			i = getfield(latentθindex, parametername)[1]
-			∇ℓ[i] *= d1
+		i = getfield(indexθ, parametername)[1]
+		if i > 0
+			∇ℓ[i] *= getfield(firstderivatives, parametername)[1]
 		end
 	end
 	return nothing
