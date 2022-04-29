@@ -106,50 +106,6 @@ function likelihood!(p𝐘ₜ𝑑::Matrix{<:Real},
 end
 
 """
-	forward(Aᵃ, inputindex, πᵃ, p𝐘d, trialinvariant)
-
-Forward pass of the forward-backward algorithm
-
-ARGUMENT
--`Aᵃ`: transition probabilities of the accumulator variable. Aᵃ[t][j,k] ≡ p(aₜ=ξⱼ ∣ aₜ₋₁=ξₖ)
-`inputindex`: index of the time steps with auditory input. For time step `t`, if the element `inputindex[t]` is nonempty, then `Aᵃ[inputindex[t][1]]` is the transition matrix for that time step. If `inputindex[t]` is empty, then the corresponding transition matrix is `Aᵃsilent`.
--`πᵃ`: a vector of floating-point numbers specifying the prior probability of each accumulator state
--`p𝐘𝑑`: likelihood of the emissions in each time bin in this trial. p𝐘𝑑[t][j,k] = ∏ₙ p(𝐲ₙ(t) ∣ 𝑎ₜ=ξⱼ, 𝑧ₜ=k) and p𝐘𝑑[end][j,k] = p(𝑑∣ 𝑎ₜ=ξⱼ, 𝑧ₜ=k) ∏ₙ p(𝐲ₙ(t) ∣ 𝑎ₜ=ξⱼ, 𝑧ₜ=k)
--`trialinvariant`: a structure containing quantities that are used in each trial
-
-RETURN
--`D`: scaling factors with element `D[t]` ≡ p(𝐘ₜ ∣ 𝐘₁, ... 𝐘ₜ₋₁)
--`f`: Forward recursion terms. `f[t][j,k]` ≡ p(aₜ=ξⱼ, zₜ=k ∣ 𝐘₁, ... 𝐘ₜ) where 𝐘 refers to all the spike trains
-
-"""
-function forward(Aᵃ::Vector{<:Matrix{type}},
- 				 inputindex::Vector{<:Vector{<:Integer}},
-				 πᵃ::Vector{<:Real},
-				 p𝐘𝑑::Vector{<:Matrix{<:Real}},
-				 trialinvariant::Trialinvariant) where {type<:Real}
-	@unpack Aᵃsilent, Aᶜᵀ, K, πᶜᵀ, Ξ, 𝛏 = trialinvariant
-	ntimesteps = length(inputindex)
-	f = map(x->zeros(type,Ξ,K), 1:ntimesteps)
-	D = zeros(type,ntimesteps)
-	f[1] = p𝐘𝑑[1] .* πᵃ .* πᶜᵀ
-	D[1] = sum(f[1])
-	f[1] /= D[1]
-	@inbounds for t = 2:ntimesteps
-		if isempty(inputindex[t])
-			Aᵃₜ = Aᵃsilent
-		else
-			i = inputindex[t][1]
-			Aᵃₜ = Aᵃ[i]
-		end
-		f[t] = Aᵃₜ * f[t-1] * Aᶜᵀ
-		f[t] .*= p𝐘𝑑[t]
-		D[t] = sum(f[t])
-		f[t] /= D[t]
-	end
-	return D,f
-end
-
-"""
 	posteriors(model)
 
 Compute the joint posteriors of the latent variables at each time step.
@@ -159,79 +115,102 @@ ARGUMENT
 
 RETURN
 -`γ`: joint posterior probabilities of the accumulator and coupling variables at each time step conditioned on the emissions at all time steps in the trialset. Element `γ[i][j,k][t]` represent the posterior probability at the t-th timestep in the i-th trialset: p(aₜⱼ=1, cₜₖ=1 ∣ 𝐘, 𝑑)
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> γ = posteriors(model)
+```
 """
 function posteriors(model::Model)
-	@unpack options, θnative, trialsets = model
-	@unpack K, Ξ = options
-	trialinvariant = Trialinvariant(model; purpose="gradient")
-	p𝐘𝑑 = likelihood(model)
-	fb = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-				posteriors(p𝐘𝑑, θnative, trial, trialinvariant)
-			end
+	memory = Memoryforgradient(model)
+	P = update!(memory, model, concatenateparameters(model)[1])
+	@inbounds for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			posteriors!(memory, P, model, s, m)
 		end
-	type = typeof(fb[1][1][1][1,1])
-	γ =	map(trialsets) do trialset
-			map(CartesianIndices((Ξ,K))) do index
-				zeros(type, trialset.ntimesteps)
-			end
-		end
-	@inbounds for i in eachindex(fb)
-        t = 0
-        for m in eachindex(fb[i])
-            for tₘ in eachindex(fb[i][m])
-                t += 1
-                for jk in eachindex(fb[i][m][tₘ])
-                	γ[i][jk][t] = fb[i][m][tₘ][jk]
-                end
-            end
-        end
-    end
-	return γ, fb
+	end
+	return memory.γ
 end
 
 """
-	posteriors(p𝐘𝑑, trialinvariant, θnative, trial)
+	posteriors!(memory, model, P, s, m)
 
-Compute the joint posteriors of the latent variables at each time step.
+Update the posteriors of a single trial
 
-ARGUMENT
--`p𝐘𝑑`: A vector of matrices of floating-point numbers whose element `p𝐘𝑑[t][i,j]` represents the likelihood of the emissions (spike trains and choice) at time step `t` conditioned on the accumulator variable being in state `i` and the coupling variable in state `j`
--`trialinvariant`: structure containing quantities used across trials
--`θnative`: parameters for the latent variables in their native space
--`trial`: information on the stimuli and behavioral choice of one trial
+Update the gradient
 
-RETURN
--`fb`: joint posterior probabilities of the accumulator and coupling variables at each time step conditioned on the emissions at all time steps in the trial. Element `fb[t][j,k]` represent the posterior probability at the t-th timestep: p(aₜⱼ=1, cₜₖ=1 ∣ 𝐘, 𝑑)
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
+
+UNMODIFIED ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+-`s`: index of the trialset
+-`m`: index of the trial
 """
-function posteriors(p𝐘𝑑::Vector{<:Matrix{type}},
-					θnative::Latentθ,
-					trial::Trial,
-					trialinvariant::Trialinvariant) where {type<:Real}
+function posteriors!(memory::Memoryforgradient,
+					P::Probabilityvector,
+					model::Model,
+					s::Integer,
+					m::Integer)
+	trial = model.trialsets[s].trials[m]
+	p𝐘𝑑 = memory.p𝐘𝑑[s][m]
+	@unpack θnative = model
 	@unpack clicks = trial
 	@unpack inputtimesteps, inputindex = clicks
-	@unpack Aᵃsilent, Aᶜ, K, Ξ, 𝛏 = trialinvariant
-	μ = θnative.μ₀[1] + trial.previousanswer*θnative.wₕ[1]
-	σ = √θnative.σ²ᵢ[1]
-	πᵃ = probabilityvector(μ, σ, 𝛏)
-	n_steps_with_input = length(clicks.inputtimesteps)
-	Aᵃ = map(x->zeros(type,Ξ,Ξ), clicks.inputtimesteps)
-	C = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	for i in 1:n_steps_with_input
-		t = clicks.inputtimesteps[i]
-		cL = sum(C[clicks.left[t]])
-		cR = sum(C[clicks.right[t]])
-		stochasticmatrix!(Aᵃ[i], cL, cR, trialinvariant, θnative)
+	@unpack Aᵃinput, Aᵃsilent, Aᶜ, Aᶜᵀ, D, f, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, ℓ, ∇ℓlatent, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, ∇pa₁, πᶜ, ∇πᶜ, Ξ = memory
+	t = 1
+	priorprobability!(P, trial.previousanswer)
+	@inbounds for j=1:Ξ
+		for k = 1:K
+			f[t][j,k] = p𝐘𝑑[t][j,k] * P.𝛑[j] * πᶜ[k]
+		end
 	end
-	D, fb = forward(Aᵃ, inputindex, πᵃ, p𝐘𝑑, trialinvariant)
-	b = ones(type,Ξ,K)
+	D[t] = sum(f[t])
+	f[t] ./= D[t]
+	ℓ[1] += log(D[t])
+	adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	@inbounds for t=2:trial.ntimesteps
+		if t ∈ clicks.inputtimesteps
+			clickindex = clicks.inputindex[t][1]
+			Aᵃ = Aᵃinput[clickindex]
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃ, P)
+		else
+			Aᵃ = Aᵃsilent
+		end
+		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
+		D[t] = sum(f[t])
+		f[t] ./= D[t]
+		ℓ[1] += log(D[t])
+	end
+	b = ones(Ξ,K)
+	f⨀b = f # reuse memory
 	@inbounds for t = trial.ntimesteps-1:-1:1
-		Aᵃₜ₊₁ = isempty(inputindex[t+1]) ? Aᵃsilent : Aᵃ[inputindex[t+1][1]]
-		b .*= p𝐘𝑑[t+1]
-		b = (transpose(Aᵃₜ₊₁) * b * Aᶜ) ./ D[t+1]
-		fb[t] .*= b
+		if t+1 ∈ clicks.inputtimesteps
+			clickindex = clicks.inputindex[t+1][1]
+			Aᵃₜ₊₁ = Aᵃinput[clickindex]
+		else
+			Aᵃₜ₊₁ = Aᵃsilent
+		end
+		b = transpose(Aᵃₜ₊₁) * (b.*p𝐘𝑑[t+1]./D[t+1]) * Aᶜ
+		f⨀b[t] .*= b
 	end
-	return fb
+	offset = 0
+	for i = 1:m-1
+		offset += model.trialsets[s].trials[i].ntimesteps
+	end
+	for t = 1:trial.ntimesteps
+		τ = offset+t
+		for i = 1:Ξ
+			for k = 1:K
+				memory.γ[s][i,k][τ] = f⨀b[t][i,k]
+			end
+		end
+	end
+	return nothing
 end
 
 """
@@ -244,64 +223,62 @@ ARGUMENT
 
 RETURN
 -`γ`: joint posterior probabilities of the accumulator and coupling variables at each time step conditioned on the choices (𝑑). Element `γ[i][j,k][t]` represent the posterior probability at the t-th timestep in the i-th trialset: p(aₜⱼ=1, cₜₖ=1 ∣ 𝑑)
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> γ = FHMDDM.choiceposteriors(model)
+```
 """
 function choiceposteriors(model::Model)
-	@unpack options, θnative, trialsets = model
-	@unpack K, Ξ = options
-	trialinvariant = Trialinvariant(model; purpose="gradient")
-	p𝐘𝑑 = choicelikelihood(model)
-	fb = map(trialsets, p𝐘𝑑) do trialset, p𝐘𝑑
-			pmap(trialset.trials, p𝐘𝑑) do trial, p𝐘𝑑
-				posteriors(p𝐘𝑑, θnative, trial, trialinvariant)
-			end
+	memory = Memoryforgradient(model)
+	θ = concatenateparameters(model)[1]
+	P = update_for_choice_posteriors!(memory, model)
+	@inbounds for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			posteriors!(memory, P, model, s, m)
 		end
-	γ =	map(trialsets) do trialset
-			map(CartesianIndices((Ξ,K))) do index
-				zeros(trialset.ntimesteps)
-			end
-		end
-	@inbounds for i in eachindex(fb)
-        t = 0
-        for m in eachindex(fb[i])
-            for tₘ in eachindex(fb[i][m])
-                t += 1
-                for jk in eachindex(fb[i][m][tₘ])
-                	γ[i][jk][t] = fb[i][m][tₘ][jk]
-                end
-            end
-        end
-    end
-	return γ
+	end
+	return memory.γ
 end
 
 """
-	choicelikelihood(model)
+	update_for_choice_posteriors!(model, memory)
 
-Compute the likelihood of the choice at each timestep
+Update the model and the memory quantities according to new parameter values
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
 
 ARGUMENT
--`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion model
+-`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
 
 RETURN
--`p𝐘𝑑`: Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
+-`P`: an instance of `Probabilityvector`
+```
 """
-function choicelikelihood(model::Model)
-	@unpack options, trialsets = model
-	@unpack K, Ξ = options
-	p𝐘𝑑=map(model.trialsets) do trialset
-			map(trialset.trials) do trial
-				map(1:trial.ntimesteps) do t
-					ones(Ξ,K)
-				end
-			end
-		end
-	zeroindex = cld(Ξ, 2)
+function update_for_choice_posteriors!(memory::Memoryforgradient,
+				 					   model::Model)
+	@unpack options, θnative, trialsets = model
+	@unpack Δt, K, Ξ = options
+	@unpack p𝐘𝑑 = memory
 	@inbounds for i in eachindex(p𝐘𝑑)
 		for m in eachindex(p𝐘𝑑[i])
-			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, model.θnative.ψ[1]; zeroindex=zeroindex)
+			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, θnative.ψ[1])
 		end
     end
-	return p𝐘𝑑
+	P = Probabilityvector(Δt, θnative, Ξ)
+	update_for_∇transition_probabilities!(P)
+	transitionmatrix!(memory.Aᵃsilent, P)
+	if K == 2
+		Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
+		Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
+		πᶜ₁ = θnative.πᶜ₁[1]
+		memory.Aᶜ .= [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
+		memory.πᶜ .= [πᶜ₁, 1-πᶜ₁]
+	end
+	return P
 end
 
 """

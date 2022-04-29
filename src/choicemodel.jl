@@ -31,7 +31,7 @@ function maximizechoiceLL!(model::Model;
 		                 x_tol::AbstractFloat=1e-5)
 	memory = Memoryforgradient(model; choicemodel=true)
     f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ)
-    g!(∇, concatenatedθ) = ∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
+    g!(∇, concatenatedθ) = ∇negativechoiceLL!(∇, memory, model, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -180,7 +180,7 @@ end
 
 
 """
-	∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
+	∇negativechoiceLL!(∇nℓ, memory, model, concatenatedθ)
 
 Update the gradient of the negative log-likelihood of choices
 

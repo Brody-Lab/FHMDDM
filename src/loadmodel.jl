@@ -252,34 +252,29 @@ The parameters specifying the transition probability of the coupling variable ar
 
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> model = Model(datapath; randomize=true)
+julia> FHMDDM.initializeparameters!(model)
+```
 """
 function initializeparameters!(model::Model)
+	maximizechoiceLL!(model)
 	γ = choiceposteriors(model)
 	@unpack trialsets = model
 	concatenatedθ, indexθ = concatenateparameters(trialsets[1].mpGLMs[1].θ)
 	Opt = MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
-			estimatefilters!(trialsets[i].mpGLMs[n], Opt, γ[i]; show_trace=show_trace)
+			estimatefilters!(trialsets[i].mpGLMs[n], Opt, γ[i])
+			θ = trialsets[i].mpGLMs[n].θ
+			θ.𝐮[2] .= 1.0.-2.0.*rand(length(θ.𝐮[2]))
+			θ.𝐯[2] .= 1.0.-2.0.*rand(length(θ.𝐯[2]))
+			θ.𝐰[2] = 1.0.-2.0.*rand()
 		end
 	end
 	return nothing
-end
-
-"""
-	do_not_fit_ψ(model)
-
-Set the option of whether to behavioral lapse rate to be false. This is an ad-hoc measure
-
-RETURN
--`model`: an instance of the factorial hidden Markov drift-diffusion model
-"""
-function do_not_fit_ψ(model::Model)
-	options = dictionary(model.options)
-	options["fit_psi"] = false
-	Model(options=Options(options),
-		   θnative=model.θnative,
-		   θreal=model.θreal,
-		   θ₀native=model.θ₀native,
-		   trialsets=model.trialsets)
 end
