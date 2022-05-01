@@ -26,7 +26,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM, LineSearches, Optim
 julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
-julia> model = Model(datapath; randomize=true)
+julia> model = Model(datapath)
 julia> losses, gradientnorms = maximizelikelihood!(model, LBFGS(linesearch = LineSearches.BackTracking()))
 ```
 """
@@ -165,7 +165,7 @@ function loglikelihood!(model::Model,
 end
 
 """
-	loglikelihood(p𝐘𝑑, θnative, trial, trialinvariant)
+	loglikelihood(p𝐘𝑑, θnative, trial)
 
 Compute the log-likelihood of the data from one trial
 
@@ -173,7 +173,6 @@ ARGUMENT
 -`p𝐘𝑑`: a matrix whose element `p𝐘𝑑[t][i,j]` represents the conditional likelihood `p(𝐘ₜ, d ∣ 𝐚ₜ=i, 𝐜ₜ=j)`
 -`θnative`: model parameters in their native space
 -`trial`: stimulus and behavioral information of one trial
--`trialinvariant`: a structure containing quantities that are used in each trial
 
 RETURN
 -`ℓ`: log-likelihood of the data from one trial

@@ -137,20 +137,6 @@ The stereoclick is excluded.
 end
 
 """
-	SpikeTrainModel
-
-The inputs and observations of a mixture of Poisson generalized linear model of a neuron's spike train for one trial
-"""
-@with_kw struct SpikeTrainModel{TVI<:Vector{<:Integer}, TMF<:Matrix{<:AbstractFloat}}
-    "Columns of the design matrix that are invariant to the accumulator variable and correspond to regressors related to spike history or timing of events. Each column is scaled such that the maximum of the absolute value is 1."
-    𝐔::TMF
-    "Temporal bases values. Element 𝚽[t,i] corresponds to the value of the i-th temporal basis at the t-th time step"
-    𝚽::TMF
-    "response variable"
-    𝐲::TVI
-end
-
-"""
     Trial
 
 Information on the sensory stimulus and behavior each trial
@@ -268,46 +254,6 @@ Index of each model parameter if all values that were being fitted were concaten
 	glmθ::VVG
 	"parameters specifying the latent variables"
 	latentθ::L
-end
-
-"""
-	Trialinvariant
-
-A collection of hyperparameters and temporary quantities that are fixed across trials
-
-"""
-@with_kw struct Trialinvariant{	TI<:Integer,
-								VF<:Vector{<:AbstractFloat},
-								VR<:Vector{<:Real},
-								MR<:Matrix{<:Real},
-								MR2<:Matrix{<:Real},
-							   	F<:AbstractFloat}
-	"transition matrix of the accumulator variable in the absence of input"
-	Aᵃsilent::MR
-	"transition matrix of the coupling variable"
-	Aᶜ::MR2=zeros(1,1)
-	"transpose of the transition matrix of the coupling variable"
-	Aᶜᵀ::MR
-	"derivitive with respect to the means of the transition matrix of the accumulator variable in the absence of input"
-	dAᵃsilentdμ::MR2=zeros(1,1)
-	"derivitive with respect to the variance of the transition matrix of the accumulator variable in the absence of input"
-	dAᵃsilentdσ²::MR2=zeros(1,1)
-	"derivitive with respect to the bound of the transition matrix of the accumulator variable in the absence of input"
-	dAᵃsilentdB::MR2=zeros(1,1)
-	"time step, in seconds"
-	Δt::F
-	"an intermediate term used for computing the derivative with respect to the bound for the first time bin"
-	𝛚::VF=zeros(1)
-	"an intermediate term used for computing the derivative with respect to the bound for subsequent time bins"
-	Ω::MR2=zeros(1,1)
-	"prior probability of the coupling variable "
-	πᶜᵀ::MR
-	"discrete values of the accumulation variable"
-	𝛏::VR
-	"Number of coupling states"
-	K::TI
-	"Number of states of the discrete accumulator variable"
-	Ξ::TI
 end
 
 """
@@ -604,6 +550,20 @@ The post-adaptation magnitude of each click and the first- and second-order part
 	d²C_dkdϕ::TVR2=zeros(0)
 	"second derivative of adapted click strengths with respect to the adaptation strength"
 	d²C_dϕdϕ::TVR2=zeros(0)
+end
+
+"""
+	SpikeTrainModel
+
+The inputs and observations of a mixture of Poisson generalized linear model of a neuron's spike train for one trial
+"""
+@with_kw struct SpikeTrainModel{TVI<:Vector{<:Integer}, TMF<:Matrix{<:AbstractFloat}}
+    "Columns of the design matrix that are invariant to the accumulator variable and correspond to regressors related to spike history or timing of events. Each column is scaled such that the maximum of the absolute value is 1."
+    𝐔::TMF
+    "Temporal bases values. Element 𝚽[t,i] corresponds to the value of the i-th temporal basis at the t-th time step"
+    𝚽::TMF
+    "response variable"
+    𝐲::TVI
 end
 
 """

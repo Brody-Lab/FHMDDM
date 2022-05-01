@@ -31,6 +31,7 @@ julia> using FHMDDM, LineSearches, Optim
 julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
 julia> model = Model(datapath)
 julia> losses, gradientnorms = maximizeposterior!(model, 0.2, LBFGS(linesearch = LineSearches.BackTracking()))
+```
 """
 function maximizeposterior!(model::Model,
 							λ::AbstractFloat,

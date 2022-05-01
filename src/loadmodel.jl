@@ -20,7 +20,7 @@ julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true);
 ```
 """
-function Model(datapath::String; randomize::Bool=false)
+function Model(datapath::String; randomize::Bool=true)
     dataMAT = matopen(datapath);
     options = Options(read(dataMAT, "options"))
     trialsets = vec(map(trialset->Trialset(options, trialset), read(dataMAT, "data")))
@@ -51,10 +51,14 @@ function Model(options::Options,
 	glmθ = read(resultsMAT, "thetaglm")
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
-			trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[i][n]["u"]
-			trialsets[i].mpGLMs[n].θ.𝐯 .= glmθ[i][n]["v"]
-			trialsets[i].mpGLMs[n].θ.a .= glmθ[i][n]["a"]
-			trialsets[i].mpGLMs[n].θ.b .= glmθ[i][n]["b"]
+			trialsets[i].mpGLMs[n].θ.𝐡 .= glmθ[i][n]["h"]
+			for k in eachindex(glmθ[i][n]["u"])
+				trialsets[i].mpGLMs[n].θ.𝐮[k] .= glmθ[i][n]["u"][k]
+			end
+			for k in eachindex(glmθ[i][n]["v"])
+				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
+			end
+			trialsets[i].mpGLMs[n].θ.𝐰 .= glmθ[i][n]["w"]
 		end
 	end
 	Model(options=options,

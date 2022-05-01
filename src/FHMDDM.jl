@@ -76,13 +76,10 @@ export  adapt, # module-specific functions and types in this module that we can 
         testingset,
         temporal_bases_values,
         trainingset,
-        transformaccumulator,
         Trial,
-        Trialinvariant,
         Trialset,
         update!
 include("types.jl") # This list contains files that in which functions and types are specified. The file "types.jl" has to be listed first, but the order of the other files does not matter.
-include("benchmarking.jl")
 include("choicemodel.jl")
 include("conversions.jl")
 include("crossvalidation.jl")

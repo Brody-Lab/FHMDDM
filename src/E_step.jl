@@ -284,7 +284,7 @@ end
 """
 	posteriorcoupled(model)
 
-Posterior probability of being coupled
+Posterior probability of being in the first coupling state
 
 ARGUMENT
 -`model`: instance of the factorial hidden markov drift diffusion model
@@ -292,8 +292,9 @@ ARGUMENT
 OUTPUT
 -`fbz`: a nested array whose element `fbz[i][m][t]` represents the posterior porobability that the neural population is coupled to the accumulator in the timestep t of trial m of trialset i.
 """
-function posteriorcoupled(model::Model)
-	γ, fb = posteriors(model)
+function posterior_first_state(model::Model)
+	γ = posteriors(model)
+	fb = sortbytrial(γ, model)
 	map(fb) do fb # trialset
 		map(fb) do fb # trial
 			map(fb) do fb #timestep

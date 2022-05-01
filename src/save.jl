@@ -4,10 +4,22 @@
 Save the model parameters and the expectation of the emissions
 
 ARGUMENT
--model: an instance of `DDLM`, a drift-diffusion linear model
+-model: a structure containing the parameters, hyperparameters, and data
 
 RETURN
 -nothing
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, LineSearches, Optim
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_01_test/data.mat"
+julia> model = Model(datapath)
+julia> initializeparameters!(model)
+julia> losses, gradientnorms = FHMDDM.maximizeposterior!(model, 0.1, LBFGS(linesearch = LineSearches.BackTracking()))
+julia> fbz = FHMDDM.posterior_first_state(model)
+julia> λΔt, pchoice = FHMDDM.expectedemissions(model)
+julia> save(model, fbz, gradientnorms, losses, λΔt, pchoice)
+```
 """
 function save(model::Model,
               fbz::Vector{<:Vector{<:Vector{<:AbstractFloat}}},

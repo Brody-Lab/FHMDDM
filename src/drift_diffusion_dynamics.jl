@@ -1459,34 +1459,6 @@ end
 
 
 
-
-
-"""
-    transitionmatrix!(A, cL, cR, trialinvariant, θnative)
-
-In-place computation of a transition matrix for a single time-step
-
-MODIFIED ARGUMENT
--`A`: the transition matrix. Expects the `A[2:end,1] .== 0` and `A[1:end-1,end] .== 0`
-
-UNMODIFIED ARGUMENT
--`cL`: input from the left
--`cR`: input from the right
--`trialinvariant`: structure containing quantities used for computations for each trial
--`θnative`: model parameters in native space
-"""
-function transitionmatrix!(A::Matrix{<:Real},
-                           cL::Real,
-						   cR::Real,
-						   trialinvariant::Trialinvariant,
-						   θnative::Latentθ)
-    @unpack Δt, 𝛏 = trialinvariant
-	𝛍 = conditionedmean(cR-cL, Δt, θnative.λ[1], 𝛏)
-	σ = √( (cL+cR)*θnative.σ²ₛ[1] + θnative.σ²ₐ[1]*Δt )
-	transitionmatrix!(A, 𝛍, σ, 𝛏)
-    return nothing
-end
-
 """
     conditionedmean(Δc, Δt, λ, 𝛏)
 
@@ -1589,37 +1561,6 @@ function transitionmatrix!(	A::Matrix{T},
     return nothing
 end
 
-"""
-    transitionmatrix!(A, ∂μ, ∂σ², ∂B, cL, cR, trialinvariant, θnative)
-
-Compute the transition matrix and partial derivatives with respect to the means, variance, and the bound parameter (in real space)
-
-MODIFIED ARGUMENT
--`A`: the transition matrix. Expects the `A[2:end,1] .== 0` and `A[1:end-1,end] .== 0`
--`∂μ`: the first order partial derivative of the transition matrix with respect to the mean in each column.
--`∂σ²`: the first order partial derivative of the transition matrix with respect to the variance.
--`∂B`: the first order partial derivative of the transition matrix with respect to the bound height.
-
-UNMODIFIED ARGUMENT
--`cL`: input from the left
--`cR`: input from the right
--`trialinvariant`: structure containing quantities used for computations for each trial
--`θnative`: model parameters in native space
-"""
-function transitionmatrix!(	A::Matrix{<:Real},
-							∂μ::Matrix{<:Real},
-							∂σ²::Matrix{<:Real},
-							∂B::Matrix{<:Real},
-							cL::Real,
-							cR::Real,
-							trialinvariant::Trialinvariant,
-							θnative::Latentθ)
-    @unpack Δt, Ω, 𝛏 = trialinvariant
-	𝛍 = conditionedmean(cR-cL, Δt, θnative.λ[1], 𝛏)
-	σ = √( (cL+cR)*θnative.σ²ₛ[1] + θnative.σ²ₐ[1]*Δt )
-	transitionmatrix!(A, ∂μ, ∂σ², ∂B, 𝛍, σ, Ω, 𝛏)
-	return nothing
-end
 
 """
     probabilityvector(π, ∂μ, ∂σ², ∂B, μ, σ, 𝛏)

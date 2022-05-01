@@ -190,7 +190,6 @@ function dictionary(options::Options)
 			"q_sigma2_i"=>options.q_σ²ᵢ,
 			"q_sigma2_s"=>options.q_σ²ₛ,
 			"resultspath"=>options.resultspath,
-			"spikehistorylags"=>options.spikehistorylags,
 			"Xi"=>options.Ξ)
 end
 
@@ -237,12 +236,12 @@ Convert into a dictionary a mixture of Poisson generalized linear model
 """
 function dictionary(mpGLM::MixturePoissonGLM)
     Dict("dt"=>mpGLM.Δt,
-         "K"=>mpGLM.K,
+		 "H"=>mpGLM.𝐇,
          "U"=>mpGLM.𝐔,
+		 "V"=>mpGLM.𝐕,
          "theta"=>dictionary(mpGLM.θ),
-         "bfPhi"=>mpGLM.𝚽,
          "Phi"=>mpGLM.Φ,
-         "xi"=>mpGLM.𝛏,
+         "dxi_dB"=>mpGLM.d𝛏_dB,
          "y"=>mpGLM.𝐲)
 end
 
@@ -252,10 +251,10 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(θ::GLMθ)
-    Dict("u"=>θ.𝐮,
+    Dict("h"=>θ.𝐡,
+		"u"=>θ.𝐮,
          "v"=>θ.𝐯,
-         "a"=>θ.a,
-         "b"=>θ.b)
+         "w"=>θ.𝐰)
 end
 
 """
@@ -313,14 +312,7 @@ end
 Create an instance of `Options` from a Dict
 """
 function Options(options::Dict)
-	spikehistorylags=options["spikehistorylags"]
-	if typeof(spikehistorylags)<:Number
-		spikehistorylags = [spikehistorylags]
-	else
-		spikehistorylags = vec(spikehistorylags)
-	end
-	spikehistorylags = convert.(Int64, spikehistorylags)
-    Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
+	Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
 			a_latency_s = options["a_latency_s"],
 			basistype = options["basistype"],
 			bound_ψ = options["bound_psi"],
@@ -350,7 +342,6 @@ function Options(options::Dict)
 			q_σ²ᵢ = options["q_sigma2_i"],
 			q_σ²ₛ = options["q_sigma2_s"],
 			resultspath = options["resultspath"],
-			spikehistorylags = spikehistorylags,
 			Ξ = convert(Int64, options["Xi"]))
 end
 
@@ -361,12 +352,12 @@ Convert a dictionary into an instance of `MixturePoissonGLM`
 """
 function MixturePoissonGLM(mpGLM::Dict)
     MixturePoissonGLM(Δt=mpGLM["dt"],
-                      K=convert(Int, mpGLM["K"]),
+					  𝐇=mpGLM["H"],
                       𝐔=mpGLM["U"],
+					  𝐕=mpGLM["𝐕"],
                       θ=GLMθ(mpGLM["theta"]),
                       Φ=mpGLM["Phi"],
-                      𝚽=mpGLM["bfPhi"],
-                      𝛏=vec(mpGLM["xi"]),
+                      d𝛏_dB=vec(mpGLM["dxi_dB"]),
                       𝐲=vec(mpGLM["y"]))
 end
 
@@ -376,10 +367,10 @@ end
 Convert a dictionary into an instance of `GLMθ`
 """
 function GLMθ(θ::Dict)
-    GLMθ(𝐮=vec(mpGLM["u"]),
-         𝐯=vec(mpGLM["v"]),
-         a=vec(mpGLM["a"]),
-         b=vec(mpGLM["b"]),)
+    GLMθ(𝐡=vec(mpGLM["h"]),
+		 𝐮=vec(map(𝐮ₖ->vec(𝐮ₖ), mpGLM["u"])),
+         𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])),
+         𝐰=vec(mpGLM["w"]))
 end
 
 """
@@ -401,4 +392,39 @@ function Latentθ(θ::Dict)
 			σ²ᵢ=[θ["sigma2_i"]],
 			σ²ₛ=[θ["sigma2_s"]],
 			wₕ=[θ["w_h"]])
+end
+
+"""
+	sortbytrial(γ, model)
+
+Sort concatenated posterior probability or spike response by trials
+
+ARGUMENT
+-`γ`: a nested array whose element γ[s][j,k][τ] corresponds to the τ-th time step in the s-th trialset and the j-th accumulator state and k-th coupling state
+-`model`: structure containing data, parameters, and hyperparameters
+
+RETURN
+-`fb`: a nested array whose element fb[s][m][t][j,k] corresponds to the t-th time step in the m-th trial of the s-th trialset and the j-th accumulator state and k-th coupling state
+"""
+function sortbytrial(γ::Vector{<:Matrix{<:Vector{T}}}, model::Model) where {T<:Real}
+	@unpack K, Ξ = model.options
+	fb = map(model.trialsets) do trialset
+			map(trialset.trials) do trial
+				collect(zeros(T, Ξ, K) for i=1:trial.ntimesteps)
+			end
+		end
+	for s in eachindex(fb)
+		τ = 0
+		for m in eachindex(fb[s])
+			for t in eachindex(fb[s][m])
+				τ += 1
+				for j=1:Ξ
+					for k=1:K
+						fb[s][m][t][j,k] = γ[s][j,k][τ]
+					end
+				end
+			end
+		end
+	end
+	return fb
 end
