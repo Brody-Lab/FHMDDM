@@ -98,7 +98,9 @@ function choiceLL!(memory::Memoryforgradient, P::Probabilityvector, θnative::La
 	@unpack Aᵃinput, Aᵃsilent, ℓ, πᶜᵀ = memory
 	priorprobability!(P, trial.previousanswer)
 	f = copy(P.𝛑)
-	adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	end
 	@inbounds for t = 2:trial.ntimesteps
 		if isempty(clicks.inputindex[t])
 			Aᵃ = Aᵃsilent
@@ -286,7 +288,9 @@ function ∇choiceLL!(memory::Memoryforgradient,
 	t = 1
 	∇priorprobability!(∇pa₁, P, trial.previousanswer)
 	f[t] .= P.𝛑
-	adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	end
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			clickindex = clicks.inputindex[t][1]

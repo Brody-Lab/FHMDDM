@@ -184,7 +184,9 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 					   trial::Trial)
 	@unpack clicks = trial
 	@unpack Aᵃinput, Aᵃsilent, Aᶜᵀ, πᶜᵀ = memory
-	adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+    if length(clicks.time) > 0
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	end
 	priorprobability!(P, trial.previousanswer)
 	pa₁ = P.𝛑
 	f = p𝐘𝑑[1] .* pa₁ .* πᶜᵀ
@@ -273,7 +275,9 @@ function loglikelihood(	concatenatedθ::Vector{T},
 			D = sum(f)
 			f./=D
 			ℓ+=log(D)
-			adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+			if length(trial.clicks.time) > 0
+				adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+			end
 			for t=2:trial.ntimesteps
 				if t ∈ trial.clicks.inputtimesteps
 					cL = sum(adaptedclicks.C[trial.clicks.left[t]])
@@ -429,7 +433,9 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 	D[t] = sum(f[t])
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
-	adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	end
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			clickindex = clicks.inputindex[t][1]
