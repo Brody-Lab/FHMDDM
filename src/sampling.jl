@@ -76,7 +76,9 @@ function sample!(memory::Memoryforgradient,
 	p𝐜 = πᶜ
     a[1] = findfirst(rand() .< cumsum(p𝐚))
     c[1] = findfirst(rand() .< cumsum(p𝐜))
-	adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	end
     for t = 2:trial.ntimesteps
         if isempty(clicks.inputindex[t])
 			Aᵃ = Aᵃsilent

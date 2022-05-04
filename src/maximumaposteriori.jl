@@ -1,14 +1,10 @@
 """
-    maximizeposterior!(model, λ, optimizer)
+    maximizeposterior!(model)
 
 Optimize the parameters of the factorial hidden Markov drift-diffusion model using a first-order optimizer in Optim
 
 MODIFIED ARGUMENT
-- a structure containing information for a factorial hidden Markov drift-diffusion model
-
-UNMODIFIED ARGUMENT
--`λ`: L2 regularization weight. This is equivalent to a Gaussian prior with zero mean and a precision matrix equal to `λI`
--`optimizer`: an optimizer implemented by Optim.jl. The limited memory quasi-Newton algorithm `LBFGS()` does pretty well, and when using L-BFGS the `HagerZhang()` line search seems to do better than `BackTracking()`
+-`model`
 
 OPTIONAL ARGUMENT
 -`extended_trace`: save additional information
@@ -27,15 +23,13 @@ RETURN
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM, LineSearches, Optim
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_04_test/data.mat"
 julia> model = Model(datapath)
-julia> losses, gradientnorms = maximizeposterior!(model, 0.2, LBFGS(linesearch = LineSearches.BackTracking()))
+julia> losses, gradientnorms = maximizeposterior!(model)
 ```
 """
-function maximizeposterior!(model::Model,
-							λ::AbstractFloat,
-							optimizer::Optim.FirstOrderOptimizer;
+function maximizeposterior!(model::Model;
 							extended_trace::Bool=false,
 							f_tol::AbstractFloat=0.0,
 							g_tol::AbstractFloat=1e-8,
@@ -44,39 +38,8 @@ function maximizeposterior!(model::Model,
 							show_trace::Bool=true,
 							store_trace::Bool=true,
 							x_tol::AbstractFloat=0.0)
-	𝛌 = L2regularizer(λ, model)
-	maximizeposterior!(model, 𝛌, optimizer; extended_trace=extended_trace, f_tol=f_tol,g_tol=g_tol, iterations=iterations, show_every=show_every, show_trace=show_trace, store_trace=store_trace, x_tol=x_tol)
-end
-
-"""
-    maximizeposterior!(model, 𝛌, optimizer)
-
-Optimize the parameters of the factorial hidden Markov drift-diffusion model using a first-order optimizer in Optim
-
-MODIFIED ARGUMENT
--`model`
-
-UNMODIFIED ARGUMENT
--`𝛌`: a vector L2 regularization weight. This is equivalent to a Gaussian prior with zero mean and a precision matrix equal to `Diag(𝛌)`
--`optimizer`: an optimizer implemented by Optim.jl. The limited memory quasi-Newton algorithm `LBFGS()` does pretty well, and when using L-BFGS the `HagerZhang()` line search seems to do better than `BackTracking()`
-
-OPTIONAL ARGUMENT
--see above
-
-RETURN
--see above
-"""
-function maximizeposterior!(model::Model,
-							𝛌::Vector{<:AbstractFloat},
-							optimizer::Optim.FirstOrderOptimizer;
-							extended_trace::Bool=false,
-							f_tol::AbstractFloat=0.0,
-							g_tol::AbstractFloat=1e-8,
-							iterations::Integer=1000,
-							show_every::Integer=10,
-							show_trace::Bool=true,
-							store_trace::Bool=true,
-							x_tol::AbstractFloat=0.0)
+	𝛌 = L2regularizer(model)
+	optimizer = LBFGS(linesearch = LineSearches.BackTracking())
 	memory = Memoryforgradient(model)
     f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + ((𝛌.*concatenatedθ) ⋅ concatenatedθ)
     function g!(∇, concatenatedθ)
@@ -109,7 +72,7 @@ function maximizeposterior!(model::Model,
 end
 
 """
-	L2regularizer(λ, model)
+	L2regularizer(model)
 
 Create a vector of L2 regularization weights
 
@@ -129,28 +92,23 @@ julia> model = Model(datapath; randomize=true)
 julia> 𝛌 = FHMDDM.L2regularizer(0.2, model)
 ```
 """
-function L2regularizer(λ::Real, model::Model)
+function L2regularizer(model::Model)
 	θ, index = concatenateparameters(model)
 	𝛌 = zeros(length(θ))
-	for field in (:B, :k, :λ, :μ₀, :ϕ, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
-		i = getfield(index.latentθ, field)[1]
-		if i != 0
-			𝛌[i] = λ
-		end
-	end
+	s = model.options.initial_glm_L2_coefficient
 	for glmθ in index.glmθ
 		for glmθ in glmθ
 			for h in glmθ.𝐡
-				𝛌[h] = λ
+				𝛌[h] = s
 			end
 			for 𝐮ₖ in glmθ.𝐮
 				for u in 𝐮ₖ
-					𝛌[u] = λ
+					𝛌[u] = s
 				end
 			end
 			for 𝐯ₖ in glmθ.𝐯
 				for u in 𝐯ₖ
-					𝛌[u] = λ
+					𝛌[u] = s
 				end
 			end
 		end

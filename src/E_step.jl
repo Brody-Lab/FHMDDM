@@ -171,7 +171,9 @@ function posteriors!(memory::Memoryforgradient,
 	D[t] = sum(f[t])
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
-	adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	if length(trial.clicks.time) > 0
+		adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	end
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			clickindex = clicks.inputindex[t][1]

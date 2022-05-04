@@ -38,12 +38,10 @@ end
     Options
 
 Model settings
-
 """
 @with_kw struct Options{TB<:Bool,
 						TS<:String,
 						TF<:AbstractFloat,
-						TVI<:Vector{<:Integer},
 						TI<:Integer}
 	"number of temporal basis functions for the accumulator per s"
     a_basis_per_s::TI=10
@@ -51,6 +49,12 @@ Model settings
     a_latency_s::TF=1e-2
 	"type of temporal basis functions"
     basistype::TS="raised_cosine"
+	"lower bound of the initial noise"
+	bound_σ²::TF = 1e-4
+	"lower bound of the lapse rate"
+	bound_ψ::TF = 1e-4
+	"lower bound of the probabilities for the coupling variable"
+	bound_z::TF = 1e-4
 	"full path of the data"
     datapath::TS=""
 	"duration of each timestep in seconds"
@@ -77,6 +81,8 @@ Model settings
 	fit_σ²ₛ::TB=true
 	"whether to fit the weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
 	fit_wₕ::TB=true
+	"initial coefficient for L2 regularization for the non-constant parameters of each neuron's GLM"
+	initial_glm_L2_coefficient::TF=0.0
 	"value in native space of the transition probability of the coupling variable to remain in the coupled state that corresponds to zero in real space"
 	q_Aᶜ₁₁::TF=1-1e-3; 	@assert q_Aᶜ₁₁ >= 0 && q_Aᶜ₁₁ <= 1
 	"value in native space of the transition probability of the coupling variable to remain in the uncoupled state that corresponds to zero in real space"
@@ -97,16 +103,8 @@ Model settings
 	q_σ²ᵢ::TF=1e-3; 	@assert q_σ²ᵢ >= 0
 	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
 	q_σ²ₛ::TF=1e-3;	 	@assert q_σ²ₛ >= 0
-	"lower bound of the initial noise"
-	bound_σ²::TF = 1e-4
-	"lower bound of the lapse rate"
-	bound_ψ::TF = 1e-4
-	"lower bound of the probabilities for the coupling variable"
-	bound_z::TF = 1e-4
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
-	"the number of time bins before the current bin when the spike history is considered, one value for each regressor, such as [1, 2, ..., 9]. Note a positive lag represents a time bin before the current time bin."
-    spikehistorylags::TVI=collect(1:10)
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end
