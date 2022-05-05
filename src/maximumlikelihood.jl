@@ -345,6 +345,7 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 			∇nℓ[indexfit] = -memory.∇ℓlatent[indexall]
 		end
 	end
+	native2real!(∇nℓ, memory.indexθ.latentθ, model)
 	for ∇ℓglms in memory.∇ℓglm
 		for ∇ℓglm in ∇ℓglms
 			for h in ∇ℓglm.𝐡
@@ -395,7 +396,6 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 			expectation_∇loglikelihood!(memory.∇ℓglm[s][n], memory.γ[s], model.trialsets[s].mpGLMs[n])
 		end
 	end
-	native2real!(memory.∇ℓlatent, memory.indexθ.latentθ, model)
 	return nothing
 end
 

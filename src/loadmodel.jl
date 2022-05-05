@@ -202,7 +202,7 @@ end
 """
 	initializeparameters(options)
 
-Initialize the value of each model parameters in native space by sampling from a Uniform random variable
+Initialize the value of each model parameters in native space with defaults
 
 RETURN
 -values of model parameter in native space

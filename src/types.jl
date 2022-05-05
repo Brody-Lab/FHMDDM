@@ -83,6 +83,8 @@ Model settings
 	fit_wₕ::TB=true
 	"initial coefficient for L2 regularization for the non-constant parameters of each neuron's GLM"
 	initial_glm_L2_coefficient::TF=0.0
+	"initial coefficient for L2 regularization for the ddm parameters"
+	initial_ddm_L2_coefficient::TF=0.0
 	"value in native space of the transition probability of the coupling variable to remain in the coupled state that corresponds to zero in real space"
 	q_Aᶜ₁₁::TF=1-1e-3; 	@assert q_Aᶜ₁₁ >= 0 && q_Aᶜ₁₁ <= 1
 	"value in native space of the transition probability of the coupling variable to remain in the uncoupled state that corresponds to zero in real space"

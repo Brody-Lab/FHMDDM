@@ -1148,62 +1148,6 @@ function conditionallikelihood!(p𝑑::Vector{<:Real}, 𝑑::Bool, ψ::Real)
 end
 
 """
-	native2real!(∇ℓ, ∇∇ℓ, latentθindex, model)
-
-Convert the gradient and hessian from being with respect to the parameters in native space to parameters in real space
-
-ARGUMENT
--`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
--`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in native space
--`latentθindex`: index of each latent parameter in the gradient and Hessian
--`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
-
-MODIFIED ARGUMENT
--`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
--`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in real space
-"""
-function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, latentθindex::Latentθ, model::Model)
-	firstderivatives = differentiate_native_wrt_real(model)
-	secondderivatives = differentiate_twice_native_wrt_real(model)
-	for parametername in fieldnames(Latentθ)
-		d1 = getfield(firstderivatives, parametername)[1]
-		d2 = getfield(secondderivatives, parametername)[1]
-		if d1 != 1.0
-			i = getfield(latentθindex, parametername)[1]
-			∇∇ℓ[i,:] .*= d1
-			∇∇ℓ[:,i] .*= d1
-			∇∇ℓ[i,i] += d2*∇ℓ[i]
-			∇ℓ[i] *= d1
-		end
-	end
-	return nothing
-end
-
-"""
-	native2real!(∇ℓ, latentθindex, model)
-
-Convert the gradient from being with respect to the parameters in native space to parameters in real space
-
-ARGUMENT
--`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
--`latentθindex`: index of each latent parameter in the gradient and Hessian
--`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
-
-MODIFIED ARGUMENT
--`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
-"""
-function native2real!(∇ℓ::Vector{<:Real}, indexθ::Latentθ, model::Model)
-	firstderivatives = differentiate_native_wrt_real(model)
-	for parametername in fieldnames(Latentθ)
-		i = getfield(indexθ, parametername)[1]
-		if i > 0
-			∇ℓ[i] *= getfield(firstderivatives, parametername)[1]
-		end
-	end
-	return nothing
-end
-
-"""
 	differentiate_native_wrt_real(model)
 
 Derivative of each latent-variable-related parameter in its native space with respect to its value in real space

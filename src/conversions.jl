@@ -12,6 +12,11 @@ RETURN
 """
 function native2real(options::Options,
                      θnative::Latentθ)
+	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
+ 		ψreal = logit(θnative.ψ[1])
+	else
+		ψreal = logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
+	end
 	Latentθ(Aᶜ₁₁ = [logit((θnative.Aᶜ₁₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₁₁)],
 			Aᶜ₂₂ = [logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)],
 			B = [logit(θnative.B[1]/2/options.q_B)],
@@ -20,7 +25,7 @@ function native2real(options::Options,
 			μ₀ = [θnative.μ₀[1]],
 			ϕ = [logit(θnative.ϕ[1]) - logit(options.q_ϕ)],
 			πᶜ₁ = [logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)],
-			ψ 	= [logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)],
+			ψ 	= [ψreal],
 			σ²ₐ = [log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)],
 			σ²ᵢ = [log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)],
 			σ²ₛ = [log((θnative.σ²ₛ[1]-options.bound_σ²) /options.q_σ²ₛ)],
@@ -50,7 +55,12 @@ function native2real!(θreal::Latentθ,
 	θreal.μ₀[1] = θnative.μ₀[1]
 	θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
 	θreal.πᶜ₁[1] = logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)
-	θreal.ψ[1] = logit((θnative.ψ[1]-options.bound_ψ)/(1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
+	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
+ 		ψreal = logit(θnative.ψ[1])
+	else
+		ψreal = logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
+	end
+	θreal.ψ[1] = ψreal
 	θreal.σ²ₐ[1] = log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)
 	θreal.σ²ᵢ[1] = log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)
 	θreal.σ²ₛ[1] = log((θnative.σ²ₛ[1]-options.bound_σ²)/options.q_σ²ₛ)
@@ -78,19 +88,80 @@ function native2real!(g::Latentθ,
 	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
 	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
 	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
+		dψnative_dψreal = θnative.ψ[1]*(1-θnative.ψ[1])
+	else
+		tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+		f_bound_ψ = 1.0-2.0*options.bound_ψ
+		dψnative_dψreal = f_bound_ψ*tmpψ*(1.0 - tmpψ)
+	end
 	f_bound_z = 1.0-2.0*options.bound_z
-	f_bound_ψ = 1.0-2.0*options.bound_ψ
 	g.Aᶜ₁₁[1] *= f_bound_z*tmpAᶜ₁₁*(1.0 - tmpAᶜ₁₁)
 	g.Aᶜ₂₂[1] *= f_bound_z*tmpAᶜ₂₂*(1.0 - tmpAᶜ₂₂)
 	g.B[1] *= θnative.B[1]*logistic(-θreal.B[1])
 	g.k[1] *= θnative.k[1]
 	g.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
 	g.πᶜ₁[1] *= f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
-	g.ψ[1]   *= f_bound_ψ*tmpψ*(1.0 - tmpψ)
+	g.ψ[1]   *= dψnative_dψreal
 	g.σ²ₐ[1] *= options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
 	g.σ²ᵢ[1] *= options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
 	g.σ²ₛ[1] *= options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	return nothing
+end
+
+"""
+	native2real!(∇ℓ, ∇∇ℓ, latentθindex, model)
+
+Convert the gradient and hessian from being with respect to the parameters in native space to parameters in real space
+
+ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in native space
+-`latentθindex`: index of each latent parameter in the gradient and Hessian
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+MODIFIED ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in real space
+"""
+function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, latentθindex::Latentθ, model::Model)
+	firstderivatives = differentiate_native_wrt_real(model)
+	secondderivatives = differentiate_twice_native_wrt_real(model)
+	for parametername in fieldnames(Latentθ)
+		d1 = getfield(firstderivatives, parametername)[1]
+		d2 = getfield(secondderivatives, parametername)[1]
+		if d1 != 1.0
+			i = getfield(latentθindex, parametername)[1]
+			∇∇ℓ[i,:] .*= d1
+			∇∇ℓ[:,i] .*= d1
+			∇∇ℓ[i,i] += d2*∇ℓ[i]
+			∇ℓ[i] *= d1
+		end
+	end
+	return nothing
+end
+
+"""
+	native2real!(∇ℓ, latentθindex, model)
+
+Convert the gradient from being with respect to the parameters in native space to parameters in real space
+
+ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in native space
+-`latentθindex`: index of each latent parameter in the gradient and Hessian
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+MODIFIED ARGUMENT
+-`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
+"""
+function native2real!(∇ℓ::Vector{<:Real}, indexθ::Latentθ, model::Model)
+	firstderivatives = differentiate_native_wrt_real(model)
+	for parametername in fieldnames(Latentθ)
+		i = getfield(indexθ, parametername)[1]
+		if i > 0
+			∇ℓ[i] *= getfield(firstderivatives, parametername)[1]
+		end
+	end
 	return nothing
 end
 
@@ -108,6 +179,11 @@ RETURN
 """
 function real2native(options::Options,
                      θreal::Latentθ)
+	if options.q_ψ == 0.0
+		ψnative = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1])
+	else
+		ψnative = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
+	end
 	Latentθ(Aᶜ₁₁ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))],
 			Aᶜ₂₂ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))],
 			B = [2options.q_B*logistic(θreal.B[1])],
@@ -116,7 +192,7 @@ function real2native(options::Options,
 			μ₀ = [1.0*θreal.μ₀[1]],
 			ϕ = [logistic(θreal.ϕ[1] + logit(options.q_ϕ))],
 			πᶜ₁ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))],
-			ψ   = [options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))],
+			ψ   = [ψnative],
 			σ²ₐ = [options.bound_σ² + options.q_σ²ₐ*exp(θreal.σ²ₐ[1])],
 			σ²ᵢ = [options.bound_σ² + options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])],
 			σ²ₛ = [options.bound_σ² + options.q_σ²ₛ*exp(θreal.σ²ₛ[1])],
@@ -146,7 +222,11 @@ function real2native!(θnative::Latentθ,
 	θnative.μ₀[1] = θreal.μ₀[1]
 	θnative.ϕ[1] = logistic(θreal.ϕ[1] + logit(options.q_ϕ))
 	θnative.πᶜ₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	θnative.ψ[1]   = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
+	if options.q_ψ == 0.0
+		θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1])
+	else
+		θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
+	end
 	θnative.σ²ₐ[1] = options.bound_σ² + options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
 	θnative.σ²ᵢ[1] = options.bound_σ² + options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
 	θnative.σ²ₛ[1] = options.bound_σ² + options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
@@ -180,6 +260,7 @@ function dictionary(options::Options)
 			"fit_sigma2_s"=>options.fit_σ²ₛ,
 			"fit_w_h"=>options.fit_wₕ,
 			"initial_glm_L2_coefficient"=>options.initial_glm_L2_coefficient,
+			"initial_ddm_L2_coefficient"=>options.initial_ddm_L2_coefficient,
 			"q_Ac11"=>options.q_Aᶜ₁₁,
 			"q_Ac22"=>options.q_Aᶜ₂₂,
 			"q_B"=>options.q_B,
@@ -333,6 +414,7 @@ function Options(options::Dict)
 			fit_σ²ₛ = options["fit_sigma2_s"],
 			fit_wₕ = options["fit_w_h"],
 			initial_glm_L2_coefficient=options["initial_glm_L2_coefficient"],
+			initial_ddm_L2_coefficient=options["initial_ddm_L2_coefficient"],
 			q_Aᶜ₁₁ = options["q_Ac11"],
 			q_Aᶜ₂₂ = options["q_Ac22"],
 			q_B = options["q_B"],

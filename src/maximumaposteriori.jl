@@ -87,14 +87,20 @@ OUTPUT
 
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
 julia> model = Model(datapath; randomize=true)
-julia> 𝛌 = FHMDDM.L2regularizer(0.2, model)
+julia> 𝛌 = FHMDDM.L2regularizer(model)
 ```
 """
 function L2regularizer(model::Model)
 	θ, index = concatenateparameters(model)
 	𝛌 = zeros(length(θ))
+	for field in (:B, :k, :λ, :μ₀, :ϕ, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
+		i = getfield(index.latentθ, field)[1]
+		if i != 0
+			𝛌[i] = model.options.initial_ddm_L2_coefficient
+		end
+	end
 	s = model.options.initial_glm_L2_coefficient
 	for glmθ in index.glmθ
 		for glmθ in glmθ
