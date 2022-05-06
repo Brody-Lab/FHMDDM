@@ -51,14 +51,10 @@ function Model(options::Options,
 	glmθ = read(resultsMAT, "thetaglm")
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
-			trialsets[i].mpGLMs[n].θ.𝐡 .= glmθ[i][n]["h"]
-			for k in eachindex(glmθ[i][n]["u"])
-				trialsets[i].mpGLMs[n].θ.𝐮[k] .= glmθ[i][n]["u"][k]
-			end
+			trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[i][n]["u"]
 			for k in eachindex(glmθ[i][n]["v"])
 				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
 			end
-			trialsets[i].mpGLMs[n].θ.𝐰 .= glmθ[i][n]["w"]
 		end
 	end
 	Model(options=options,
@@ -167,14 +163,16 @@ function Trialset(options::Options, trialset::Dict)
 	@unpack K, Ξ = options
 	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	𝐕, Φ = temporal_bases_values(options, ntimesteps)
+	𝐔₀ = ones(size(trialset["Xtiming"],1))
 	mpGLMs = map(units, 𝐘) do unit, 𝐲
+				𝐗=hcat(𝐔₀, unit["Xautoreg"], trialset["Xtiming"], 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
+  								d𝛏_dB=d𝛏_dB,
+								max_spikehistory_lag = size(unit["Xautoreg"],2),
 								Φ=Φ,
-								θ=GLMθ(K, unit["Xautoreg"], trialset["Xtiming"], 𝐕),
-								𝐇=unit["Xautoreg"],
-								𝐔=trialset["Xtiming"],
+								θ=GLMθ(K, 𝐗, 𝐕),
 								𝐕=𝐕,
-								d𝛏_dB=d𝛏_dB,
+								𝐗=𝐗,
 								𝐲=𝐲)
 			 end
 	rawclicktimes = map(x->x["clicktimes"], rawtrials)
@@ -260,24 +258,18 @@ MODIFIED ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
 julia> model = Model(datapath; randomize=true)
 julia> FHMDDM.initializeparameters!(model)
 ```
 """
 function initializeparameters!(model::Model)
 	maximizechoiceLL!(model)
-	γ = choiceposteriors(model)
-	@unpack trialsets = model
-	concatenatedθ, indexθ = concatenateparameters(trialsets[1].mpGLMs[1].θ)
-	Opt = MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
-	for i in eachindex(trialsets)
-		for n in eachindex(trialsets[i].mpGLMs)
-			estimatefilters!(trialsets[i].mpGLMs[n], Opt, γ[i])
-			θ = trialsets[i].mpGLMs[n].θ
-			θ.𝐮[2] .= 1.0.-2.0.*rand(length(θ.𝐮[2]))
-			θ.𝐯[2] .= 1.0.-2.0.*rand(length(θ.𝐯[2]))
-			θ.𝐰[2] = 1.0.-2.0.*rand()
+	q = length(model.trialsets[1].mpGLMs[1].θ.𝐮)
+	Opt = PoissonGLMOptimization(𝐮 = fill(NaN, q))
+	for trialset in model.trialsets
+		for mpGLM in trialset.mpGLMs
+			learn_state_independent_filters!(mpGLM, Opt)
 		end
 	end
 	return nothing

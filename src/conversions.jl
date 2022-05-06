@@ -318,12 +318,12 @@ Convert into a dictionary a mixture of Poisson generalized linear model
 """
 function dictionary(mpGLM::MixturePoissonGLM)
     Dict("dt"=>mpGLM.Δt,
-		 "H"=>mpGLM.𝐇,
-         "U"=>mpGLM.𝐔,
-		 "V"=>mpGLM.𝐕,
-         "theta"=>dictionary(mpGLM.θ),
+	     "dxi_dB"=>mpGLM.d𝛏_dB,
+		 "max_spikehistory_lag"=>mpGLM.max_spikehistory_lag,
          "Phi"=>mpGLM.Φ,
-         "dxi_dB"=>mpGLM.d𝛏_dB,
+         "theta"=>dictionary(mpGLM.θ),
+		 "V"=>mpGLM.𝐕,
+		 "X"=>mpGLM.𝐗,
          "y"=>mpGLM.𝐲)
 end
 
@@ -333,10 +333,8 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(θ::GLMθ)
-    Dict("h"=>θ.𝐡,
-		"u"=>θ.𝐮,
-         "v"=>θ.𝐯,
-         "w"=>θ.𝐰)
+    Dict("u"=>θ.𝐮,
+         "v"=>θ.𝐯)
 end
 
 """
@@ -436,13 +434,13 @@ Convert a dictionary into an instance of `MixturePoissonGLM`
 """
 function MixturePoissonGLM(mpGLM::Dict)
     MixturePoissonGLM(Δt=mpGLM["dt"],
-					  𝐇=mpGLM["H"],
-                      𝐔=mpGLM["U"],
-					  𝐕=mpGLM["𝐕"],
-                      θ=GLMθ(mpGLM["theta"]),
-                      Φ=mpGLM["Phi"],
-                      d𝛏_dB=vec(mpGLM["dxi_dB"]),
-                      𝐲=vec(mpGLM["y"]))
+					d𝛏_dB=vec(mpGLM["dxi_dB"]),
+					max_spikehistory_lag=mpGLM["max_spikehistory_lag"],
+					Φ=mpGLM["Phi"],
+                    θ=GLMθ(mpGLM["theta"]),
+					𝐕=mpGLM["𝐕"],
+					𝐗=mpGLM["𝐗"],
+                    𝐲=vec(mpGLM["y"]))
 end
 
 """
@@ -451,10 +449,8 @@ end
 Convert a dictionary into an instance of `GLMθ`
 """
 function GLMθ(θ::Dict)
-    GLMθ(𝐡=vec(mpGLM["h"]),
-		 𝐮=vec(map(𝐮ₖ->vec(𝐮ₖ), mpGLM["u"])),
-         𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])),
-         𝐰=vec(mpGLM["w"]))
+    GLMθ(𝐮=vec(mpGLM["u"]),
+         𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])))
 end
 
 """

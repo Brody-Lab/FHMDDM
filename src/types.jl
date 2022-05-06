@@ -165,14 +165,10 @@ end
 	GLMθ
 """
 @with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
-	"state-independent linear filter of the spike history input"
-	𝐡::VR
-	"state-dependent linear filter of the time-varying input from events in the trial"
-    𝐮::VVR
-    "state-dependent linear filters of the time varying input from the accumulator "
+	"state-independent linear filter of inputs from the spike history and time in the trial"
+    𝐮::VR
+    "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
-	"state-dependent constants"
-	𝐰::VR
 end
 
 """
@@ -181,24 +177,25 @@ end
 Mixture of Poisson generalized linear model
 """
 @with_kw struct MixturePoissonGLM{F<:AbstractFloat,
+								  TI<:Integer,
                                   VF<:Vector{<:AbstractFloat},
 								  VI<:Vector{<:Integer},
 								  Tθ<:GLMθ,
                                   MF<:Matrix{<:AbstractFloat}}
     "size of the time bin"
     Δt::F
-	"Time-varying input from spike history. Element 𝐇[t,i] corresponds to the i-th temporal basis function at time step t."
-	𝐇::MF
-    "Time-varying input from the events in the trial. Element 𝐔[t,i] corresponds to the i-th temporal basis function at time step t. Each column is scaled such that the maximum of the absolute value is 1."
-    𝐔::MF
-    "Time-varying weight of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
-    𝐕::MF
-    "Temporal bases"
-    Φ::MF
-	"parameters (𝐡, 𝐰, 𝐮, 𝐯)"
-	θ::Tθ
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
+	"number of spike history lags"
+	max_spikehistory_lag::TI
+	"Temporal bases"
+	Φ::MF
+	"parameters (𝐡, 𝐰, 𝐮, 𝐯)"
+	θ::Tθ
+    "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
+    𝐕::MF
+	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
+	𝐗::MF
     "Poisson observations"
     𝐲::VI
 end
@@ -214,7 +211,7 @@ A group of trials in which a population of neurons were recorded simultaneously
 	"Mixture of Poisson GLM of each neuron in this trialset"
     mpGLMs::VM=MixturePoissonGLM[]
 	"number of time steps summed across trials"
-	ntimesteps::TI=size(mpGLMs[1].𝐔,1)
+	ntimesteps::TI=size(mpGLMs[1].𝐗,1)
 	"Information on the stimulus and behavior for each trial in this trial-set"
     trials::VT
 	"Number of trials"
@@ -709,21 +706,17 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 end
 
 """
-	MixturePoissonGLM_FGH
+	PoissonGLMOptimization
 
 A structure for finding the parameters that maximize the expectation under the posterior probability of the log-likelihood of a GLM, as well as the expectation of the gradient and the Hessian
 """
-@with_kw struct MixturePoissonGLM_Optimization{VF<:Vector{<:AbstractFloat},
-											   MF<:Matrix{<:AbstractFloat},
-											   Tθ<:GLMθ}
+@with_kw struct PoissonGLMOptimization{VF<:Vector{<:AbstractFloat},
+										MF<:Matrix{<:AbstractFloat}}
 
-	"parameter values used to compute the expectation of the log-likelihood"
-	concatenatedθ::VF
-	"index of parameters"
-	indexθ::Tθ
-	Q::VF = zeros(1)
-	∇Q::VF = zeros(length(concatenatedθ))
-	∇∇Q::MF = zeros(length(concatenatedθ), length(concatenatedθ))
+	𝐮::VF
+	ℓ::VF = zeros(1)
+	∇ℓ::VF = zeros(length(𝐮))
+	∇∇ℓ::MF = zeros(length(𝐮), length(𝐮))
 end
 
 """

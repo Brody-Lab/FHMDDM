@@ -29,9 +29,10 @@ function maximizechoiceLL!(model::Model;
 		                 show_every::Integer=10,
 		                 show_trace::Bool=true,
 		                 x_tol::AbstractFloat=1e-5)
-	memory = Memoryforgradient(model; choicemodel=true)
-    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ)
-    g!(∇, concatenatedθ) = ∇negativechoiceLL!(∇, memory, model, concatenatedθ)
+	θ₀, indexθ = concatenate_choice_related_parameters(model)
+	f(concatenatedθ) = choiceLL(concatenatedθ, indexθ.latentθ, model)
+	OD = OnceDifferentiable(f, θ₀; autodiff = :forward);
+	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -39,12 +40,10 @@ function maximizechoiceLL!(model::Model;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
-	θ₀ = concatenate_choice_related_parameters(model)[1]
-	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
+	optimizationresults = Optim.optimize(OD, θ₀, algorithm, Optim_options)
     println(optimizationresults)
 	θₘₗ = Optim.minimizer(optimizationresults)
-	sortparameters!(model, θₘₗ, memory.indexθ.latentθ)
+	sortparameters!(model, θₘₗ, indexθ.latentθ)
 end
 
 """
@@ -134,7 +133,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)
 julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
@@ -197,7 +196,7 @@ ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 julia> ∇nℓ = similar(concatenatedθ)
 julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
@@ -208,7 +207,7 @@ julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
 julia> maximum(abs.(∇nℓ_auto .- ∇nℓ))
 
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 julia> concatenatedθ = rand(length(concatenatedθ))
 julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)

@@ -24,8 +24,9 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_04_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
 julia> model = Model(datapath)
+julia> initializeparameters!(model)
 julia> losses, gradientnorms = maximizeposterior!(model)
 ```
 """
@@ -104,13 +105,8 @@ function L2regularizer(model::Model)
 	s = model.options.initial_glm_L2_coefficient
 	for glmθ in index.glmθ
 		for glmθ in glmθ
-			for h in glmθ.𝐡
-				𝛌[h] = s
-			end
-			for 𝐮ₖ in glmθ.𝐮
-				for u in 𝐮ₖ
-					𝛌[u] = s
-				end
+			for u in glmθ.𝐮
+				𝛌[u] = s
 			end
 			for 𝐯ₖ in glmθ.𝐯
 				for u in 𝐯ₖ

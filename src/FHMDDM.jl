@@ -38,7 +38,6 @@ export  adapt, # module-specific functions and types in this module that we can 
         Hessian,
         𝐇negativeexpectation!,
         Indexθ,
-        initializeparameters,
         initializeparameters!,
         Latentθ,
         likelihood,

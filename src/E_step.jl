@@ -323,7 +323,7 @@ RETURN
 function randomposterior(mpGLM::MixturePoissonGLM; rng::AbstractRNG=MersenneTwister())
 	T = length(mpGLM.𝐲)
 	Ξ = length(mpGLM.d𝛏_dB)
-	K = length(mpGLM.θ.𝐰)
+	K = length(mpGLM.θ.𝐯)
 	γ = map(index->zeros(T), CartesianIndices((Ξ,K)))
 	for t=1:T
 		randγₜ = rand(rng,Ξ,K)

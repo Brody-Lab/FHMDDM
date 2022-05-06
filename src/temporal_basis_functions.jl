@@ -8,36 +8,32 @@ INPUT
 -`𝐓`: vector of the number of timesteps in each trial
 
 RETURN
--`𝚽`: A matrix whose element 𝚽[t,i] indicates the value of the i-th temporal basis in the t-th time bin
+-`𝐕`: A matrix whose element 𝐕[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
+-`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
 """
 function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
     Tmax = maximum(𝐓)
+    nbases = max(1, ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt)))
     if options.basistype == "none"
         Φ = ones(Tmax,1)
-        nbases = 1
+    elseif options.basistype == "raised_cosine"
+        Φ = raisedcosinebases(false, false, nbases, Tmax)
+    elseif options.basistype == "Chebyshev_polynomial"
+        Φ = chebyshevbases(nbases, Tmax)
+    elseif options.basistype == "stretched_raised_cosine"
+        Φ = stretched_raised_cosines(nbases, Tmax)
     else
-        nbases = ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt))
-        @assert nbases > 0
-        if options.basistype == "raised_cosine"
-            Φ = raisedcosinebases(nbases, Tmax)
-        elseif options.basistype == "Chebyshev_polynomial"
-            Φ = chebyshevbases(nbases, Tmax)
-        elseif options.basistype == "stretched_raised_cosine"
-            Φ = stretched_raised_cosines(nbases, Tmax)
-        elseif options.basistype == "none"
-        else
-            error("unrecognized type for temporal basis function: ", options.basistype)
-        end
+        error("unrecognized type for temporal basis function: ", options.basistype)
     end
-    𝚽 = zeros(sum(𝐓), nbases)
+    𝐕 = zeros(sum(𝐓), nbases)
     k = 0
     for T in 𝐓
         for t = 1:T
             k = k + 1;
-            𝚽[k,:] = Φ[t,:]
+            𝐕[k,:] = Φ[t,:]
         end
     end
-    return 𝚽, Φ
+    return 𝐕, Φ
 end
 
 """
@@ -48,25 +44,32 @@ Construct smooth raised cosine bases
 The spacing between the centers is 1/4 of the width (period)
 
 ARGUMENT
+-`begins_at_0`: whether the value of the first temporal basis function at the first time step is equal to zero or equal to 1
+-`ends_at_0`: whether the value of the last temporal basis function at the last time step is equal 0 or equal to 1.
 -`nbases`: number of bases
 -`nbins`: number of bins in the time window tiled by the bases
 
 RETURN
 -`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis at the i-th timestep from beginning of the trial
 """
-function raisedcosinebases(nbases::Integer, nbins::Integer)
-    # begins at 0, ends at 0
-    # Δcenter = (nbins-1) / (nbases+3)
-    # centers = collect(1+2Δcenter:Δcenter:nbins-2Δcenter)
-
-    #begins at 0, ends at peak
-    # Δcenter = (nbins-1) / nbases
-    # centers = collect(1+Δcenter:Δcenter:nbins)
-
-    # begins at peak, ends at peak
-    Δcenter = (nbins-1) / max(1,nbases-1)
-    centers = collect(1:Δcenter:nbins)
-
+function raisedcosinebases(begins_at_0::Bool, ends_at_0::Bool, nbases::Integer, nbins::Integer)
+    if begins_at_0
+        if ends_at_0
+            Δcenter = (nbins-1) / (nbases+1)
+            centers = collect(1+Δcenter:Δcenter:nbins-Δcenter)
+        else
+            Δcenter = (nbins-1) / nbases
+            centers = collect(1+Δcenter:Δcenter:nbins)
+        end
+    else
+        if ends_at_0
+            Δcenter = (nbins-1) / nbases
+            centers = collect(1:Δcenter:nbin-Δcenter)
+        else
+            Δcenter = (nbins-1) / max(1,nbases-1)
+            centers = collect(1:Δcenter:nbins)
+        end
+    end
     timefromcenter = collect(1:nbins) .- transpose(centers)
     period = 4Δcenter
     (abs.(timefromcenter) .< period/2).*(cos.(timefromcenter*2π/period)*0.5 .+ 0.5)

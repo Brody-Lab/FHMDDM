@@ -84,150 +84,9 @@ RETURN
 -`𝛌`: a vector whose element 𝛌[t] corresponds to the t-th time bin in the trialset
 """
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack 𝐇, 𝐔, 𝐕, d𝛏_dB = mpGLM
-    @unpack 𝐡, 𝐮, 𝐯, 𝐰 = mpGLM.θ
-	𝐇*𝐡 .+ 𝐔*𝐮[k] .+ 𝐕*(𝐯[k].*d𝛏_dB[j]) .+ 𝐰[k]
-end
-
-"""
-    estimatefilters(γ, Opt, mpGLM)
-
-Estimate the filters of the Poisson mixture GLM of one neuron
-
-ARGUMENT
--`γ`: posterior probabilities of the latent
--`mpGLM`: the Poisson mixture GLM of one neuron
-
-OPTIONAL ARGUMENT
--`show_trace`: whether to show information about each step of the optimization
--`fit_a`: whether to fit the asymmetric scaling factor
--`fit_b`: whether to fit the nonlinearity factor
-
-RETURN
--weights concatenated into a single vector
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> mpGLM = model.trialsets[1].mpGLMs[1]
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(mpGLM.θ)
-julia> Opt = FHMDDM.MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
-julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-julia> FHMDDM.estimatefilters!(mpGLM, Opt, γ)
-```
-"""
-function estimatefilters!(mpGLM::MixturePoissonGLM,
-						Opt::MixturePoissonGLM_Optimization,
-						γ::Matrix{<:Vector{<:AbstractFloat}};
-						iterations::Integer=20,
-						show_trace::Bool=true)
-    x₀ = concatenateparameters(mpGLM.θ)[1]
-    f(x) = expectation_negloglikelihood!(mpGLM,Opt,γ,x)
-	g!(∇, x) = expectation_∇negloglikelihood!(∇,mpGLM,Opt,γ,x)
-	h!(∇∇, x) = expectation_∇∇negloglikelihood!(∇∇,mpGLM,Opt,γ,x)
-    results = Optim.optimize(f, g!, h!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
-    show_trace && println("The model converged: ", Optim.converged(results))
-	sortparameters!(mpGLM.θ, Optim.minimizer(results))
-	return nothing
-end
-
-"""
-	expectation_negloglikelihood!(mpGLM, Opt, γ, concatenatedθ)
-
-Compute the negative of the expectation of the log-likelihood of a mixture of Poisson GLM
-
-ARGUMENT
--`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
--`γ`: posterior probabilities of the latent variables
--`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
--`concatenatedθ`: parameters of a GLM concatenated into a vector
-
-RETURN
--negative of the expectation of the log-likelihood of a mixture of Poisson GLM
-"""
-function expectation_negloglikelihood!(mpGLM::MixturePoissonGLM,
-									Opt::MixturePoissonGLM_Optimization,
-									γ::Matrix{<:Vector{<:AbstractFloat}},
-									concatenatedθ::Vector{<:AbstractFloat})
-	update!(mpGLM, Opt, γ, concatenatedθ)
-	return -Opt.Q[1]
-end
-
-"""
-	expectation_∇negloglikelihood!(g, mpGLM, Opt, γ, concatenatedθ)
-
-Compute the gradient of the negative of the expectation of the log-likelihood of a mixture of Poisson GLM
-
-MODIFIED ARGUMENT
--`g`: gradient
-
-ARGUMENT
--`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
--`γ`: posterior probabilities of the latent variables
--`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
--`concatenatedθ`: parameters of a GLM concatenated into a vector
-"""
-function expectation_∇negloglikelihood!(g::Vector{<:AbstractFloat},
-									mpGLM::MixturePoissonGLM,
-									Opt::MixturePoissonGLM_Optimization,
-									γ::Matrix{<:Vector{<:AbstractFloat}},
-									concatenatedθ::Vector{<:AbstractFloat})
-	update!(mpGLM, Opt, γ, concatenatedθ)
-	for i in eachindex(g)
-		g[i] = -Opt.∇Q[i]
-	end
-	return nothing
-end
-
-"""
-	expectation_∇∇negloglikelihood!(h, mpGLM, Opt, γ, concatenatedθ)
-
-Compute the hessian of the negative of the expectation of the log-likelihood of a mixture of Poisson GLM
-
-MODIFIED ARGUMENT
--`h`: hessian
-
-ARGUMENT
--`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
--`γ`: posterior probabilities of the latent variables
--`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
--`concatenatedθ`: parameters of a GLM concatenated into a vector
-"""
-function expectation_∇∇negloglikelihood!(h::Matrix{<:AbstractFloat},
-									mpGLM::MixturePoissonGLM,
-									Opt::MixturePoissonGLM_Optimization,
-									γ::Matrix{<:Vector{<:AbstractFloat}},
-									concatenatedθ::Vector{<:AbstractFloat})
-	update!(mpGLM, Opt, γ, concatenatedθ)
-	for i in eachindex(h)
-		h[i] = -Opt.∇∇Q[i]
-	end
-	return nothing
-end
-
-"""
-	update!(mpGLM, Opt, γ, concatenatedθ)
-
-Update the expectation of the log-likelihood of a mixture of Poisson GLM and its gradient and hessian
-
-MODIFIED ARGUMENT
--`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
--`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
-
-ARGUMENT
--`γ`: posterior probabilities of the latent variables
--`concatenatedθ`: parameters of a GLM concatenated into a vector
-"""
-function update!(mpGLM::MixturePoissonGLM,
-				Opt::MixturePoissonGLM_Optimization,
-				γ::Matrix{<:Vector{<:AbstractFloat}},
-				concatenatedθ::Vector{<:AbstractFloat})
-	if concatenatedθ != Opt.concatenatedθ
-		sortparameters!(mpGLM.θ, concatenatedθ)
-		Opt.concatenatedθ .= concatenatedθ
-		expectation_∇∇loglikelihood!(Opt, γ, mpGLM)
-	end
+    @unpack 𝐗, d𝛏_dB = mpGLM
+    @unpack 𝐮, 𝐯 = mpGLM.θ
+	𝐗*vcat(𝐮, 𝐯[k].*d𝛏_dB[j])
 end
 
 """
@@ -246,8 +105,8 @@ RETURN
 -expectation of the log-likelihood of the spike train of one neuron
 """
 function expectation_loglikelihood(concatenatedθ::Vector{<:Real},
-								   mpGLM::MixturePoissonGLM,
-								   γ::Matrix{<:Vector{<:AbstractFloat}})
+								   γ::Matrix{<:Vector{<:AbstractFloat}},
+								   mpGLM::MixturePoissonGLM)
 	mpGLM = MixturePoissonGLM(concatenatedθ, mpGLM)
     @unpack Δt, 𝐲 = mpGLM
     T = length(𝐲)
@@ -279,14 +138,15 @@ UNMODIFIED ARGUMENT
 EXAMPLE
 ```julia-rep
 julia> using FHMDDM, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> mpGLM = model.trialsets[1].mpGLMs[1]
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(mpGLM.θ)
 julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-julia> ghand = similar(concatenatedθ)
-julia> FHMDDM.expectation_∇loglikelihood!(ghand, indexθ, γ, mpGLM)
+julia> ∇Q = FHMDDM.GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
+julia> FHMDDM.expectation_∇loglikelihood!(∇Q, γ, mpGLM)
+julia> ghand = FHMDDM.concatenateparameters(∇Q)[1]
 julia> using ForwardDiff
-julia> f(x) = FHMDDM.expectation_loglikelihood(x, mpGLM, γ)
+julia> concatenatedθ = FHMDDM.concatenateparameters(mpGLM.θ)[1]
+julia> f(x) = FHMDDM.expectation_loglikelihood(x, γ, mpGLM)
 julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
 julia> maximum(abs.(gauto .- ghand))
 ```
@@ -294,7 +154,7 @@ julia> maximum(abs.(gauto .- ghand))
 function expectation_∇loglikelihood!(∇Q::GLMθ,
 	                                γ::Matrix{<:Vector{<:Real}},
 	                                mpGLM::MixturePoissonGLM)
-	@unpack Δt, 𝐇, 𝐔, 𝐕, d𝛏_dB, 𝐲 = mpGLM
+	@unpack Δt, d𝛏_dB, 𝐕, 𝐗, 𝐲 = mpGLM
 	Ξ, K = size(γ)
 	T = length(𝐲)
 	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
@@ -309,111 +169,214 @@ function expectation_∇loglikelihood!(∇Q::GLMθ,
 			end
 		end
 	end
-	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
-	𝐇ᵀ, 𝐔ᵀ, 𝐕ᵀ = transpose(𝐇), transpose(𝐔), transpose(𝐕)
-	∇Q.𝐡 .= 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	q = size(𝐗,2)-size(𝐕,2)
+	𝐔ᵀ = transpose(@view 𝐗[:,1:q])
+	𝐕ᵀ = transpose(𝐕)
+	∇Q.𝐮 .= 𝐔ᵀ*sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	@inbounds for k = 1:K
-		∇Q.𝐮[k] .= 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
 		∇Q.𝐯[k] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-		∇Q.𝐰[k] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
 	end
 	return nothing
 end
 
 """
-    expectation_∇∇loglikelihood(Opt, γ, mpGLM)
+    learn_state_independent_filters!(mpGLM, Opt)
 
-Compute the log-likelihood of a Poisson mixture GLM and its first and second derivatives
+Learn the filters of the state-independent inputs
 
-MODIFIED ARGUMENT
--`∇∇Q`: Hessian matrix
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probabilities of the latents
+ARGUMENT
 -`mpGLM`: the Poisson mixture GLM of one neuron
--`x`: filters of the Poisson mixture GLM
+
+OPTIONAL ARGUMENT
+-`show_trace`: whether to show information about each step of the optimization
 
 RETURN
--nothing
+-weights concatenated into a single vector
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
+julia> mpGLM = model.trialsets[1].mpGLMs[1]
+julia> Opt = FHMDDM.PoissonGLMOptimization(𝐮 = fill(NaN, length(mpGLM.θ.𝐮)))
+julia> FHMDDM.estimatefilters!(mpGLM, Opt)
+```
+"""
+function learn_state_independent_filters!(mpGLM::MixturePoissonGLM,
+										Opt::PoissonGLMOptimization,
+										iterations::Integer=20,
+										show_trace::Bool=true)
+    f(𝐮) = -loglikelihood!(mpGLM,Opt,𝐮)
+	g!(∇, 𝐮) = ∇negloglikelihood!(∇,mpGLM,Opt,𝐮)
+	h!(∇∇, 𝐮) = ∇∇negloglikelihood!(∇∇,mpGLM,Opt,𝐮)
+    results = Optim.optimize(f, g!, h!, copy(mpGLM.θ.𝐮), NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
+	mpGLM.θ.𝐮 .= Optim.minimizer(results)
+	return nothing
+end
+
+"""
+	loglikelihood!(mpGLM, Opt, concatenatedθ)
+
+Compute the log-likelihood of Poisson GLM
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+
+RETURN
+-log-likelihood of a Poisson GLM
+"""
+function loglikelihood!(mpGLM::MixturePoissonGLM,
+						Opt::PoissonGLMOptimization,
+						𝐮::Vector{<:AbstractFloat})
+	update!(mpGLM, Opt, 𝐮)
+	return Opt.ℓ[1]
+end
+
+"""
+	∇negloglikelihood!(g, mpGLM, Opt, γ, concatenatedθ)
+
+Compute the gradient of the negative of the log-likelihood of a Poisson GLM
+
+MODIFIED ARGUMENT
+-`g`: gradient
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+"""
+function ∇negloglikelihood!(g::Vector{<:AbstractFloat},
+							mpGLM::MixturePoissonGLM,
+							Opt::PoissonGLMOptimization,
+							𝐮::Vector{<:AbstractFloat})
+	update!(mpGLM, Opt, 𝐮)
+	for i in eachindex(g)
+		g[i] = -Opt.∇ℓ[i]
+	end
+	return nothing
+end
+
+"""
+	∇∇negloglikelihood!(h, mpGLM, Opt, γ, concatenatedθ)
+
+Compute the hessian of the negative of the log-likelihood of a Poisson GLM
+
+MODIFIED ARGUMENT
+-`h`: hessian
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
+"""
+function ∇∇negloglikelihood!(h::Matrix{<:AbstractFloat},
+							mpGLM::MixturePoissonGLM,
+							Opt::PoissonGLMOptimization,
+							𝐮::Vector{<:AbstractFloat})
+	update!(mpGLM, Opt, 𝐮)
+	for i in eachindex(h)
+		h[i] = -Opt.∇∇ℓ[i]
+	end
+	return nothing
+end
+
+"""
+	update!(mpGLM, Opt, concatenatedθ)
+
+Update quantities for computing the log-likelihood of a Poisson GLM and its gradient and hessian
+
+MODIFIED ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+
+ARGUMENT
+-`concatenatedθ`: parameters of a GLM concatenated into a vector
 
 EXAMPLE
 ```julia-rep
 julia> using FHMDDM, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> mpGLM = model.trialsets[1].mpGLMs[1]
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(mpGLM.θ)
-julia> Opt = FHMDDM.MixturePoissonGLM_Optimization(concatenatedθ=fill(NaN, length(concatenatedθ)), indexθ=indexθ)
-julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-julia> FHMDDM.expectation_∇∇loglikelihood!(Opt, γ, mpGLM)
+julia> Opt = FHMDDM.PoissonGLMOptimization(𝐮 = fill(NaN, length(mpGLM.θ.𝐮)))
+julia> rand𝐮 = copy(mpGLM.θ.𝐮)
+julia> FHMDDM.update!(mpGLM, Opt, rand𝐮)
 julia> using ForwardDiff
-julia> f(x) = FHMDDM.expectation_loglikelihood(x, mpGLM, γ)
-julia> fauto = f(concatenatedθ)
-julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
-julia> hauto = ForwardDiff.hessian(f, concatenatedθ)
-julia> abs(fauto - Opt.Q[1])
-julia> maximum(abs.(gauto .- Opt.∇Q))
-julia> maximum(abs.(hauto .- Opt.∇∇Q))
+julia> f(𝐮) = FHMDDM.loglikelihood(mpGLM, 𝐮)
+julia> fauto = f(rand𝐮)
+julia> gauto = ForwardDiff.gradient(f, rand𝐮)
+julia> hauto = ForwardDiff.hessian(f, rand𝐮)
+julia> abs(fauto - Opt.ℓ[1])
+julia> maximum(abs.(gauto .- Opt.∇ℓ))
+julia> maximum(abs.(hauto .- Opt.∇∇ℓ))
 ```
 """
-function expectation_∇∇loglikelihood!(Opt::MixturePoissonGLM_Optimization,
-									γ::Matrix{<:Vector{<:AbstractFloat}},
-									mpGLM::MixturePoissonGLM)
-	@unpack indexθ, Q, ∇Q, ∇∇Q = Opt
-    @unpack Δt, 𝐇, 𝐔, 𝐕, d𝛏_dB, θ, 𝐲 = mpGLM
-	d𝛏_dB² = d𝛏_dB.^2
-	Ξ,K = size(γ)
+function update!(mpGLM::MixturePoissonGLM,
+				Opt::PoissonGLMOptimization,
+				𝐮::Vector{<:AbstractFloat})
+	if 𝐮 != Opt.𝐮
+		Opt.𝐮 .= 𝐮
+		mpGLM.θ.𝐮 .= 𝐮
+		∇∇loglikelihood!(Opt, mpGLM)
+	end
+end
+
+"""
+    ∇∇loglikelihood!(Opt, mpGLM)
+
+Compute the log-likelihood of a Poisson mixture GLM and its first and second derivatives
+
+MODIFIED ARGUMENT
+-`Opt`: a structure for maximizing the expectation of the log-likelihood of a mixture of Poisson GLM
+
+UNMODIFIED ARGUMENT
+-`mpGLM`: the Poisson mixture GLM of one neuron
+```
+"""
+function ∇∇loglikelihood!(Opt::PoissonGLMOptimization, mpGLM::MixturePoissonGLM)
+	@unpack ℓ, ∇ℓ, ∇∇ℓ = Opt
+    @unpack Δt, 𝐗, 𝐲 = mpGLM
+	@unpack 𝐮 = mpGLM.θ
+	𝐔 = @view 𝐗[:,1:length(𝐮)]
+	𝐔ᵀ = transpose(𝐔)
+	𝐋 = 𝐔*𝐮
 	T = length(𝐲)
-	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
-	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(T) for k=1:K)
-	Q[1] = 0.0
-	∇Q .= 0.0
-	∇∇Q .= 0.0
-	@inbounds for i = 1:Ξ
-		for k = 1:K
-			𝐋 = linearpredictor(mpGLM,i,k)
-			for t=1:T
-				d²ℓ_dL², dℓ_dL, ℓ = differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
-				Q[1] += γ[i,k][t]*ℓ
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
-				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
-			end
-		end
+	d²ℓ_dL², dℓ_dL = zeros(T), zeros(T)
+	ℓ[1] = 0.0
+	for t = 1:T
+		d²ℓ_dL²[t], dℓ_dL[t], ℓₜ = differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+		ℓ[1] += ℓₜ
 	end
-	𝐇ᵀ, 𝐔ᵀ, 𝐕ᵀ = transpose(𝐇), transpose(𝐔), transpose(𝐕)
-	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
-	∇Q[indexθ.𝐡] = 𝐇ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
-	@inbounds for k = 1:K
-		∇Q[indexθ.𝐮[k]] = 𝐔ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ[k]
-		∇Q[indexθ.𝐯[k]] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-		∇Q[indexθ.𝐰[k]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
-	end
-	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
-	∇∇Q[indexθ.𝐡, indexθ.𝐡] = 𝐇ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐇)
-	@inbounds for k=1:K
-		∇∇Q[indexθ.𝐡, indexθ.𝐮[k]] = 𝐇ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k].*𝐔)
-		∇∇Q[indexθ.𝐡, indexθ.𝐯[k]] = 𝐇ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-		∇∇Q[indexθ.𝐡, indexθ.𝐰[k]] = 𝐇ᵀ*∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k]
-		∇∇Q[indexθ.𝐮[k], indexθ.𝐮[k]] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k].*𝐔)
-		∇∇Q[indexθ.𝐮[k], indexθ.𝐯[k]] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-		∇∇Q[indexθ.𝐮[k], indexθ.𝐰[k]] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
-		∇∇Q[indexθ.𝐯[k], indexθ.𝐯[k]] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
-		∇∇Q[indexθ.𝐯[k], indexθ.𝐰[k]] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])
-		∇∇Q[indexθ.𝐰[k], indexθ.𝐰[k]] = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
-	end
-	@inbounds for q=1:size(∇∇Q,1) # update the lower triangle
-		for r=q+1:size(∇∇Q,2)
-			∇∇Q[r,q] = ∇∇Q[q,r]
-		end
-	end
+	∇ℓ .= 𝐔ᵀ*dℓ_dL
+	∇∇ℓ .= 𝐔ᵀ*(d²ℓ_dL².*𝐔)
 	return nothing
+end
+
+"""
+	loglikelihood(mpGLM, concatenatedθ)
+
+Compute the log-likelihood of Poisson GLM
+
+ARGUMENT
+-`mpGLM`: a structure containing the parameters, input, and observations a mixture of Poisson GLM
+-`𝐮`: filters of the state-independent inputs of the GLM
+
+RETURN
+-log-likelihood of a Poisson GLM
+"""
+function loglikelihood(mpGLM::MixturePoissonGLM, 𝐮::Vector{type}) where {type<:Real}
+	@unpack Δt, 𝐗, 𝐲 = mpGLM
+	𝐔 = @view 𝐗[:,1:length(𝐮)]
+	𝐔ᵀ = transpose(𝐔)
+	𝐋 = 𝐔*𝐮
+	T = length(𝐲)
+	d²ℓ_dL², dℓ_dL = zeros(type, T), zeros(type, T)
+	ℓ = 0.0
+	for t = 1:T
+		ℓ += poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
+	end
+	ℓ
 end
 
 """
@@ -432,13 +395,13 @@ RETURN
 -log-likelihood
 """
 function poissonloglikelihood(Δt::AbstractFloat, L::Real, y::Integer)
-    λ = softplus(L)
+    λΔt = softplus(L)*Δt
 	if y == 0
-		-λ*Δt
+		-λΔt
 	elseif y == 1
-		log(λ) - λ*Δt
+		log(λΔt) - λΔt
 	else
-		y*log(λ) - λ*Δt
+		y*log(λΔt) - λΔt
 	end
 end
 
@@ -492,12 +455,13 @@ function differentiate_loglikelihood_twice_wrt_linearpredictor(Δt::AbstractFloa
 	f₀ = softplus(L)
     f₁ = logistic(L)
     f₂ = f₁*(1.0-f₁)
+	λΔt = f₀*Δt
 	if y == 0
-		ℓ = -f₀*Δt
+		ℓ = -λΔt
 	elseif y == 1
-		ℓ = log(f₀) - f₀*Δt
+		ℓ = log(λΔt) - λΔt
 	else
-		ℓ = y*log(f₀) - f₀*Δt
+		ℓ = y*log(λΔt) - λΔt
 	end
 	if y > 0
         if L > -100.0
@@ -523,24 +487,19 @@ Randomly initiate the parameters for a mixture of Poisson generalized linear mod
 
 ARGUMENT
 -`K`: number of coupling states
--`𝐇`: time-varying inputs from spike history
--`𝐔`: time-varying inputs from trial events
--`𝐕`: time-varying inputs from the accumulator
+-`𝐗`: constant input, time-varying inputs from spike history, time-varying inputs from trial events
+-`𝐕`: constant and time-varying inputs from the accumulator
 
 OUTPUT
 -an instance of `GLMθ`
 """
 function GLMθ(K::Integer,
-			𝐇::Matrix{<:AbstractFloat},
-			𝐔::Matrix{<:AbstractFloat},
+			𝐗::Matrix{<:AbstractFloat},
 			𝐕::Matrix{<:AbstractFloat})
-	n𝐡 = size(𝐇,2)
-	n𝐮 = size(𝐔,2)
-	n𝐯 = size(𝐕,2)
-	θ = GLMθ(𝐡 = 1.0 .- 2.0.*rand(n𝐡),
-			 𝐰 = 1.0 .- 2.0.*rand(K),
-			 𝐮 = collect(1.0 .- 2.0.*rand(n𝐮) for k=1:K),
-			 𝐯 = collect(1.0 .- 2.0.*rand(n𝐯) for k=1:K))
+	n𝐯 =size(𝐕,2)
+	n𝐮 = size(𝐗,2)-size(𝐕,2)
+	θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(n𝐮),
+			 𝐯 = [-rand(n𝐯), rand(n𝐯)])
 end
 
 """
@@ -558,10 +517,8 @@ RETURN
 -an instance of GLMθ
 """
 function GLMθ(glmθ::GLMθ, elementtype)
-	GLMθ(𝐡 = zeros(elementtype, length(glmθ.𝐡)),
-		 𝐮 = collect(zeros(elementtype, length(𝐮)) for 𝐮 in glmθ.𝐮),
-		 𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
-		 𝐰 = zeros(elementtype, length(glmθ.𝐰)))
+	GLMθ(𝐮 = zeros(elementtype, length(glmθ.𝐮)),
+		 𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯))
 end
 
 """

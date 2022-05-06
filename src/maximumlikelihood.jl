@@ -25,7 +25,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM, LineSearches, Optim
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
 julia> model = Model(datapath)
 julia> losses, gradientnorms = maximizelikelihood!(model, LBFGS(linesearch = LineSearches.BackTracking()))
 ```
@@ -187,7 +187,7 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
     if length(clicks.time) > 0
 		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
-	FHMDDM.priorprobability!(P, trial.previousanswer)
+	priorprobability!(P, trial.previousanswer)
 	pa₁ = P.𝛑
 	f = p𝐘𝑑[1] .* pa₁ .* πᶜᵀ
 	D = sum(f)
@@ -198,8 +198,8 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 			Aᵃ = Aᵃsilent
 		else
 			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
-			FHMDDM.update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-			FHMDDM.transitionmatrix!(Aᵃ, P)
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃ, P)
 		end
 		f = p𝐘𝑑[t].*(Aᵃ * f * Aᶜᵀ)
 		D = sum(f)
@@ -225,7 +225,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 julia> ℓ = loglikelihood(concatenatedθ, indexθ, model)
 julia> using ForwardDiff
@@ -315,7 +315,7 @@ ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 julia> ∇nℓ = similar(concatenatedθ)
 julia> memory = FHMDDM.Memoryforgradient(model)
@@ -348,25 +348,15 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 	native2real!(∇nℓ, memory.indexθ.latentθ, model)
 	for ∇ℓglms in memory.∇ℓglm
 		for ∇ℓglm in ∇ℓglms
-			for h in ∇ℓglm.𝐡
+			for u in ∇ℓglm.𝐮
 				indexfit+=1
-				∇nℓ[indexfit] = -h
-			end
-			for 𝐮ₖ in ∇ℓglm.𝐮
-				for u in 𝐮ₖ
-					indexfit+=1
-					∇nℓ[indexfit] = -u
-				end
+				∇nℓ[indexfit] = -u
 			end
 			for 𝐯ₖ in ∇ℓglm.𝐯
 				for v in 𝐯ₖ
 					indexfit+=1
 					∇nℓ[indexfit] = -v
 				end
-			end
-			for w in ∇ℓglm.𝐰
-				indexfit+=1
-				∇nℓ[indexfit] = -w
 			end
 		end
 	end
@@ -564,7 +554,7 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
 	∇ℓglm = map(model.trialsets) do trialset
 				map(trialset.mpGLMs) do mpGLM
-					GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐰[1]))
+					GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
 				end
 			end
 	Aᵃinput=map(1:maxclicks) do t

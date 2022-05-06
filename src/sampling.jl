@@ -18,8 +18,8 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = FHMDDM.Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_01_test/data.mat");
-julia> λΔt, pchoice = FHMDDM.expectedemissions(model)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat");
+julia> λΔt, pchoice = expectedemissions(model; nsamples =2)
 ```
 """
 function expectedemissions(model::Model; nsamples::Integer=100)
@@ -123,11 +123,14 @@ RETURN
 """
 function sampleemissions(mpGLM::MixturePoissonGLM,
                 		trials::Vector{<:Trial}) where {integertype<:Integer}
-	@unpack Δt, 𝐔, 𝐕, d𝛏_dB, 𝐲 = mpGLM
-	@unpack 𝐡, 𝐮, 𝐯, 𝐰 = mpGLM.θ
-	K = length(𝐰)
+	@unpack Δt, d𝛏_dB, max_spikehistory_lag, 𝐗, 𝐕, 𝐲 = mpGLM
+	@unpack 𝐮, 𝐯 = mpGLM.θ
+	u₀ = 𝐮[1]
+	𝐡 = 𝐮[2:2+max_spikehistory_lag]
+	𝐞 = 𝐮[3+max_spikehistory_lag:end]
+	𝐄 = @view 𝐗[:,3+max_spikehistory_lag:end]
+	K = length(𝐯)
 	Ξ = length(d𝛏_dB)
-	max_spikehistory_lag = length(𝐡)
 	max_spikes_per_step = floor(1000Δt)
     𝐲̂ = similar(𝐲)
     τ = 0
@@ -136,9 +139,9 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
             τ += 1
             j = trials[m].a[t]
             k = trials[m].c[t]
-			L = 𝐰[k]
-			for i in eachindex(𝐮[k])
-				L+= 𝐔[τ,i]*𝐮[k][i]
+			L = 𝐮[1]
+			for i in eachindex(𝐞)
+				L+= 𝐄[τ,i]*𝐞[i]
 			end
 			for i in eachindex(𝐯[k])
 				L+= d𝛏_dB[j]*𝐕[τ,i]*𝐯[k][i]
@@ -204,17 +207,15 @@ RETURN
 function sample(mpGLM::MixturePoissonGLM,
                 sampledtrials::Vector{<:Trial})
     𝐲̂ = sampleemissions(mpGLM, sampledtrials)
-	θ = GLMθ(𝐡 = copy(mpGLM.θ.𝐡),
-			𝐮 = map(𝐮ₖ->copy(𝐮ₖ), mpGLM.θ.𝐮),
-			𝐯 = map(𝐯ₖ->copy(𝐯ₖ), mpGLM.θ.𝐯),
-			𝐰 = copy(mpGLM.θ.𝐰))
+	θ = GLMθ(𝐮 = copy(mpGLM.θ.𝐮),
+			𝐯 = map(𝐯ₖ->copy(𝐯ₖ), mpGLM.θ.𝐯))
     MixturePoissonGLM(Δt=mpGLM.Δt,
-					  𝐇=mpGLM.𝐇,
-                      𝐔=mpGLM.𝐔,
-                      𝐕=mpGLM.𝐕,
-                      Φ=mpGLM.Φ,
+                      d𝛏_dB=mpGLM.d𝛏_dB,
+					  max_spikehistory_lag=mpGLM.max_spikehistory_lag,
+					  Φ=mpGLM.Φ,
 					  θ=θ,
-                      d𝛏_dB=mpGLM.𝛏,
+                      𝐕=mpGLM.𝐕,
+                      𝐗=mpGLM.𝐗,
                       𝐲=𝐲̂)
 end
 
