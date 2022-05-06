@@ -187,7 +187,7 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
     if length(clicks.time) > 0
 		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
-	priorprobability!(P, trial.previousanswer)
+	FHMDDM.priorprobability!(P, trial.previousanswer)
 	pa₁ = P.𝛑
 	f = p𝐘𝑑[1] .* pa₁ .* πᶜᵀ
 	D = sum(f)
@@ -198,8 +198,8 @@ function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 			Aᵃ = Aᵃsilent
 		else
 			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
-			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-			transitionmatrix!(Aᵃ, P)
+			FHMDDM.update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			FHMDDM.transitionmatrix!(Aᵃ, P)
 		end
 		f = p𝐘𝑑[t].*(Aᵃ * f * Aᶜᵀ)
 		D = sum(f)
