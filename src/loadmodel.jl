@@ -264,7 +264,7 @@ julia> FHMDDM.initializeparameters!(model)
 ```
 """
 function initializeparameters!(model::Model)
-	maximizechoiceLL!(model)
+	maximize_choice_posterior!(model)
 	q = length(model.trialsets[1].mpGLMs[1].θ.𝐮)
 	Opt = PoissonGLMOptimization(𝐮 = fill(NaN, q))
 	for trialset in model.trialsets

@@ -102,15 +102,14 @@ function L2regularizer(model::Model)
 			𝛌[i] = model.options.initial_ddm_L2_coefficient
 		end
 	end
-	s = model.options.initial_glm_L2_coefficient
 	for glmθ in index.glmθ
 		for glmθ in glmθ
-			for u in glmθ.𝐮
-				𝛌[u] = s
+			for q = 2:length(glmθ.𝐮)
+				𝛌[glmθ.𝐮[q]] = model.options.initial_glm_L2_coefficient
 			end
 			for 𝐯ₖ in glmθ.𝐯
-				for u in 𝐯ₖ
-					𝛌[u] = s
+				for v in 𝐯ₖ
+					𝛌[v] = model.options.initial_glm_L2_coefficient
 				end
 			end
 		end

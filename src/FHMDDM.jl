@@ -49,6 +49,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         MixturePoissonGLM,
         Model,
         maximizechoiceLL!,
+        maximize_choice_posterior!,
         maximizelikelihood!,
         maximizeposterior!,
         ∇adapt,

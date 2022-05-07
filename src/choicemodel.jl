@@ -1,7 +1,7 @@
 """
-	maximizechoiceLL!(model)
+	maximize_choice_posterior!(model)
 
-Learn the parameters that maximize the log-likelihood of the behavioral choices
+Learn the parameters that maximize the L2-regularized log-likelihood of the behavioral choices
 
 OPTIONAL ARGUMENT
 -`extended_trace`: save additional information
@@ -16,10 +16,49 @@ OPTIONAL ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
-julia> model = Model(datapath; randomize=true)
-julia> FHMDDM.maximizechoiceLL!(model)
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_07a/T176_2018_05_03/data.mat"
+julia> model = Model(datapath)
+julia> FHMDDM.maximize_choice_posterior!(model)
 ```
+"""
+function maximize_choice_posterior!(model::Model;
+						 L2coefficient::Real=0.1,
+		                 extended_trace::Bool=true,
+		                 f_tol::AbstractFloat=1e-9,
+		                 g_tol::AbstractFloat=1e-8,
+		                 iterations::Integer=1000,
+		                 show_every::Integer=10,
+		                 show_trace::Bool=true,
+		                 x_tol::AbstractFloat=1e-5)
+	memory = Memoryforgradient(model; choicemodel=true)
+    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ) + L2coefficient*dot(concatenatedθ,concatenatedθ)
+	function g!(∇, concatenatedθ)
+		∇negativechoiceLL!(∇, memory, model, concatenatedθ)
+		∇ .+= 2.0.*L2coefficient.*concatenatedθ
+		return nothing
+	end
+    Optim_options = Optim.Options(extended_trace=extended_trace,
+								  f_tol=f_tol,
+                                  g_tol=g_tol,
+                                  iterations=iterations,
+                                  show_every=show_every,
+                                  show_trace=show_trace,
+                                  x_tol=x_tol)
+	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
+	θ₀ = concatenate_choice_related_parameters(model)[1]
+	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
+    println(optimizationresults)
+	θₘₗ = Optim.minimizer(optimizationresults)
+	sortparameters!(model, θₘₗ, memory.indexθ.latentθ)
+end
+
+"""
+	maximizechoiceLL!(model)
+
+Learn the parameters that maximize the log-likelihood of the behavioral choices
+
+OPTIONAL ARGUMENT
+-see documentation of 'maximize_choice_posterior'
 """
 function maximizechoiceLL!(model::Model;
 		                 extended_trace::Bool=true,
@@ -29,10 +68,9 @@ function maximizechoiceLL!(model::Model;
 		                 show_every::Integer=10,
 		                 show_trace::Bool=true,
 		                 x_tol::AbstractFloat=1e-5)
-	θ₀, indexθ = concatenate_choice_related_parameters(model)
-	f(concatenatedθ) = choiceLL(concatenatedθ, indexθ.latentθ, model)
-	OD = OnceDifferentiable(f, θ₀; autodiff = :forward);
-	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
+	memory = Memoryforgradient(model; choicemodel=true)
+    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ)
+    g!(∇, concatenatedθ) = ∇negativechoiceLL!(∇, memory, model, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -40,10 +78,12 @@ function maximizechoiceLL!(model::Model;
                                   show_every=show_every,
                                   show_trace=show_trace,
                                   x_tol=x_tol)
-	optimizationresults = Optim.optimize(OD, θ₀, algorithm, Optim_options)
+	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
+	θ₀ = concatenate_choice_related_parameters(model)[1]
+	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
     println(optimizationresults)
 	θₘₗ = Optim.minimizer(optimizationresults)
-	sortparameters!(model, θₘₗ, indexθ.latentθ)
+	sortparameters!(model, θₘₗ, memory.indexθ.latentθ)
 end
 
 """
@@ -158,7 +198,9 @@ function choiceLL(concatenatedθ::Vector{T},
 		for m in eachindex(trialsets[s].trials)
 			trial = trialsets[s].trials[m]
 			f = probabilityvector(θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
-			adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+			if length(trial.clicks.time) > 0
+				adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+			end
 			for t=2:trial.ntimesteps
 				if t ∈ trial.clicks.inputtimesteps
 					cL = sum(adaptedclicks.C[trial.clicks.left[t]])
@@ -216,6 +258,22 @@ julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
 julia> FHMDDM.∇negativechoiceLL!(∇nℓ, memory, model, concatenatedθ)
 julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)
 julia> abs(ℓ - memory.ℓ[1])
+```
+
+```compare speeds of automatic and hand-coded gradients
+julia> using FHMDDM, ForwardDiff, BenchmarkTools
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_07a/T176_2018_05_03/data.mat"; randomize=true);
+julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model);
+julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true);
+julia> ghand!(∇, concatenatedθ) = FHMDDM.∇negativechoiceLL!(∇, memory, model, concatenatedθ);
+julia> f(x) = FHMDDM.choiceLL(x, indexθ.latentθ, model);
+julia> gauto!(∇, x) = ForwardDiff.gradient!(∇, f, x);
+julia> g1, g2 = similar(concatenatedθ), similar(concatenatedθ);
+julia> ghand!(g1, concatenatedθ);
+julia> ghand!(g2, concatenatedθ);
+julia> maximum(abs.(g1.-g2))
+julia> @benchmark ghand!(g1, concatenatedθ) #4.6s
+julia> @benchmark gauto!(g2, concatenatedθ) #9.2s
 ```
 """
 function ∇negativechoiceLL!(∇nℓ::Vector{<:Real},
