@@ -126,32 +126,27 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
 	@unpack Δt, d𝛏_dB, max_spikehistory_lag, 𝐗, 𝐕, 𝐲 = mpGLM
 	@unpack 𝐮, 𝐯 = mpGLM.θ
 	u₀ = 𝐮[1]
-	𝐡 = 𝐮[2:2+max_spikehistory_lag]
-	𝐞 = 𝐮[3+max_spikehistory_lag:end]
-	𝐄 = @view 𝐗[:,3+max_spikehistory_lag:end]
+	𝐡 = 𝐮[2:1+max_spikehistory_lag]
+	𝐞 = 𝐮[2+max_spikehistory_lag:end]
+	𝐄 = @view 𝐗[:,2+max_spikehistory_lag:1+max_spikehistory_lag+length(𝐞)]
+	𝐄𝐞 = 𝐄*𝐞
 	K = length(𝐯)
 	Ξ = length(d𝛏_dB)
 	max_spikes_per_step = floor(1000Δt)
     𝐲̂ = similar(𝐲)
     τ = 0
     for m in eachindex(trials)
-        for t in 1:trials[m].ntimesteps
+        for t = 1:trials[m].ntimesteps
             τ += 1
             j = trials[m].a[t]
             k = trials[m].c[t]
-			L = 𝐮[1]
-			for i in eachindex(𝐞)
-				L+= 𝐄[τ,i]*𝐞[i]
-			end
+			L = u₀ + 𝐄𝐞[τ]
 			for i in eachindex(𝐯[k])
 				L+= d𝛏_dB[j]*𝐕[τ,i]*𝐯[k][i]
 			end
-			if (max_spikehistory_lag > 0) && (t > 1)
-                lag = min(max_spikehistory_lag, t-1)
-				for i in eachindex(lag)
-					L += 𝐡[i]*𝐲̂[τ-lag[i]]
-				end
-            end
+			for lag = 1:min(max_spikehistory_lag, t-1)
+				L += 𝐡[lag]*𝐲̂[τ-lag]
+			end
             λ = softplus(L)
             𝐲̂[τ] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
         end
