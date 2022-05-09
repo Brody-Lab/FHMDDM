@@ -499,7 +499,7 @@ function GLMθ(K::Integer,
 	n𝐯 =size(𝐕,2)
 	n𝐮 = size(𝐗,2)-size(𝐕,2)
 	θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(n𝐮),
-			 𝐯 = [-rand(n𝐯), rand(n𝐯)])
+			 𝐯 = [-ones(n𝐯), ones(n𝐯)])
 end
 
 """

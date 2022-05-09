@@ -16,6 +16,7 @@ function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
     nbases = max(1, ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt)))
     if options.basistype == "none"
         Φ = ones(Tmax,1)
+        nbases = 1
     elseif options.basistype == "raised_cosine"
         Φ = raisedcosinebases(false, false, nbases, Tmax)
     elseif options.basistype == "Chebyshev_polynomial"
