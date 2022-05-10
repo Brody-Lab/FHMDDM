@@ -36,7 +36,6 @@ export  adapt, # module-specific functions and types in this module that we can 
         forward,
         GLMθ,
         Hessian,
-        𝐇negativeexpectation!,
         Indexθ,
         initializeparameters!,
         Latentθ,
@@ -66,7 +65,6 @@ export  adapt, # module-specific functions and types in this module that we can 
         probabilityvector!,
         real2native,
         real2native!,
-        rectifya,
         relative_loglikelihood,
         sample,
         sampleemissions,
@@ -85,7 +83,6 @@ include("conversions.jl")
 include("crossvalidation.jl")
 include("drift_diffusion_dynamics.jl")
 include("E_step.jl")
-include("Hessian.jl")
 include("loadmodel.jl")
 include("maximumlikelihood.jl")
 include("maximumaposteriori.jl")
@@ -94,8 +91,6 @@ include("parametersorting.jl")
 include("temporal_basis_functions.jl")
 include("sampling.jl")
 include("save.jl")
-include("spike_train_model.jl")
-include("tests.jl")
 include("two_pass_Hessian.jl")
 
 end # module

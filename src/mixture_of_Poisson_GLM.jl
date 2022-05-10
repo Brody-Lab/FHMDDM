@@ -81,7 +81,7 @@ ARGUMENT
 -`k`: state of the coupling variable
 
 RETURN
--`𝛌`: a vector whose element 𝛌[t] corresponds to the t-th time bin in the trialset
+-`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
 """
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack 𝐗, d𝛏_dB = mpGLM

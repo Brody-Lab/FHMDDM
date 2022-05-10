@@ -530,14 +530,8 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 		πᶜ = ones(1)
 		∇πᶜ = [zeros(1)]
 	end
-	maxclicks = 0
-	maxtimesteps = 0
-	@inbounds for trialset in model.trialsets
-		for trial in trialset.trials
-			maxclicks = max(maxclicks, length(trial.clicks.time))
-			maxtimesteps = max(maxtimesteps, trial.ntimesteps)
-		end
-	end
+	maxclicks = maximum_number_of_clicks(model)
+	maxtimesteps = maximum_number_of_time_steps(model)
 	if choicemodel
 		concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
 		f = collect(zeros(Ξ,1) for t=1:maxtimesteps)
@@ -604,6 +598,38 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 								p𝐘𝑑=p𝐘𝑑,
 								Ξ=Ξ)
 	return memory
+end
+
+"""
+	maximum_number_of_clicks(model)
+
+Return the maximum number of clicks across all trials.
+
+The stereoclick is excluded from this analysis as well as all other analyses.
+"""
+function maximum_number_of_clicks(model::Model)
+	maxclicks = 0
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			maxclicks = max(maxclicks, length(trial.clicks.time))
+		end
+	end
+	return maxclicks
+end
+
+"""
+	maximum_number_of_time_steps(model)
+
+Return the maximum number of time steps across all trials
+"""
+function maximum_number_of_time_steps(model::Model)
+	maxtimesteps = 0
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			maxtimesteps = max(maxtimesteps, trial.ntimesteps)
+		end
+	end
+	return maxtimesteps
 end
 
 """

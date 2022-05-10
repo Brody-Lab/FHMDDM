@@ -166,6 +166,79 @@ function native2real!(∇ℓ::Vector{<:Real}, indexθ::Latentθ, model::Model)
 end
 
 """
+	differentiate_native_wrt_real(model)
+
+Derivative of each latent-variable-related parameter in its native space with respect to its value in real space
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+RETURN
+-`derivatives`: an instance of `Latentθ` containing the derivative of each parameter in its native space with respect to its value in real space
+"""
+function differentiate_native_wrt_real(model::Model)
+	@unpack options, θreal, θnative = model
+	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	f_bound_z = 1.0-2.0*options.bound_z
+	f_bound_ψ = 1.0-2.0*options.bound_ψ
+	d = Latentθ()
+	d.Aᶜ₁₁[1] = f_bound_z*tmpAᶜ₁₁*(1.0 - tmpAᶜ₁₁)
+	d.Aᶜ₂₂[1] = f_bound_z*tmpAᶜ₂₂*(1.0 - tmpAᶜ₂₂)
+	d.B[1] = θnative.B[1]*logistic(-θreal.B[1])
+	d.k[1] = θnative.k[1]
+	d.λ[1] = 1.0
+	d.μ₀[1] = 1.0
+	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	d.πᶜ₁[1] = f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
+	d.ψ[1] = f_bound_ψ*tmpψ*(1.0 - tmpψ)
+	d.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
+	d.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
+	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	d.wₕ[1] = 1.0
+	return d
+end
+
+"""
+	differentiate_twice_native_wrt_real(model)
+
+Second derivative of each latent-variable-related parameter in its native space with respect to its value in real space
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of an FHMDDM
+
+RETURN
+-`derivatives`: an instance of `Latentθ` containing the derivative of each parameter in its native space with respect to its value in real space
+"""
+function differentiate_twice_native_wrt_real(model::Model)
+	@unpack options, θreal, θnative = model
+	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	f_bound_z = 1.0-2.0*options.bound_z
+	f_bound_ψ = 1.0-2.0*options.bound_ψ
+	d = Latentθ()
+	d.Aᶜ₁₁[1] = f_bound_z*(tmpAᶜ₁₁*(1-tmpAᶜ₁₁)^2 - tmpAᶜ₁₁^2*(1-tmpAᶜ₁₁))
+	d.Aᶜ₂₂[1] = f_bound_z*(tmpAᶜ₂₂*(1-tmpAᶜ₂₂)^2 - tmpAᶜ₂₂^2*(1-tmpAᶜ₂₂))
+	fB = logistic(θreal.B[1])
+	d.B[1] = 2options.q_B*(fB*(1-fB)^2 - fB^2*(1-fB))
+	d.k[1] = θnative.k[1]
+	d.λ[1] = 0.0
+	d.μ₀[1] = 0.0
+	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])^2 - θnative.ϕ[1]^2*(1.0 - θnative.ϕ[1])
+	d.πᶜ₁[1] = f_bound_z*(tmpπᶜ₁*(1-tmpπᶜ₁)^2 - tmpπᶜ₁^2*(1-tmpπᶜ₁))
+	d.ψ[1] = f_bound_ψ*(tmpψ*(1-tmpψ)^2 - tmpψ^2*(1-tmpψ))
+	d.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
+	d.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
+	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	d.wₕ[1] = 0.0
+	return d
+end
+
+"""
     real2native(options, θreal)
 
 Map values of model parameters from real space to native space

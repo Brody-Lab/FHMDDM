@@ -1,4 +1,3 @@
-
 """
 	check_twopasshessian(model)
 
@@ -15,7 +14,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat")
 julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_twopasshessian(model)
 ```
 """
@@ -47,7 +46,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true)
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian!(model, concatenatedθ, indexθ)
 ```
@@ -77,7 +76,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat")
 julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian(model)
 ```
 """
@@ -85,10 +84,12 @@ function twopasshessian(model::Model)
 	@unpack trialsets = model
 	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
 	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
-	@inbounds for s in eachindex(trialsets)
-		glmθs = collect(trialsets[s].mpGLMs[n].θ for n = 1:length(trialsets[s].mpGLMs))
-		for m in eachindex(trialsets[s].trials)
-			twopasshessian!(memoryforhessian, glmθs, s, sameacrosstrials, model.θnative, trialsets[s].trials[m])
+	@inbounds for trialsetindex in eachindex(trialsets)
+		𝐋 = linearpredictor(trialsets[trialsetindex].mpGLMs)
+		offset = 0
+		for trialindex in eachindex(trialsets[trialsetindex].trials)
+			twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
+			offset+=model.trialsets[trialsetindex].trials[trialindex].ntimesteps
 		end
 	end
 	@unpack ℓ, ∇ℓ, ∇∇ℓ = memoryforhessian
@@ -109,71 +110,40 @@ MODIFIED ARGUMENT
 -`memoryforhessian`: a structure containing quantities used in each trial
 
 UNMODIFIED ARGUMENT
--`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
--`s`: index of the trialset
--`θnative`: a structure containing parameters specifying the latent variables in their native space
--`trial`: a structure containing information on the sensory stimuli, spike trains, input to each neuron's GLM, and behavioral choice
+-`𝐋`: a nested array whose element 𝐋[n][j,k][t] corresponds to n-th neuron, j-th accumualtor state, k-th coupling state, and the t-th time bin in the trialset
 """
 function twopasshessian!(memoryforhessian::Memoryforhessian,
-						 glmθs::Vector{<:GLMθ},
-						 s::Integer,
+						 𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
+						 model::Model,
 						 sameacrosstrials::Sameacrosstrials,
- 						 θnative::Latentθ,
-						 trial::Trial)
-	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, D, ∇D, ∇b, ∇η = memoryforhessian
+						 offset::Integer,
+						 trialindex::Integer,
+						 trialsetindex::Integer)
+	trial = model.trialsets[trialsetindex].trials[trialindex]
+	@unpack mpGLMs = model.trialsets[trialsetindex]
+	@unpack clicks = trial
+	@unpack θnative = model
+	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, D, ∇D, ∇b = memoryforhessian
 	@unpack P, ∇pa₁, ∇∇pa₁, Aᵃinput, ∇Aᵃinput, ∇∇Aᵃinput = memoryforhessian
-	@unpack L, λ, ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
+	@unpack λ, ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
 	@unpack d𝛏_dB, Δt, K, Ξ = sameacrosstrials
 	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
 	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ,  nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
-	indexθ_py = sameacrosstrials.indexθ_py[s]
-	nθ_py = sameacrosstrials.nθ_py[s]
-	indexθ_pY = sameacrosstrials.indexθ_pY[s]
-	nθ_pY = sameacrosstrials.nθ_pY[s]
-	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[s]
-	indexθ_trialset = sameacrosstrials.indexθ_trialset[s]
-	nθ_trialset = sameacrosstrials.nθ_trialset[s]
-	nneurons = length(trial.spiketrainmodels)
-	@unpack clicks, spiketrainmodels = trial
-	adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	# conditional likelihood of population spiking and its gradient; gradient and Hessian of the conditional log-likelihood of individual neurons' spiking
-	@inbounds for n in eachindex(L)
-		FHMDDM.conditional_linear_predictor!(L[n], d𝛏_dB, spiketrainmodels[n], glmθs[n])
-		for t = 1:trial.ntimesteps
-			FHMDDM.conditionalrate!(λ[n][t], L[n][t])
-			FHMDDM.∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], L[n][t], λ[n][t], Δt, d𝛏_dB, t, trial.spiketrainmodels[n])
-		end
-	end
-	@inbounds for t = 1:trial.ntimesteps
-		for jk in eachindex(pY[t])
-			pY[t][jk] = FHMDDM.Poissonlikelihood(λ[1][t][jk]*Δt, spiketrainmodels[1].𝐲[t])
-			for n=2:nneurons
-				pY[t][jk] *= FHMDDM.Poissonlikelihood(λ[n][t][jk]*Δt, spiketrainmodels[n].𝐲[t])
-			end
-		end
-		q = 0
-		for n=1:nneurons
-			for i in eachindex(∇logpy[t][n])
-				q+=1
-				for j=1:Ξ
-					for k=1:K
-						∇pY[t][q][j,k] = ∇logpy[t][n][i][j,k]*pY[t][j,k]
-					end
-				end
-			end
-		end
-	end
-	differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], trial.choice)
-	conditionallikelihood!(pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
-	@inbounds for i in eachindex(∇pY[trial.ntimesteps])
-		conditionallikelihood!(∇pY[trial.ntimesteps][i], trial.choice, θnative.ψ[1])
-	end
-	# first forward step
+	indexθ_py = sameacrosstrials.indexθ_py[trialsetindex]
+	nθ_py = sameacrosstrials.nθ_py[trialsetindex]
+	indexθ_pY = sameacrosstrials.indexθ_pY[trialsetindex]
+	nθ_pY = sameacrosstrials.nθ_pY[trialsetindex]
+	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[trialsetindex]
+	indexθ_trialset = sameacrosstrials.indexθ_trialset[trialsetindex]
+	nθ_trialset = sameacrosstrials.nθ_trialset[trialsetindex]
+	adaptedclicks = ∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset)
+	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
 	end
-	FHMDDM.∇∇priorprobability!(∇∇pa₁, ∇pa₁, P, trial.previousanswer)
-	pa₁ = copy(P.𝛑) # save for later
+	∇∇priorprobability!(∇∇pa₁, ∇pa₁, P, trial.previousanswer)
+	pa₁ = copy(P.𝛑)
 	pY₁⨀pc₁ = pY[1] .* πᶜᵀ
 	pa₁⨀pc₁ = pa₁ .* πᶜᵀ
 	@inbounds for i = 1:nθ_pY
@@ -203,14 +173,15 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 		end
 	end
 	D[1] = sum(f[1])
-	forward!(∇D[1], f[1], ∇f[1], ℓ, ∇ℓ, D[1])
+	forward!(∇D[1], f[1], ∇f[1], ℓ, D[1])
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			update_for_∇∇transition_probabilities!(P, adaptedclicks, clicks, t)
-			∇∇transitionmatrix!(∇∇Aᵃinput[t], ∇Aᵃinput[t], Aᵃinput[t], P)
-			Aᵃ = Aᵃinput[t]
-			∇Aᵃ = ∇Aᵃinput[t]
-			∇∇Aᵃ = ∇∇Aᵃinput[t]
+			clickindex = clicks.inputindex[t][1]
+			Aᵃ = Aᵃinput[clickindex]
+			∇Aᵃ = ∇Aᵃinput[clickindex]
+			∇∇Aᵃ = ∇∇Aᵃinput[clickindex]
+			∇∇transitionmatrix!(∇∇Aᵃ, ∇Aᵃ, Aᵃ, P)
 		else
 			Aᵃ = Aᵃsilent
 			∇Aᵃ = ∇Aᵃsilent
@@ -242,7 +213,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 		end
 		f[t] = pY[t] .* Aᵃ⨉f⨉Aᶜᵀ
 		D[t] = sum(f[t])
-		forward!(∇D[t], f[t], ∇f[t], ℓ, ∇ℓ, D[t])
+		forward!(∇D[t], f[t], ∇f[t], ℓ, D[t])
 	end
 	bₜ = ones(Ξ,K)
 	@inbounds for t = trial.ntimesteps:-1:1
@@ -254,19 +225,20 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 			end
 			# the p(𝑑 ∣ aₜ, cₜ) term
 			q = indexθ_ψ[1]
-			∇ℓ[q] += FHMDDM.expectation_derivative_logp𝑑_wrt_ψ(trial.choice, γ, θnative.ψ[1])
-			∇∇ℓ[q,q] += FHMDDM.expectation_second_derivative_logp𝑑_wrt_ψ(trial.choice, γ, θnative.ψ[1])
+			∇ℓ[q] += expectation_derivative_logp𝑑_wrt_ψ(trial.choice, γ, θnative.ψ[1])
+			∇∇ℓ[q,q] += expectation_second_derivative_logp𝑑_wrt_ψ(trial.choice, γ, θnative.ψ[1])
 			for r in indexθ_trialset
 				if r < q
-					∇∇ℓ[r,q] += FHMDDM.expectation_derivative_logp𝑑_wrt_ψ(trial.choice, ∇γ[r], θnative.ψ[1])
+					∇∇ℓ[r,q] += expectation_derivative_logp𝑑_wrt_ψ(trial.choice, ∇γ[r], θnative.ψ[1])
 				else
-					∇∇ℓ[q,r] += FHMDDM.expectation_derivative_logp𝑑_wrt_ψ(trial.choice, ∇γ[r], θnative.ψ[1])
+					∇∇ℓ[q,r] += expectation_derivative_logp𝑑_wrt_ψ(trial.choice, ∇γ[r], θnative.ψ[1])
 				end
 			end
 		else
 			if t+1 ∈ clicks.inputtimesteps
-				Aᵃₜ₊₁ = Aᵃinput[t+1]
-				∇Aᵃₜ₊₁ = ∇Aᵃinput[t+1]
+				clickindex = clicks.inputindex[t+1][1]
+				Aᵃₜ₊₁ = Aᵃinput[clickindex]
+				∇Aᵃₜ₊₁ = ∇Aᵃinput[clickindex]
 			else
 				Aᵃₜ₊₁ = Aᵃsilent
 				∇Aᵃₜ₊₁ = ∇Aᵃsilent
@@ -304,9 +276,10 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 		end
 		if t > 1
 			if t ∈ clicks.inputtimesteps
-				Aᵃ = Aᵃinput[t]
-				∇Aᵃ = ∇Aᵃinput[t]
-				∇∇Aᵃ = ∇∇Aᵃinput[t]
+				clickindex = clicks.inputindex[t][1]
+				Aᵃ = Aᵃinput[clickindex]
+				∇Aᵃ = ∇Aᵃinput[clickindex]
+				∇∇Aᵃ = ∇∇Aᵃinput[clickindex]
 			else
 				Aᵃ = Aᵃsilent
 				∇Aᵃ = ∇Aᵃsilent
@@ -451,7 +424,6 @@ POST-MODIFICATION ARGUMENT
 -`∇D`: gradient of the past-conditioned emissions likelihood for the current time step
 -`∇f`: first-order partial derivatives of the normalized forward term. Element `∇f[q][i,j]` corresponds to `∂p{a(t)=ξ(i), c(t)=j ∣ 𝐘(1:t)} / ∂θ(q)`
 -`f`: normalized forward term, which represents the joint conditional probability of the latent variables given the elapsed emissions. Element `f[i,j]` corresponds to `p{a(t)=ξ(i), c(t)=j ∣ 𝐘(1:t)}`
--`∇ℓ`: gradient of the log-likelihood for the data up to the current time-step
 -`ℓ`: log-likelihood for the data before the up to the current time-step
 
 UNMODIFIED ARGUMENT
@@ -462,7 +434,6 @@ function forward!(∇D::Vector{<:Real},
 				f::Matrix{<:Real},
 				∇f::Vector{<:Matrix{<:Real}},
 				ℓ::Vector{<:Real},
-				∇ℓ::Vector{<:Real},
 				D::Real)
 	f ./= D
 	@inbounds for i in eachindex(∇D)
@@ -474,26 +445,201 @@ function forward!(∇D::Vector{<:Real},
 		end
 	end
 	ℓ[1] += log(D)
-	# for i in eachindex(∇ℓ)
-	# 	∇ℓ[i] += ∇D[i]/D
-	# end
 end
 
 """
-	conditionalrate!(λ, L)
+    linearpredictor(mpGLMs)
+
+Linear combination of the weights in the j-th accumulator state and k-th coupling state
+
+ARGUMENT
+-`mpGLMs`: a vector of mixture of Poisson generalized linear models
+
+RETURN
+-`𝐋`: a nested array whose element 𝐋[n][j,k][t] corresponds to n-th neuron, j-th accumualtor state, k-th coupling state, and the t-th time bin in the trialset
+"""
+function linearpredictor(mpGLMs::Vector{<:MixturePoissonGLM})
+	map(mpGLMs) do mpGLM
+		Ξ = length(mpGLM.d𝛏_dB)
+		K = length(mpGLM.θ.𝐯)
+		map(CartesianIndices((Ξ,K))) do index
+			j = index[1]
+			k = index[2]
+			linearpredictor(mpGLM, j, k)
+		end
+	end
+end
+
+"""
+	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, offset)
+
+Update the conditional likelihood of spiking and its gradient and the gradient and Hessian of the conditional log-likelihoods
 
 MODIFIED ARGUMENT
--`λ`: matrix whose element `λ[i,j]` is the Poisson rate given the i-th accumulator state and j-th coupling state
+-`λ`:: conditional rate of each neuron at each time step. Element `λ[n][t][i,j]` corresponds to the n-th neuron, t-th time step in a trial, i-th accumulator state, and j-th coupling state
+-`∇logpy`: partial derivatives of the conditional log-likelihood of each neuron at each time step. Element `∇logpy[t][n][q][i,j]` corresponds to the t-th time step in a trial, n-th neuron, q-th parameter, i-th accumulator state, and j-th coupling state.
+ -`∇∇logpy`: partial derivatives of the conditional log-likelihood of each neuron at each time step. Element `∇∇logpy[t][n][q,r][i,j]` corresponds to the t-th time step in a trial, n-th neuron, q-th and r-th parameter, i-th accumulator state, and j-th coupling state.
+-`pY`: conditional likelihood of the spiking of all neurons. Element `pY[t][i,j]` corresponds to the t-th time step in a trial, i-th accumulator state, and j-th coupling state
+-`∇pY`: partial derivative of the conditional likelihood of the spiking of all neurons. Element `∇pY[t][q][i,j]` corresponds to the t-th time step in a trial, q-th paramaeter,  i-th accumulator state, and j-th coupling state
 
 UNMODIFIED ARGUMENT
--`L`: matrix whose element `L[i,j]` is the linear predictor given the i-th accumulator state and j-th coupling state
+-`Δt`: duration of each time step, in second
+-`𝐋`: linear predictors. Element `𝐋[n][i,j][τ]` corresponds to the n-th neuron, the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
+-`mpGLMs`: Mixture of Poisson GLM of each neuron
+-`ntimesteps`: number of time steps in the trial
+-`offset`: the time index in the trialset corresponding to the time index 0 in the trial
 """
-function conditionalrate!(λ::Matrix{<:Real}, L::Matrix{<:Real})
-	Ξ = size(λ,1)
-	@inbounds for i = 1:Ξ
-		λ[i,1] = softplus(L[i,1])
+function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
+						∇logpy::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
+						∇∇logpy::Vector{<:Vector{<:Matrix{<:Matrix{<:Real}}}},
+						pY::Vector{<:Matrix{<:Real}},
+						∇pY::Vector{<:Vector{<:Matrix{<:Real}}},
+						Δt::Real,
+						𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
+						mpGLMs::Vector{<:MixturePoissonGLM},
+						ntimesteps::Integer,
+						offset::Integer)
+	dL_d𝐯 = zeros(length(mpGLMs[1].θ.𝐯[1]))
+	@inbounds for n in eachindex(mpGLMs)
+		conditionalrate!(λ[n], 𝐋[n], offset)
+		for t = 1:ntimesteps
+			τ = t + offset
+			∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], τ)
+		end
 	end
-	λ[:,2] .= λ[cld(Ξ,2),1]
+	nneurons = length(mpGLMs)
+	Ξ = length(mpGLMs[1].d𝛏_dB)
+	K = length(mpGLMs[1].θ.𝐯)
+	@inbounds for t = 1:ntimesteps
+		τ = t + offset
+		for ij in eachindex(pY[t])
+			pY[t][ij] = 1.0
+			for n=1:nneurons
+				pY[t][ij] *= Poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])
+			end
+		end
+		r = 0
+		for n=1:nneurons
+			for q in eachindex(∇logpy[t][n])
+				r+=1
+				for i=1:Ξ
+					for j=1:K
+						∇pY[t][r][i,j] = ∇logpy[t][n][q][i,j]*pY[t][i,j]
+					end
+				end
+			end
+		end
+	end
+	return nothing
+end
+
+"""
+	update_emissions!(∂pY𝑑_∂ψ, pY, ∇pY, choice, ψ)
+
+Update the conditional likelihood of the emissions as well as its gradient
+
+MODIFIED ARGUMENT
+-`∂pY𝑑_∂ψ`: derivative of the conditional likelihood of the emissions at the last time step of a trial with respect to the lapse parameter ψ. Element `∂pY𝑑_∂ψ[i,j]` corresponds to the i-th accumulator state and j-th coupling state
+-`pY`: conditional likelihood of the emissions at the last time step of the trial. Element `pY[i,j]` corresponds to the i-th accumulator state and j-th coupling state
+-`∇pY`: gradient of the conditional likelihood of the emissions at the last time step of the trial. Element `∇pY[q][i,j]` corresponds to the q-th parameter among all GLMs, i-th accumulator state and j-th coupling state
+
+UNMODIFIED ARGUMENT
+-`choice`: a Bool indicating left (false) or right (true)
+-`ψ`: lapse rate
+"""
+function update_emissions!(∂pY𝑑_∂ψ::Matrix{<:Real}, pY::Matrix{<:Real}, ∇pY::Vector{<:Matrix{<:Real}}, choice::Bool, ψ::Real)
+	differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY, choice)
+	conditionallikelihood!(pY, choice, ψ)
+	@inbounds for q in eachindex(∇pY)
+		conditionallikelihood!(∇pY[q], choice, ψ)
+	end
+	return nothing
+end
+
+"""
+	conditionalrate!(λ, 𝐋, offset)
+
+MODIFIED ARGUMENT
+-`λ`: matrix whose element `λ[t][i,j]` is the Poisson rate at the t-th timestep of a trial given the i-th accumulator state and j-th coupling state
+
+UNMODIFIED ARGUMENT
+-`𝐋`: matrix whose element `𝐋[i,j][τ]` is the linear predictor given the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
+-`offset`: the time index in the trialset corresponding to the time index 0 in the trial
+"""
+function conditionalrate!(λ::Vector{<:Matrix{<:Real}},
+						  𝐋::Matrix{<:Vector{<:Real}},
+						  offset::Integer)
+	for t in eachindex(λ)
+		τ = t + offset
+		for jk in eachindex(λ[t])
+			λ[t][jk] = softplus(𝐋[jk][τ])
+		end
+	end
+	return nothing
+end
+
+"""
+	∇∇conditional_log_likelihood!(∇logpy, ∇∇logpy, dL_d𝐯, Δt, 𝐋, λ, mpGLM, τ)
+
+Gradient and Hessian of the conditional log-likelihood of one neuron at single timestep
+
+MODIFIED ARGUMENT
+-`∇logpy`: Gradient of the conditional log-likelihood of a neuron's response at a single time. Element ∇logpy[i][j,k] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(j), c(t)=k} with respect to the i-th parameter of the neuron's GLM
+-`∇∇logpy`: Hessian of the conditional log-likelihood. Element ∇∇logpy[i,j][k,l] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(k), c(t)=l} with respect to the i-th and j-th parameters of the neuron's GLM
+-`dL_d𝐯`: memory for computing the derivative of the linear predictor with respect to the linear filters of the accumulator. The element `dL_d𝐯[q]` corresponds to the q-th linear filter in one of the coupling states.
+
+UNMODIFIED ARGUMENT
+-`Δt`: width of time step
+-`𝐋`: linear predictors. Element `𝐋[i,j][τ]` corresponds to the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
+-`λ`: Conditional Poisson whose element λ[i,j] corresponds to a(t)=ξ(i), c(t)=j
+-`offset`: the time index in the trialset corresponding to the time index 0 in the trial
+-`τ` time step in the trialset
+"""
+function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
+										∇∇logpy::Matrix{<:Matrix{<:Real}},
+										dL_d𝐯::Vector{<:Real},
+										Δt::Real,
+										𝐋::Matrix{<:Vector{<:Real}},
+										λ::Matrix{<:Real},
+										mpGLM::MixturePoissonGLM,
+										τ::Integer)
+	@unpack d𝛏_dB, 𝐗, 𝐕, 𝐲 = mpGLM
+	@unpack 𝐮, 𝐯 = mpGLM.θ
+	n𝐮 = length(𝐮)
+	K = length(𝐯)
+	n𝐯 = length(𝐯[1])
+	Ξ = length(d𝛏_dB)
+	for i = 1:Ξ
+		for q=1:n𝐯
+			dL_d𝐯[q] = 𝐕[τ,q]*d𝛏_dB[i]
+		end
+		for j = 1:K
+			dlogp_dL, d²logp_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
+			for q=1:n𝐮
+				∇logpy[q][i,j] = dlogp_dL*𝐗[τ,q]
+			end
+			for q=1:n𝐯
+				s = n𝐮+(j-1)*n𝐯+q
+				∇logpy[s][i,j] = dlogp_dL*dL_d𝐯[q]
+			end
+			for q=1:n𝐮
+				for r=q:n𝐮
+					∇∇logpy[q,r][i,j] = d²logp_dL*𝐗[τ,q]*𝐗[τ,r]
+				end
+				for r=1:n𝐯
+					s = n𝐮+(j-1)*n𝐯+r
+					∇∇logpy[q,s][i,j] = d²logp_dL*𝐗[τ,q]*dL_d𝐯[r]
+				end
+			end
+			for q=1:n𝐯
+				for r=q:n𝐯
+					s1 = n𝐮+(j-1)*n𝐯+q
+					s2 = n𝐮+(j-1)*n𝐯+r
+					∇∇logpy[s1,s2][i,j] = d²logp_dL * dL_d𝐯[q] * dL_d𝐯[r]
+				end
+			end
+		end
+	end
 	return nothing
 end
 
@@ -512,151 +658,6 @@ function Poissonlikelihood(λΔt::Real, y::Integer)
 	else
 		λΔt^y / exp(λΔt) / factorial(y)
 	end
-end
-
-
-"""
-	conditional_linear_predictor!(L, d𝛏_dB, glmio, glmθ)
-
-MODIFIED ARGUMENT
--`L`: A vector of matrices whose element `L[t][i,j]` corresponds to the linear predictor at time t given the i-th accumulator state and j-th coupling state
-
-UNMODFIED ARGUMENT
--`d𝛏_dB`: normalized values of the accumulator
--`glmio`: input and observations of a neuron's glm
--`glmθ`: parameters of a neuron's glm
-"""
-function conditional_linear_predictor!(L::Vector{<:Matrix{<:Real}},
-									d𝛏_dB::Vector{<:Real},
-									glmio::SpikeTrainModel,
-									glmθ::GLMθ)
-	@unpack 𝐔, 𝚽 = glmio
-	@unpack 𝐮, 𝐯 = glmθ
-	𝐔𝐮 = 𝐔*𝐮
-	𝚽𝐯 = 𝚽*𝐯
-	Ξ = length(d𝛏_dB)
-	zeroindex = cld(Ξ,2)
-	@inbounds for t = 1:length(𝐔𝐮)
-		for i=1:Ξ-1
-			L[t][i,1] = 𝐔𝐮[t] + 𝚽𝐯[t]*d𝛏_dB[i]
-		end
-		L[t][zeroindex,1] = 𝐔𝐮[t]
-		for i=zeroindex+1:Ξ
-			L[t][i,1] = 𝐔𝐮[t] + 𝚽𝐯[t]*d𝛏_dB[i]
-		end
-		L[t][:,2] .= L[t][zeroindex,1]
-	end
-	return nothing
-end
-
-"""
-	∇∇conditional_log_likelihood!(∇logpy, ∇∇logpy, L, λ, Δt, d𝛏_dB, t, glmio)
-
-Gradient and Hessian of the conditional log-likelihood
-
-MODIFIED ARGUMENT
--`∇logpy`: Gradient of the conditional log-likelihood of a neuron's response at a single time. Element ∇logpy[i][j,k] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(j), c(t)=k} with respect to the i-th parameter of the neuron's GLM
--`∇∇logpy`: Hessian of the conditional log-likelihood. Element ∇logpy[i.j][k,l] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(k), c(t)=l} with respect to the i-th and j-th parameters of the neuron's GLM
-
-UNMODIFIED ARGUMENT
--`L`: Conditional linear predictor whose element L[i,j] corresponds to a(t)=ξ(i), c(t)=j
--`λ`: Conditional Poisson whose element λ[i,j] corresponds to a(t)=ξ(i), c(t)=j
--`Δt`: width of time step
--`d𝛏_dB`: normalized value into which the accumulator is discretzed
--`t` time step
--`glmio`: input and observations of a neuron's Poisson mixture GLM
-"""
-function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
-									∇∇logpy::Matrix{<:Matrix{<:Real}},
-									L::Matrix{<:Real},
-									λ::Matrix{<:Real},
-									Δt::Real,
-									d𝛏_dB::Vector{<:Real},
-									t::Integer,
-									glmio::SpikeTrainModel)
-	@unpack 𝐔, 𝚽, 𝐲 = glmio
-	n𝐮 = size(𝐔,2)
-	n𝐯 = size(𝚽,2)
-	dL_d𝐯 = zeros(n𝐯)
-	Ξ = size(L,1)
-	zeroindex = cld(Ξ,2)
-	@inbounds for i = 1:Ξ
-		dlogp_dL, d²logp_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, L[i,1], λ[i,1], 𝐲[t])
-		for j=1:n𝐮
-			∇logpy[j][i,1] = dlogp_dL*𝐔[t,j]
-		end
-		for j=1:n𝐯
-			dL_d𝐯[j] = 𝚽[t,j]*d𝛏_dB[i]
-			∇logpy[j+n𝐮][i,1] = dlogp_dL*dL_d𝐯[j]
-		end
-		for j=1:n𝐮
-			for k=j:n𝐮
-				∇∇logpy[j,k][i,1] = d²logp_dL*𝐔[t,j]*𝐔[t,k]
-			end
-			for k=1:n𝐯
-				∇∇logpy[j,k+n𝐮][i,1] = d²logp_dL*𝐔[t,j]*dL_d𝐯[k]
-			end
-		end
-		for j=1:n𝐯
-			for k=j:n𝐯
-				∇∇logpy[j+n𝐮,k+n𝐮][i,1] = d²logp_dL * dL_d𝐯[j] * dL_d𝐯[k]
-			end
-		end
-	end
-	n𝐮𝐯 = n𝐮+n𝐯
-	@inbounds for j = 1:n𝐮𝐯
-		∇logpy[j][:,2] .= ∇logpy[j][zeroindex,1]
-		for k = j:n𝐮𝐯
-			∇∇logpy[j,k][:,2] .= ∇∇logpy[j,k][zeroindex,1]
-		end
-	end
-	return nothing
-end
-
-"""
-	∇conditional_log_likelihood!(∇logpy, L, λ, Δt, d𝛏_dB, t, glmio)
-
-Gradient  of the conditional log-likelihood
-
-MODIFIED ARGUMENT
--`∇logpy`: Gradient of the conditional log-likelihood of a neuron's response at a single time. Element ∇logpy[i][j,k] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(j), c(t)=k} with respect to the i-th parameter of the neuron's GLM
-
-UNMODIFIED ARGUMENT
--`L`: Conditional linear predictor whose element L[i,j] corresponds to a(t)=ξ(i), c(t)=j
--`λ`: Conditional Poisson whose element λ[i,j] corresponds to a(t)=ξ(i), c(t)=j
--`Δt`: width of time step
--`d𝛏_dB`: normalized value into which the accumulator is discretzed
--`t` time step
--`glmio`: input and observations of a neuron's Poisson mixture GLM
-"""
-function ∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
-									L::Matrix{<:Real},
-									λ::Matrix{<:Real},
-									Δt::Real,
-									d𝛏_dB::Vector{<:Real},
-									t::Integer,
-									glmio::SpikeTrainModel)
-	@unpack 𝐔, 𝚽, 𝐲 = glmio
-	n𝐮 = size(𝐔,2)
-	n𝐯 = size(𝚽,2)
-	dL_d𝐯 = zeros(n𝐯)
-	Ξ = size(L,1)
-	zeroindex = cld(Ξ,2)
-	@inbounds for i = 1:Ξ
-		dlogp_dL = differentiate_loglikelihood_wrt_linearpredictor(Δt, L[i,1], λ[i,1], 𝐲[t])
-		for j=1:n𝐮
-			∇logpy[j][i,1] = dlogp_dL*𝐔[t,j]
-		end
-		for j=1:n𝐯
-			dL_d𝐯[j] = 𝚽[t,j]*d𝛏_dB[i]
-			∇logpy[j+n𝐮][i,1] = dlogp_dL*dL_d𝐯[j]
-		end
-	end
-	n𝐮𝐯 = n𝐮+n𝐯
-	@inbounds for j = 1:n𝐮𝐯
-		∇logpy[j][:,2] .= ∇logpy[j][zeroindex,1]
-	end
-	return nothing
 end
 
 """
@@ -910,13 +911,142 @@ function expectation_second_derivative_logp𝑑_wrt_ψ(choice::Bool, γ::Array{<
 	return ed²ll
 end
 
+
+"""
+	differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY, 𝑑, ψ)
+
+Partial derivatives of the conditional likelihood of the emissions at the last time step with respect to the lapse rate
+
+ARGUMENT
+-`pY`: conditional likelihood of the population spiking at the last time step `T`. Element `pY[i,j]` represents p{Y(T) ∣ a(T)=ξ(i), c(T)=j}
+-`𝑑`: left (false) or right (true) choice of the animal
+
+MODIFIED ARGUMENT
+-`∂pY𝑑_∂ψ`: partial derivative of the emissions at the last time step (population spiking and the choice) with respect to the lapse rate. Element `∂pY𝑑_∂ψ[i,j]` represents:
+	∂p{Y(T), 𝑑 ∣ a(T)=ξ(i), c(T)=j}}/∂ψ
+"""
+function differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ::Matrix{<:Real}, pY::Matrix{<:Real}, 𝑑::Bool)
+	if 𝑑
+		∂p𝑑_ξ⁻_∂ψ = 0.5
+		∂p𝑑_ξ⁺_∂ψ = -0.5
+	else
+		∂p𝑑_ξ⁻_∂ψ = -0.5
+		∂p𝑑_ξ⁺_∂ψ = 0.5
+	end
+	Ξ,K = size(pY)
+	zeroindex = cld(Ξ,2)
+	for j = 1:K
+		for i = 1:zeroindex-1
+			∂pY𝑑_∂ψ[i,j] = pY[i,j]*∂p𝑑_ξ⁻_∂ψ
+		end
+		∂pY𝑑_∂ψ[zeroindex,j] = 0.0
+		for i = zeroindex+1:Ξ
+			∂pY𝑑_∂ψ[i,j] = pY[i,j]*∂p𝑑_ξ⁺_∂ψ
+		end
+	end
+end
+
+"""
+	Sameacrosstrials(model)
+
+Make a structure containing quantities that are used in each trial
+
+ARGUMENT
+-`model`: data, parameters, and hyperparameters of the factorial hidden-Markov drift-diffusion model
+
+RETURN
+-a structure containing quantities that are used in each trial
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
+julia> S = FHMDDM.Sameacrosstrials(model)
+```
+"""
+function Sameacrosstrials(model::Model)
+	@unpack options, θnative, θreal, trialsets = model
+	@unpack Δt, K, Ξ = options
+	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
+	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
+	πᶜ₁ = θnative.πᶜ₁[1]
+	if K == 2
+		Aᶜ = [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
+		∇Aᶜ = [[1.0 0.0; -1.0 0.0], [0.0 -1.0; 0.0 1.0]]
+		πᶜ = [πᶜ₁, 1-πᶜ₁]
+		∇πᶜ = [[1.0, -1.0]]
+	else
+		Aᶜ = ones(1,1)
+		∇Aᶜ = [zeros(1,1), zeros(1,1)]
+		πᶜ = ones(1)
+		∇πᶜ = [zeros(1)]
+	end
+	indexθ_pa₁ = [3,6,11,13]
+	indexθ_paₜaₜ₋₁ = [3,4,5,7,10,12]
+	indexθ_pc₁ = [8]
+	indexθ_pcₜcₜ₋₁ = [1,2]
+	indexθ_ψ = [9]
+	counter = 13
+	indexθ_py = map(trialsets) do trialset
+					map(trialset.mpGLMs) do mpGLM
+						q = length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
+						zeros(Int,q)
+					end
+				end
+	for s in eachindex(indexθ_py)
+		for n in eachindex(indexθ_py[s])
+			for q in eachindex(indexθ_py[s][n])
+				counter += 1
+				indexθ_py[s][n][q] = counter
+			end
+		end
+	end
+	indexθ_pY = map(x->vcat(x...), indexθ_py)
+	nθ_trialset = indexθ_pY[end][end]
+	index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset)
+	index_pa₁_in_θ[indexθ_pa₁] .= 1:length(indexθ_pa₁)
+	index_paₜaₜ₋₁_in_θ[indexθ_paₜaₜ₋₁] .= 1:length(indexθ_paₜaₜ₋₁)
+	index_pc₁_in_θ[indexθ_pc₁] .= 1:length(indexθ_pc₁)
+	index_pcₜcₜ₋₁_in_θ[indexθ_pcₜcₜ₋₁] .= 1:length(indexθ_pcₜcₜ₋₁)
+	index_ψ_in_θ[indexθ_ψ] .= 1:length(indexθ_ψ)
+	index_pY_in_θ = map(x->zeros(Int, nθ_trialset), indexθ_pY)
+	for i = 1:length(index_pY_in_θ)
+		index_pY_in_θ[i][indexθ_pY[i]] = 1:length(indexθ_pY[i])
+	end
+	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
+	P = Probabilityvector(Δt, θnative, Ξ)
+	update_for_∇∇transition_probabilities!(P)
+	∇∇Aᵃsilent = map(i->zeros(Ξ,Ξ), CartesianIndices((nθ_paₜaₜ₋₁,nθ_paₜaₜ₋₁)))
+	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
+	Aᵃsilent = zeros(typeof(θnative.B[1]), Ξ, Ξ)
+	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
+	∇∇transitionmatrix!(∇∇Aᵃsilent, ∇Aᵃsilent, Aᵃsilent, P)
+	Sameacrosstrials(Aᵃsilent=Aᵃsilent,
+					∇Aᵃsilent=∇Aᵃsilent,
+					∇∇Aᵃsilent=∇∇Aᵃsilent,
+					Aᶜ=Aᶜ,
+					∇Aᶜ=∇Aᶜ,
+					Δt=options.Δt,
+					indexθ_pa₁=indexθ_pa₁,
+					indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
+					indexθ_pc₁=indexθ_pc₁,
+					indexθ_pcₜcₜ₋₁=indexθ_pcₜcₜ₋₁,
+					indexθ_ψ=indexθ_ψ,
+					indexθ_py=indexθ_py,
+					indexθ_pY=indexθ_pY,
+					K=K,
+					πᶜ=πᶜ,
+					∇πᶜ=∇πᶜ,
+					Ξ=Ξ)
+end
+
 """
 	Memoryforhessian(model)
 
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_15/data.mat"; randomize=true)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true)
 julia> S = FHMDDM.Sameacrosstrials(model)
 julia> M = FHMDDM.Memoryforhessian(model, S)
 ```
@@ -924,16 +1054,15 @@ julia> M = FHMDDM.Memoryforhessian(model, S)
 function Memoryforhessian(model::Model, S::Sameacrosstrials)
 	@unpack options, θnative, θreal, trialsets = model
 	@unpack Δt, K, Ξ = options
-	maxtimesteps=maximum(map(trialset->maximum(map(trial->trial.ntimesteps, trialset.trials)), trialsets))
+	maxclicks = maximum_number_of_clicks(model)
+	maxtimesteps = maximum_number_of_time_steps(model)
+	maxneurons = maximum(map(trialset-> length(trialset.mpGLMs), trialsets))
 	max_nθ_pY=maximum(S.nθ_pY)
 	max_nθ_py=maximum(map(n->maximum(n), S.nθ_py))
-	maxneurons = maximum(map(trialset-> length(trialset.mpGLMs), trialsets))
 	∇D=collect(zeros(S.nθ_alltrialsets) for t=1:maxtimesteps)
 	f = collect(zeros(Ξ,K) for t=1:maxtimesteps)
 	∇f = collect(collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets) for t=1:maxtimesteps)
 	∇b = collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets)
-	∇η = collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets)
-	L = collect(collect(zeros(Ξ,K) for t=1:maxtimesteps) for n = 1:maxneurons)
 	λ = collect(collect(zeros(Ξ,K) for t=1:maxtimesteps) for n = 1:maxneurons)
 	∇logpy = collect(collect(collect(zeros(Ξ,K) for q=1:max_nθ_py) for n=1:maxneurons) for t=1:maxtimesteps)
 	∇∇logpy=map(1:maxtimesteps) do t
@@ -943,13 +1072,13 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					end
 				end
 			end
-	Aᵃinput=map(1:maxtimesteps) do t
+	Aᵃinput=map(1:maxclicks) do t
 				A = zeros(Ξ,Ξ)
 				A[1,1] = A[Ξ,Ξ] = 1.0
 				return A
 			end
-	∇Aᵃinput = collect(collect(zeros(Ξ,Ξ) for q=1:S.nθ_paₜaₜ₋₁) for t=1:maxtimesteps)
-	∇∇Aᵃinput = map(1:maxtimesteps) do t
+	∇Aᵃinput = collect(collect(zeros(Ξ,Ξ) for q=1:S.nθ_paₜaₜ₋₁) for t=1:maxclicks)
+	∇∇Aᵃinput = map(1:maxclicks) do t
 					map(CartesianIndices((S.nθ_paₜaₜ₋₁,S.nθ_paₜaₜ₋₁))) do ij
 						zeros(Ξ,Ξ)
 					end
@@ -966,13 +1095,11 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					f=f,
 					∇f=∇f,
 					∇b=∇b,
-					∇η=∇η,
 					D = zeros(maxtimesteps),
 					∇D=∇D,
 					∇ℓ=zeros(S.nθ_alltrialsets),
 					∇∇ℓ=zeros(S.nθ_alltrialsets,S.nθ_alltrialsets),
 					∂pY𝑑_∂ψ=zeros(Ξ,K),
-					L=L,
 					λ=λ,
 					∇logpy=∇logpy,
 					∇∇logpy=∇∇logpy,
@@ -981,215 +1108,4 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					∇∇pa₁=∇∇pa₁,
 					pY=pY,
 					∇pY=∇pY)
-end
-
-"""
-	check_twopassgradient(model)
-
-Compare the automatically computed and hand-coded gradients with respect to the parameters being fitted in their real space
-
-ARGUMENT
--`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
-
-RETURN
--`absdiffℓ`: absolute difference in the log-likelihood evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
--`absdiff∇`: absolute difference in the gradients
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
-julia> absdiffℓ, absdiff∇ = FHMDDM.check_twopassgradient(model)
-```
-"""
-function check_twopassgradient(model::Model)
-	concatenatedθ, indexθ = concatenateparameters(model)
-	sameacrosstrials = Sameacrosstrials(model)
-	memoryforhessian = Memoryforhessian(model, sameacrosstrials)
-	ℓhand, ∇hand = twopassgradient!(model, concatenatedθ, indexθ, memoryforhessian,sameacrosstrials)
-	f(x) = loglikelihood(x, indexθ, model)
-	ℓauto = f(concatenatedθ)
-	∇auto = ForwardDiff.gradient(f, concatenatedθ)
-	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand)
-end
-
-"""
-	twopassgradient!(model, concatenatedθ, indexθ, memoryforhessian, sameacrosstrials)
-
-Compute the expectation-conjugate gradient
-
-ARGUMENT
--`model`: a structure containing the parameters, data, and hyperparameters of a factorial hidden Markov drift-diffusion model
--`memoryforhessian`: a structure containing quantities used in each trial
-
-RETURN
--`ℓ`: log-likelihood
--`∇ℓ`: gradient of the log-likelihood
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true)
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> sameacrosstrials = FHMDDM.Sameacrosstrials(model)
-julia> memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
-julia> ℓ, ∇ℓ = FHMDDM.twopassgradient!(model, concatenatedθ, indexθ, memoryforhessian, sameacrosstrials)
-```
-"""
-function twopassgradient!(model::Model,
-						concatenatedθ::Vector{<:Real},
-						indexθ::Indexθ,
-						memoryforhessian::Memoryforhessian,
-						sameacrosstrials::Sameacrosstrials)
-	sortparameters!(model, concatenatedθ, indexθ)
-	@unpack trialsets, θnative = model
-	@unpack ℓ, ∇ℓ = memoryforhessian
-	ℓ[1] = 0.0
-	∇ℓ .= 0.0
-	@inbounds for s in eachindex(trialsets)
-		glmθs = collect(trialsets[s].mpGLMs[n].θ for n = 1:length(trialsets[s].mpGLMs))
-		for m in eachindex(trialsets[s].trials)
-			twopassgradient!(memoryforhessian, glmθs, s, sameacrosstrials, θnative, trialsets[s].trials[m])
-		end
-	end
-	native2real!(∇ℓ, indexθ.latentθ, model)
-	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
-	return ℓ[1], ∇ℓ
-end
-
-"""
-	twopassgradient!
-
-Compute the hessian for one trial as the Jacobian of the expectation conjugate gradient
-
-MODIFIED ARGUMENT
--`memoryforhessian`: a structure containing quantities used in each trial
-
-UNMODIFIED ARGUMENT
--`glmθs`: a vector whose each element is a structure containing the parameters of of the generalized linear model of a neuron
--`s`: index of the trialset
--`θnative`: a structure containing parameters specifying the latent variables in their native space
--`trial`: a structure containing information on the sensory stimuli, spike trains, input to each neuron's GLM, and behavioral choice
-"""
-function twopassgradient!(memoryforhessian::Memoryforhessian,
-						 glmθs::Vector{<:GLMθ},
-						 s::Integer,
-						 sameacrosstrials::Sameacrosstrials,
- 						 θnative::Latentθ,
-						 trial::Trial)
-	@unpack ℓ, ∇ℓ, f, D = memoryforhessian
-	@unpack P, ∇pa₁, Aᵃinput, ∇Aᵃinput = memoryforhessian
-	@unpack L, λ, ∇logpy, pY, ∂pY𝑑_∂ψ = memoryforhessian
-	@unpack d𝛏_dB, Δt, K, Ξ = sameacrosstrials
-	@unpack Aᵃsilent, ∇Aᵃsilent, Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
-	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ,  nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
-	indexθ_py = sameacrosstrials.indexθ_py[s]
-	nθ_py = sameacrosstrials.nθ_py[s]
-	indexθ_pY = sameacrosstrials.indexθ_pY[s]
-	nθ_pY = sameacrosstrials.nθ_pY[s]
-	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[s]
-	indexθ_trialset = sameacrosstrials.indexθ_trialset[s]
-	nθ_trialset = sameacrosstrials.nθ_trialset[s]
-	nneurons = length(trial.spiketrainmodels)
-	@unpack clicks, spiketrainmodels = trial
-	adaptedclicks = FHMDDM.∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	# conditional likelihood of population spiking and its gradient; gradient and Hessian of the conditional log-likelihood of individual neurons' spiking
-	@inbounds for n in eachindex(L)
-		conditional_linear_predictor!(L[n], d𝛏_dB, spiketrainmodels[n], glmθs[n])
-		for t = 1:trial.ntimesteps
-			conditionalrate!(λ[n][t], L[n][t])
-			∇conditional_log_likelihood!(∇logpy[t][n], L[n][t], λ[n][t], Δt, d𝛏_dB, t, trial.spiketrainmodels[n])
-		end
-	end
-	@inbounds for t = 1:trial.ntimesteps
-		for jk in eachindex(pY[t])
-			pY[t][jk] = FHMDDM.Poissonlikelihood(λ[1][t][jk]*Δt, spiketrainmodels[1].𝐲[t])
-			for n=2:nneurons
-				pY[t][jk] *= FHMDDM.Poissonlikelihood(λ[n][t][jk]*Δt, spiketrainmodels[n].𝐲[t])
-			end
-		end
-	end
-	differentiate_pY𝑑_wrt_ψ!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], trial.choice)
-	conditionallikelihood!(pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
-	# first forward step
-	FHMDDM.∇priorprobability!(∇pa₁, P, trial.previousanswer)
-	pa₁ = copy(P.𝛑) # save for later
-	@inbounds for j=1:Ξ
-		for k = 1:K
-			f[1][j,k] = pY[1][j,k] * pa₁[j] * πᶜ[k]
-		end
-	end
-	D[1] = sum(f[1])
-	f[1] ./= D[1]
-	ℓ[1] += log(D[1])
-	@inbounds for t=2:trial.ntimesteps
-		if t ∈ clicks.inputtimesteps
-			update_for_∇transition_probabilities!(P, adaptedclicks, clicks, t)
-			∇transitionmatrix!(∇Aᵃinput[t], Aᵃinput[t], P)
-			Aᵃ = Aᵃinput[t]
-			∇Aᵃ = ∇Aᵃinput[t]
-		else
-			Aᵃ = Aᵃsilent
-			∇Aᵃ = ∇Aᵃsilent
-		end
-		f[t] = pY[t] .* (Aᵃ* f[t-1] * Aᶜᵀ)
-		D[t] = sum(f[t])
-		f[t] ./= D[t]
-		ℓ[1] += log(D[t])
-	end
-	b = ones(Ξ,K)
-	@inbounds for t = trial.ntimesteps:-1:1
-		γ = f[t] # resuse memory
-		if t == trial.ntimesteps
-			# the p(𝑑 ∣ aₜ, cₜ) term
-			q = indexθ_ψ[1]
-			∇ℓ[q] += FHMDDM.expectation_derivative_logp𝑑_wrt_ψ(trial.choice, γ, θnative.ψ[1])
-		else
-			if t+1 ∈ clicks.inputtimesteps
-				Aᵃₜ₊₁ = Aᵃinput[t+1]
-				∇Aᵃₜ₊₁ = ∇Aᵃinput[t+1]
-			else
-				Aᵃₜ₊₁ = Aᵃsilent
-				∇Aᵃₜ₊₁ = ∇Aᵃsilent
-			end
-			b = transpose(Aᵃₜ₊₁) * (b.*pY[t+1]./D[t+1]) * Aᶜ
-			γ .*= b
-		end
-		if t > 1
-			if t ∈ clicks.inputtimesteps
-				Aᵃ = Aᵃinput[t]
-				∇Aᵃ = ∇Aᵃinput[t]
-			else
-				Aᵃ = Aᵃsilent
-				∇Aᵃ = ∇Aᵃsilent
-			end
-			# the p(aₜ ∣ aₜ₋₁) term
-			for i = 1:nθ_paₜaₜ₋₁
-				q = indexθ_paₜaₜ₋₁[i]
-				∇ℓ[q] += sum_product_over_states(D[t], f[t-1], b, pY[t], ∇Aᵃ[i], Aᶜ)
-			end
-			# the p(cₜ ∣ cₜ₋₁) term
-			for i = 1:nθ_pcₜcₜ₋₁
-				q = indexθ_pcₜcₜ₋₁[i]
-				∇ℓ[q] += sum_product_over_states(D[t], f[t-1], b, pY[t], Aᵃ, ∇Aᶜ[i])
-			end
-		end
-		# the p(yₙₜ ∣ aₜ, cₜ) term
-		for n = 1:length(indexθ_py)
-			for i = 1:nθ_py[n]
-				q = indexθ_py[n][i]
-				∇ℓ[q] += dot(γ, ∇logpy[t][n][i])
-			end
-		end
-	end
-	t = 1
-	@inbounds for i = 1:nθ_pa₁
-		q = indexθ_pa₁[i]
-		∇ℓ[q] += sum_product_over_states(D[t], b, pY[t], ∇pa₁[i], πᶜ)
-	end
-	@inbounds for i = 1:nθ_pc₁
-		q = indexθ_pc₁[i]
-		∇ℓ[q] += sum_product_over_states(D[t], b, pY[t], pa₁, ∇πᶜ[i])
-	end
-	return nothing
 end

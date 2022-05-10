@@ -163,6 +163,8 @@ end
 
 """
 	GLMθ
+
+Parameters of a mixture of Poisson generalized linear model
 """
 @with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
 	"state-independent linear filter of inputs from the spike history and time in the trial"
@@ -550,20 +552,6 @@ The post-adaptation magnitude of each click and the first- and second-order part
 end
 
 """
-	SpikeTrainModel
-
-The inputs and observations of a mixture of Poisson generalized linear model of a neuron's spike train for one trial
-"""
-@with_kw struct SpikeTrainModel{TVI<:Vector{<:Integer}, TMF<:Matrix{<:AbstractFloat}}
-    "Columns of the design matrix that are invariant to the accumulator variable and correspond to regressors related to spike history or timing of events. Each column is scaled such that the maximum of the absolute value is 1."
-    𝐔::TMF
-    "Temporal bases values. Element 𝚽[t,i] corresponds to the value of the i-th temporal basis at the t-th time step"
-    𝚽::TMF
-    "response variable"
-    𝐲::TVI
-end
-
-"""
 	Sameacrosstrials
 
 Quantities that are same across trials and used in each trial
@@ -681,27 +669,45 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 								VVMMR<:Vector{<:Vector{<:Matrix{<:Matrix{<:Real}}}},
 								PT<:Probabilityvector}
+	"log-likelihood"
 	ℓ::VR = zeros(1)
+	"gradient of the log-likelihood"
 	∇ℓ::VR
+	"hessian of the log-likelihood"
 	∇∇ℓ::MR
+	"transition matrix of the accumulator at a time-step when there is input. Element `Aᵃinput[t][i,j]` corresponds to the t-th time step in a trial with input, i-th accumulator step in the current time step, and j-th accumulator state in the previous time step "
 	Aᵃinput::VMR
+	"partial derivatives of the transition matrix of the accumulator at a time-step when there is input. Element `∇Aᵃinput[q][t][i,j]` corresponds to the q-th drift-diffusion parameter, t-th time step in a trial with input, i-th accumulator step in the current time step, and j-th accumulator state in the previous time step "
 	∇Aᵃinput::VVMR
+	"second order partial derivatives of the transition matrix of the accumulator at a time-step when there is input. Element `∇∇Aᵃinput[q,r][t][i,j]` corresponds to the q-th and r-th drift-diffusion parameter, t-th time step in a trial with input, i-th accumulator step in the current time step, and j-th accumulator state in the previous time step "
 	∇∇Aᵃinput::VMMR
+	"past-conditioned likelihood. Element `D[t]` corresponds to the t-th time step of a trial"
 	D::VR
+	"gradient of the past-conditioned likelihood. Element `∇D[t][q]` corresponds to the t-th time step of a trial and q-th parameter among all parameters in the model"
 	∇D::VVR
+	"derivative of the conditional likelihood of the emissions at the last time step of a trial with respect to the lapse parameter ψ. Element `∂pY𝑑_∂ψ[i,j]` corresponds to the i-th accumulator state and j-th coupling state."
 	∂pY𝑑_∂ψ::MR
+	"forward term. Element 'f[t][i,j]' corresponds to the t-th time step in a trial, i-th accumulator state, and j-th coupling state"
 	f::VMR
+	"gradient of the forward term. Element '∇f[t][q][i,j]' corresponds to the t-th time step in a trial, q-th parameter among all parameters in the model, i-th accumulator state, and j-th coupling state"
 	∇f::VVMR
+	"gradient of the backward term. Element '∇b[q][i,j]' corresponds to the q-th parameter among all parameters in the model, i-th accumulator state, and j-th coupling state"
 	∇b::VMR
-	∇η::VMR
-	L::VVMR
+	"conditional Poisson rate of each neuron at each time step of a trial. Element `λ[n][t][i,j]` corresponds to the n-th neuron in a trialset, t-th time step in a trial, i-th accumulator state, and j-th coupling state"
 	λ::VVMR
+	"first-order partial derivatives of the log-likelihood of the spiking of each neuron at each time step. Element '∇logpy[t][n][q][i,j]' corresponds to t-th time step in a trial, n-th neuron in a trialset, q-th parameter of that neuron's GLM, i-th accumulator state, and j-th coupling state"
 	∇logpy::VVVMR
+	"second-order partial derivatives of the log-likelihood of the spiking of each neuron at each time step. Element '∇∇logpy[t][n][q,r][i,j]' corresponds to t-th time step in a trial, n-th neuron in a trialset, q-th and r-th parameter of that neuron's GLM, i-th accumulator state, and j-th coupling state"
 	∇∇logpy::VVMMR
+	"first-order partial derivatives of the prior probability of the accumulator. Element `∇pa₁[q][i]` corresponds to the q-th parameter among the parameters that govern prior probability and i-th accumulator state"
 	∇pa₁::VVR
+	"second-order partial derivatives of the prior probability of the accumulator. Element `∇∇pa₁[q,r][i]` corresponds to the q-th and r-th parameter among the parameters that govern prior probability and i-th accumulator state"
 	∇∇pa₁::MVR
+	"condition likelihood of all emissions at a time step. Element `pY[t][i,j]` corresponds to the t-th time step in a trial, i-th accumulator state, and j-th coupling state"
 	pY::VMR
+	"first-order partial derivatives condition likelihood of all emissions at a time step. Element `∇pY[t][q][i,j]` corresponds to the t-th time step in a trial, q-th parameter among all parameters of all GLM's in a trialset (not including the lapse), i-th accumulator state, and j-th coupling state"
 	∇pY::VVMR
+	"`Probabilityvector`: a structure containing memory for computing the probability vector of the accumulator and the first- and second-order partial derivatives of the elements of the probability vector"
 	P::PT
 end
 
