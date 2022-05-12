@@ -85,10 +85,10 @@ function twopasshessian(model::Model)
 	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
 	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
 	@inbounds for trialsetindex in eachindex(trialsets)
-		𝐋 = linearpredictor(trialsets[trialsetindex].mpGLMs)
+		𝐋 = FHMDDM.linearpredictor(trialsets[trialsetindex].mpGLMs)
 		offset = 0
 		for trialindex in eachindex(trialsets[trialsetindex].trials)
-			twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
+			FHMDDM.twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
 			offset+=model.trialsets[trialsetindex].trials[trialindex].ntimesteps
 		end
 	end
@@ -501,7 +501,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 						offset::Integer)
 	dL_d𝐯 = zeros(length(mpGLMs[1].θ.𝐯[1]))
 	@inbounds for n in eachindex(mpGLMs)
-		conditionalrate!(λ[n], 𝐋[n], offset)
+		conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
 		for t = 1:ntimesteps
 			τ = t + offset
 			∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], τ)
@@ -568,8 +568,9 @@ UNMODIFIED ARGUMENT
 """
 function conditionalrate!(λ::Vector{<:Matrix{<:Real}},
 						  𝐋::Matrix{<:Vector{<:Real}},
+						  ntimesteps::Integer,
 						  offset::Integer)
-	for t in eachindex(λ)
+	for t = 1:ntimesteps
 		τ = t + offset
 		for jk in eachindex(λ[t])
 			λ[t][jk] = softplus(𝐋[jk][τ])
