@@ -121,8 +121,7 @@ ARGUMENT
 RETURN
 -`𝐲̂`: a sample of the spike train response for each timestep
 """
-function sampleemissions(mpGLM::MixturePoissonGLM,
-                		trials::Vector{<:Trial}) where {integertype<:Integer}
+function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
 	@unpack Δt, d𝛏_dB, max_spikehistory_lag, 𝐗, 𝐕, 𝐲 = mpGLM
 	@unpack 𝐮, 𝐯 = mpGLM.θ
 	u₀ = 𝐮[1]
@@ -140,6 +139,50 @@ function sampleemissions(mpGLM::MixturePoissonGLM,
             τ += 1
             j = trials[m].a[t]
             k = trials[m].c[t]
+			L = u₀ + 𝐄𝐞[τ]
+			for i in eachindex(𝐯[k])
+				L+= d𝛏_dB[j]*𝐕[τ,i]*𝐯[k][i]
+			end
+			for lag = 1:min(max_spikehistory_lag, t-1)
+				L += 𝐡[lag]*𝐲̂[τ-lag]
+			end
+            λ = softplus(L)
+            𝐲̂[τ] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
+        end
+    end
+	return 𝐲̂
+end
+
+"""
+	sampleemissions(k, mpGLM)
+
+Generate one sample from the mixture of Poisson generalized linear model (GLM) of a neuron, assuming coupling state k
+
+ARGUMENT
+-`k`: coupling state
+-`mpGLM`: the fitted mixture of Poisson GLM of a neuron
+-`trials`: a vector of structures, one of which contains the generated states of the accumulator and coupling variable of one trial
+
+RETURN
+-`𝐲̂`: a sample of the spike train response for each timestep
+"""
+function sampleemissions(k::Integer, mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
+	@unpack Δt, d𝛏_dB, max_spikehistory_lag, 𝐗, 𝐕, 𝐲 = mpGLM
+	@unpack 𝐮, 𝐯 = mpGLM.θ
+	u₀ = 𝐮[1]
+	𝐡 = 𝐮[2:1+max_spikehistory_lag]
+	𝐞 = 𝐮[2+max_spikehistory_lag:end]
+	𝐄 = @view 𝐗[:,2+max_spikehistory_lag:1+max_spikehistory_lag+length(𝐞)]
+	𝐄𝐞 = 𝐄*𝐞
+	K = length(𝐯)
+	Ξ = length(d𝛏_dB)
+	max_spikes_per_step = floor(1000Δt)
+    𝐲̂ = similar(𝐲)
+    τ = 0
+    for m in eachindex(trials)
+        for t = 1:trials[m].ntimesteps
+            τ += 1
+            j = trials[m].a[t]
 			L = u₀ + 𝐄𝐞[τ]
 			for i in eachindex(𝐯[k])
 				L+= d𝛏_dB[j]*𝐕[τ,i]*𝐯[k][i]

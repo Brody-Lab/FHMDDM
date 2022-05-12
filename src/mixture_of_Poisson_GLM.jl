@@ -180,6 +180,29 @@ function expectation_∇loglikelihood!(∇Q::GLMθ,
 end
 
 """
+	learn_state_independent_filters!(model)
+
+Learn the filters of the state-independent inputs of each neuron's GLM
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
+julia> FHMDDM.learn_state_independent_filters!(model)
+```
+"""
+function learn_state_independent_filters!(model::Model)
+	q = length(model.trialsets[1].mpGLMs[1].θ.𝐮)
+	Opt = PoissonGLMOptimization(𝐮 = fill(NaN, q))
+	for trialset in model.trialsets
+		for mpGLM in trialset.mpGLMs
+			learn_state_independent_filters!(mpGLM, Opt)
+		end
+	end
+	return nothing
+end
+
+"""
     learn_state_independent_filters!(mpGLM, Opt)
 
 Learn the filters of the state-independent inputs
@@ -205,7 +228,7 @@ julia> FHMDDM.estimatefilters!(mpGLM, Opt)
 function learn_state_independent_filters!(mpGLM::MixturePoissonGLM,
 										Opt::PoissonGLMOptimization,
 										iterations::Integer=20,
-										show_trace::Bool=true)
+										show_trace::Bool=false)
     f(𝐮) = -loglikelihood!(mpGLM,Opt,𝐮)
 	g!(∇, 𝐮) = ∇negloglikelihood!(∇,mpGLM,Opt,𝐮)
 	h!(∇∇, 𝐮) = ∇∇negloglikelihood!(∇∇,mpGLM,Opt,𝐮)

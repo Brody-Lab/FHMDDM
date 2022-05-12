@@ -39,6 +39,7 @@ export  adapt, # module-specific functions and types in this module that we can 
         Indexθ,
         initializeparameters!,
         Latentθ,
+        learn_state_independent_filters!,
         likelihood,
         likelihood!,
         linearpredictor,
