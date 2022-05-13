@@ -125,13 +125,28 @@ julia> γ = posteriors(model)
 """
 function posteriors(model::Model)
 	memory = Memoryforgradient(model)
+	posteriors!(memory, model)
+	return memory.γ
+end
+
+"""
+	posteriors!(memory, model)
+
+Compute the joint posteriors of the latent variables at each time step.
+
+ARGUMENT
+-`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion mode
+```
+"""
+function posteriors!(memory::Memoryforgradient, model::Model)
 	P = update!(memory, model, concatenateparameters(model)[1])
+	memory.ℓ .= 0.0
 	@inbounds for s in eachindex(model.trialsets)
 		for m in eachindex(model.trialsets[s].trials)
 			posteriors!(memory, P, model, s, m)
 		end
 	end
-	return memory.γ
+	return nothing
 end
 
 """
@@ -216,7 +231,159 @@ function posteriors!(memory::Memoryforgradient,
 end
 
 """
-	choiceposteriors(model)
+	joint_posteriors_of_coupling(model)
+
+Sum the joint posteriors of the coupling variable at two consecutive time steps across time
+
+ARGUMENT
+-`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion model
+
+RETURN
+-`∑χ`: joint posterior probabilities of the coupling variables at two consecutive time step conditioned on the emissions at all time steps in the trialset. Element `∑χ[j,k]` represent p{c(t)=j, c(t-1)=k ∣ 𝐘, 𝑑) summed across trials and trialsets
+
+"""
+function joint_posteriors_of_coupling!(memory::Memoryforgradient, model::Model, ∑χ::Matrix{<:Real}, ∑γ::Vector{<:Real})
+	P = update!(memory, model, concatenateparameters(model)[1])
+	memory.ℓ .= 0.0
+	∑χ .= 0.0
+	∑γ .= 0.0
+	@inbounds for s in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[s].trials)
+			joint_posteriors_of_coupling!(memory, P, ∑χ, ∑γ, model, s, m)
+		end
+	end
+	return nothing
+end
+
+"""
+	joint_posteriors_of_coupling!(∑χ, memory, P, model, s, m)
+
+Sum the joint posteriors of the coupling variable at two consecutive time steps across time
+
+Update the gradient
+
+MODIFIED ARGUMENT
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
+- `∑χ`: joint posterior probabilities of the coupling variables at two consecutive time step
+
+UNMODIFIED ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+-`s`: index of the trialset
+-`m`: index of the trial
+"""
+function joint_posteriors_of_coupling!(memory::Memoryforgradient,
+					P::Probabilityvector,
+					∑χ::Matrix{<:Real},
+					∑γ::Vector{<:Real},
+					model::Model,
+					s::Integer,
+					m::Integer)
+	trial = model.trialsets[s].trials[m]
+	p𝐘𝑑 = memory.p𝐘𝑑[s][m]
+	@unpack θnative = model
+	@unpack clicks = trial
+	@unpack inputtimesteps, inputindex = clicks
+	@unpack Aᵃinput, Aᵃsilent, Aᶜ, Aᶜᵀ, D, f, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, ℓ, ∇ℓlatent, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, ∇pa₁, πᶜ, ∇πᶜ, Ξ = memory
+	t = 1
+	priorprobability!(P, trial.previousanswer)
+	@inbounds for j=1:Ξ
+		for k = 1:K
+			f[t][j,k] = p𝐘𝑑[t][j,k] * P.𝛑[j] * πᶜ[k]
+		end
+	end
+	D[t] = sum(f[t])
+	f[t] ./= D[t]
+	ℓ[1] += log(D[t])
+	if length(trial.clicks.time) > 0
+		adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	end
+	@inbounds for t=2:trial.ntimesteps
+		if t ∈ clicks.inputtimesteps
+			clickindex = clicks.inputindex[t][1]
+			Aᵃ = Aᵃinput[clickindex]
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃ, P)
+		else
+			Aᵃ = Aᵃsilent
+		end
+		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
+		D[t] = sum(f[t])
+		f[t] ./= D[t]
+		ℓ[1] += log(D[t])
+	end
+	b = ones(Ξ,K)
+	f⨀b = f # reuse memory
+	@inbounds for t = trial.ntimesteps:-1:1
+		if t < trial.ntimesteps
+			if t+1 ∈ clicks.inputtimesteps
+				clickindex = clicks.inputindex[t+1][1]
+				Aᵃₜ₊₁ = Aᵃinput[clickindex]
+			else
+				Aᵃₜ₊₁ = Aᵃsilent
+			end
+			b = transpose(Aᵃₜ₊₁) * (b.*p𝐘𝑑[t+1]./D[t+1]) * Aᶜ
+			f⨀b[t] .*= b
+		end
+		if t > 1
+			if t ∈ clicks.inputtimesteps
+				clickindex = clicks.inputindex[t][1]
+				Aᵃₜ = Aᵃinput[clickindex]
+			else
+				Aᵃₜ = Aᵃsilent
+			end
+			for j = 1:K
+	 			for k = 1:K
+					∑χ[j,k] += sum_product_over_accumulator_states(D[t],f[t-1],b,p𝐘𝑑[t],Aᵃₜ,Aᶜ,j,k)
+				end
+			end
+		end
+	end
+	∑γ .+= dropdims(sum(f⨀b[1],dims=1),dims=1)
+	offset = 0
+	for i = 1:m-1
+		offset += model.trialsets[s].trials[i].ntimesteps
+	end
+	for t = 1:trial.ntimesteps
+		τ = offset+t
+		for i = 1:Ξ
+			for k = 1:K
+				memory.γ[s][i,k][τ] = f⨀b[t][i,k]
+			end
+		end
+	end
+	return nothing
+end
+
+"""
+	sum_product_over_accumulator_states(D,fₜ₋₁,bₜ,Y,A,C,icₜ,icₜ₋₁)
+
+Multiply terms across different states of the latent variables at consecutive time step and sum
+
+ARGUMENT
+-`Y`: similar to η, element Y[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the coupling at time t
+-`A`: element A[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the accumulator at time t-1
+-`C`: element C[i,j] corresponds to i-th state of the coupling at time t and the j-th state of the coupling at time t-1
+-`icₜ`: index of the coupling state at the current time step
+-`icₜ₋₁`: index of the coupling state at the previous time step
+
+RETURN
+-`s`: sum of the product across all states of the two latent variables at two consecutive time steps
+"""
+function sum_product_over_accumulator_states(D::Real, fₜ₋₁::Matrix{<:Real}, bₜ::Matrix{<:Real}, Y::Matrix{<:Real}, A::Matrix{<:Real}, C::Matrix{<:Real}, icₜ::Integer, icₜ₋₁::Integer)
+	s = 0.0
+	Ξ = size(fₜ₋₁,1)
+	@inbounds for iaₜ = 1:Ξ
+		for iaₜ₋₁ = 1:Ξ
+			s += fₜ₋₁[iaₜ₋₁,icₜ₋₁]*bₜ[iaₜ,icₜ]*Y[iaₜ,icₜ]*A[iaₜ,iaₜ₋₁]*C[icₜ, icₜ₋₁]
+		end
+	end
+	return s/D
+end
+
+
+"""
+	choiceposteriors!(memory, model)
 
 Compute the joint posteriors of the latent variables conditioned on only the choice at each time step.
 
@@ -233,8 +400,7 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_2
 julia> γ = FHMDDM.choiceposteriors(model)
 ```
 """
-function choiceposteriors(model::Model)
-	memory = Memoryforgradient(model)
+function choiceposteriors!(memory::Memoryforgradient, model::Model)
 	θ = concatenateparameters(model)[1]
 	P = update_for_choice_posteriors!(memory, model)
 	@inbounds for s in eachindex(model.trialsets)
@@ -242,7 +408,7 @@ function choiceposteriors(model::Model)
 			posteriors!(memory, P, model, s, m)
 		end
 	end
-	return memory.γ
+	return nothing
 end
 
 """

@@ -238,6 +238,34 @@ function concatenate_glm_parameters(model::Model, offset::Integer)
 end
 
 """
+	concatenateparameters(θ)
+
+Concatenate the parameters of one neuron's Poisson mixture GLM
+
+ARGUMENT
+-`θ`: parameters organized in an instance of `GLMθ`
+
+RETURN
+-`concatenatedθ`: a vector concatenating the values of the parameters
+-`indexθ`: an instance of `GLMθ` indexing each parameter in the vector of concatenated values
+"""
+function concatenateparameters(θ::GLMθ)
+	concatenatedθ = zeros(eltype(θ.𝐮), countparameters(θ))
+	counter = 0
+	for q in eachindex(θ.𝐮)
+		counter += 1
+		concatenatedθ[counter] = θ.𝐮[q]
+	end
+	for k in eachindex(θ.𝐯)
+		for q in eachindex(θ.𝐯[k])
+			counter += 1
+			concatenatedθ[counter] = θ.𝐯[k][q]
+		end
+	end
+	return concatenatedθ
+end
+
+"""
     concatenate_choice_related_parameters(model)
 
 Concatenate values of parameters being fitted into a vector of floating point numbers
@@ -479,35 +507,4 @@ function countparameters(θ::GLMθ)
 		counter += length(𝐯)
 	end
 	return counter
-end
-
-"""
-	concatenateparameters(θ)
-
-Concatenate and index the parameters of a GLM
-
-ARGUMENT
--`θ`: a struct containing the parameters of a GLM
-
-RETURN
--`concatenatedθ`: a vector concatenating the values of a GLM
--`indexθ`: a struct indexing the parameters of the GLM
-"""
-function concatenateparameters(θ::GLMθ)
-	indexθ = GLMθ(θ, Int64)
-	concatenatedθ = zeros(countparameters(θ))
-	counter = 0
-	for q in eachindex(θ.𝐮)
-		counter += 1
-		concatenatedθ[counter] = θ.𝐮[q]
-		indexθ.𝐮[q] = counter
-	end
-	for k in eachindex(θ.𝐯)
-		for q in eachindex(θ.𝐯[k])
-			counter += 1
-			concatenatedθ[counter] = θ.𝐯[k][q]
-			indexθ.𝐯[k][q] = counter
-		end
-	end
-	return concatenatedθ, indexθ
 end

@@ -280,257 +280,67 @@ MODIFIED ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_11_test/T176_2018_05_03_001/data.mat"
 julia> model = Model(datapath; randomize=true)
-julia> FHMDDM.initialize_for_stochastic_transition!(model)
+julia> ℓs = FHMDDM.initialize_for_stochastic_transition!(model;EMiterations=100)
 ```
 """
-function initialize_for_stochastic_transition!(model::Model)
+function initialize_for_stochastic_transition!(model::Model; EMiterations::Integer=20, relativeΔℓ::Real=1e-6)
 	@unpack options, θnative, θ₀native, θreal, trialsets = model
 	@unpack K = model.options
 	θ₀native.πᶜ₁[1] = θnative.πᶜ₁[1] = options.q_πᶜ₁
 	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = min(0.95, options.q_Aᶜ₁₁)
 	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 1.0 - options.q_Aᶜ₂₂
 	native2real!(θreal, options, θnative)
-	learn_state_independent_filters!(model)
-	maximize_choice_posterior!(model)
-	γ = choiceposteriors(model)
-	γ = map(γᵢ->dropdims(sum(γᵢ,dims=2),dims=2), γ)
-	max_ntimesteps = maximum_number_of_time_steps(model)
-	ntimesteps = collect(trial.ntimesteps for trialset in trialsets for trial in trialset.trials)
-	𝐭 = round.(Int, collect(1:max_ntimesteps/K:max_ntimesteps+1))
-	for k = 1:K
-		t0 = 𝐭[k]
-		t1 = 𝐭[k+1]-1
-		indices = indices_for_subselection(model, t0, t1)
-		γsub = subselect(indices, γ)
-		for i in eachindex(model.trialsets)
-			for n in eachindex(model.trialsets[i].mpGLMs)
-				mpGLM = subselect(indices[i], model.trialsets[i].mpGLMs[n])
-				learn_state_dependent_filters!(mpGLM, γsub[i], k)
-			end
-		end
-	end
-end
-
-"""
-	indices_for_subselection(model, t0, t1)
-
-ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters
--`t0`: first timestep in each trial to be included
--`t1`: last timestep to be included
-
-RETURN
--`indices`: a vector of BitVectors indicating which time steps in the trialset are used. Element `indices[i][τ]` corresponds to the τ-th time step in the i-th trialset
-"""
-function indices_for_subselection(model::Model, t0::Integer, t1::Integer)
-	indices = map(model.trialsets) do trialset
-				falses(sum(collect(trial.ntimesteps for trial in trialset.trials)))
-			end
-	offset = 0
+	FHMDDM.maximize_choice_posterior!(model)
+	memory = FHMDDM.Memoryforgradient(model)
+	FHMDDM.choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
-		for j in eachindex(model.trialsets[i].trials)
-			indices[i][offset.+(t0:min(t1, model.trialsets[i].trials[j].ntimesteps))] .= true
-		end
+	    for mpGLM in model.trialsets[i].mpGLMs
+	        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
+	    end
 	end
-	return indices
-end
-
-"""
-	subselect(indices, γ)
-
-Select the poster probabilities corresponding to a subset of time steps
-
-ARGUMENT
--`indices`: a vector of BitVectors indicating which time steps in the trialset are used. Element `indices[i][τ]` corresponds to the τ-th time step in the i-th trialset
--`γ`: posterior probabilities of each accumulator and coupling state. Element `γ[i][j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step in the i-th trialset.
--`k`: coupling state index
-
-RETURN
--`γ`: sub-selected posterior probabilities
-"""
-function subselect(indices::Vector{<:BitVector}, γ::Vector{<:Vector{<:Vector{<:Real}}})
-	map(indices, γ) do indices, γ
-		map(γ) do γ
-			γ[indices]
-		end
+	FHMDDM.posteriors!(memory, model)
+	for i in eachindex(model.trialsets)
+	    for mpGLM in model.trialsets[i].mpGLMs
+	        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
+	    end
 	end
+	ℓs = fill(NaN, EMiterations)
+	∑γ = fill(NaN, model.options.K)
+	∑χ = fill(NaN, model.options.K, model.options.K)
+	for i = 1:EMiterations
+		FHMDDM.joint_posteriors_of_coupling!(memory, model, ∑χ, ∑γ)
+		ℓs[i] = memory.ℓ[1]
+		if (i > 1) && (ℓs[i]-ℓs[i-1] >= 0.0) && ((ℓs[i]-ℓs[i-1])/abs(ℓs[i-1]) < relativeΔℓ)
+			break
+		end
+		for s in eachindex(model.trialsets)
+		    for mpGLM in model.trialsets[s].mpGLMs
+		        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[s])
+		    end
+		end
+		FHMDDM.maximizeECDLL!(model, ∑χ, ∑γ)
+	end
+	return ℓs
 end
 
 """
-	subselect(indices, mpGLM)
+	maximizeECDLL!(model, ∑χ)
 
-Select the input and observations corresponding to a subset of time steps
-
-ARGUMENT
--`indices`: a BitVector indicating which time steps in the trialset are used
--`mpGLM`: a mixture of Poisson generalized linear model
-
-RETURN
--`mpGLM`: a new structure in which the input and the observations have been sub-selected. Note that other fields reference the same memory as the corresponding fields in the original structure.
-"""
-function subselect(indices::BitVector, mpGLM::MixturePoissonGLM)
-	MixturePoissonGLM(Δt = mpGLM.Δt,
-					d𝛏_dB = mpGLM.d𝛏_dB,
-					max_spikehistory_lag = mpGLM.max_spikehistory_lag,
-					Φ = mpGLM.Φ,
-					θ = mpGLM.θ,
-					𝐕 = mpGLM.𝐕[indices,:],
-					𝐗 = mpGLM.𝐗[indices,:],
-					𝐲 = mpGLM.𝐲[indices])
-end
-
-"""
-	learn_state_dependent_filters!(mpGLM, γ, k)
-
-Learn the filters in the k-th state
+Optimize the parameters of the coupling variable by maximizing the expectation of the complete-data log-likelihood
 
 MODIFIED ARGUMENT
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
+-`model`: structure containing the data, parameters, and hyperparameters
 
 UNMODIFIED ARGUMENT
--`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
--`k`: index of the coupling state
+-`∑χ`: sum of the joint posterior probability of the coupling variable across consecutive time steps
+-`∑γ`: sum of the posterior probability of the coupling variable across consecutive time steps
 """
-function learn_state_dependent_filters!(mpGLM::MixturePoissonGLM, γ::Vector{<:Vector{<:Real}}, k::Integer; show_trace::Bool=true, iterations::Integer=20)
-	Q = fill(NaN,1)
-	n𝐯 = length(mpGLM.θ.𝐯[k])
-	∇Q = fill(NaN, n𝐯)
-	∇∇Q = fill(NaN, n𝐯, n𝐯)
-	f(𝐯ₖ) = -expectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,k,𝐯ₖ)
-	∇f!(∇, 𝐯ₖ) = ∇negexpectation_of_loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,k,𝐯ₖ)
-	∇∇f!(∇∇, 𝐯ₖ) = ∇∇negexpectation_of_loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,k,𝐯ₖ)
-    results = Optim.optimize(f, ∇f!, ∇∇f!, copy(mpGLM.θ.𝐯[k]), NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
-	mpGLM.θ.𝐯[k] .= Optim.minimizer(results)
-	return nothing
-end
-
-"""
-	expectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,k,𝐯ₖ)
-
-Expectation of the log-likelihood under the posterior probability of the latent variables
-
-Only the component that depend on the state-dependent filters k-th state are included
-
-MODIFIED ARGUMENT
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
--`Q`: an one-element vector that quantifies the expectation
--`∇Q`: gradient of the expectation with respect to the filters in the k-th state
--`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
--`k`: index of the coupling state
--`𝐯ₖ`: values of the filters of the accumulator-dependent input in the k-th state
-"""
-function expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Vector{<:Vector{<:Real}}, k::Integer, 𝐯ₖ::Vector{<:Real})
-	if (mpGLM.θ.𝐯[k] != 𝐯ₖ) || isnan(Q[1])
-		mpGLM.θ.𝐯[k] .= 𝐯ₖ
-		∇∇expectation_of_loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
-	end
-	Q[1]
-end
-
-"""
-	∇negexpectation_of_loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,k,𝐯ₖ)
-
-Gradient of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
-
-MODIFIED ARGUMENT
--`∇`: gradient of the negative of the expectation
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
--`Q`: an one-element vector that quantifies the expectation
--`∇Q`: gradient of the expectation with respect to the filters in the k-th state
--`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
--`k`: index of the coupling state
--`𝐯ₖ`: values of the filters of the accumulator-dependent input in the k-th state
-"""
-function ∇negexpectation_of_loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Vector{<:Vector{<:Real}}, k::Integer, 𝐯ₖ::Vector{<:Real})
-	if (mpGLM.θ.𝐯[k] != 𝐯ₖ) || isnan(Q[1])
-		mpGLM.θ.𝐯[k] .= 𝐯ₖ
-		∇∇expectation_of_loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
-	end
-	for i in eachindex(∇)
-		∇[i] = -∇Q[i]
-	end
-	return nothing
-end
-
-"""
-	∇∇negexpectation_of_loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,k,𝐯ₖ)
-
-Hessian of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
-
-MODIFIED ARGUMENT
--`∇∇`: Hessian of the negative of the expectation
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
--`Q`: an one-element vector that quantifies the expectation
--`∇Q`: gradient of the expectation with respect to the filters in the k-th state
--`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
--`k`: index of the coupling state
--`𝐯ₖ`: values of the filters of the accumulator-dependent input in the k-th state
-"""
-function ∇∇negexpectation_of_loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Vector{<:Vector{<:Real}}, k::Integer, 𝐯ₖ::Vector{<:Real})
-	if (mpGLM.θ.𝐯[k] != 𝐯ₖ) || isnan(Q[1])
-		mpGLM.θ.𝐯[k] .= 𝐯ₖ
-		∇∇expectation_of_loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
-	end
-	n𝐯 = length(𝐯ₖ)
-	for i =1:n𝐯
-		for j=i:n𝐯
-			∇∇[i,j] = ∇∇[j,i] = -∇∇Q[i,j]
-		end
-	end
-	return nothing
-end
-
-"""
-	∇∇expectation_of_loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
-
-Compute the expectation of the log-likelihood and its gradient and Hessian
-
-ARGUMENT
--`Q`: expectation of the log-likelihood under the posterior probability of the latent variables. Only the component in the coupling state `k` is included
--`∇Q`: first-order derivatives of the expectation
--`∇∇Q`: second-order derivatives of the expectation
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probabilities of the latent variables
--`k`: index of the coupling state
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
-"""
-function ∇∇expectation_of_loglikelihood!(Q::Vector{<:Real},
-										∇Q::Vector{<:Real},
-										∇∇Q::Matrix{<:Real},
-										γ::Vector{<:Vector{<:Real}},
-										k::Integer,
-										mpGLM::MixturePoissonGLM)
-    @unpack Δt, 𝐕, d𝛏_dB, 𝐲 = mpGLM
-	d𝛏_dB² = d𝛏_dB.^2
-	Ξ = size(γ,1)
-	T = length(𝐲)
-	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = zeros(T)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = zeros(T)
-	Q[1] = 0.0
-	@inbounds for i = 1:Ξ
-		𝐋 = linearpredictor(mpGLM,i,k)
-		for t=1:T
-			d²ℓ_dL², dℓ_dL, ℓ = differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
-			Q[1] += γ[i][t]*ℓ
-			dQᵢₖ_dLᵢₖ = γ[i][t] * dℓ_dL
-			∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[t] += γ[i][t] * dℓ_dL * d𝛏_dB[i]
-			∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[t] += γ[i][t] * d²ℓ_dL² * d𝛏_dB²[i]
-		end
-	end
-	𝐕ᵀ = transpose(𝐕)
-	∇Q .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB
-	∇∇Q .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB².*𝐕)
-	return nothing
+function maximizeECDLL!(model::Model, ∑χ::Matrix{<:Real}, ∑γ::Vector{<:Real})
+	@unpack options, θnative, θreal = model
+	θnative.Aᶜ₁₁[1] = max(min(∑χ[1,1]/(∑χ[1,1]+∑χ[2,1]), 1-options.bound_z), options.bound_z)
+	θnative.Aᶜ₂₂[1] = max(min(∑χ[2,2]/(∑χ[2,2]+∑χ[1,2]), 1-options.bound_z), options.bound_z)
+	θnative.πᶜ₁[1] = max(min(∑γ[1]/(∑γ[1]+∑γ[2]), 1-options.bound_z), options.bound_z)
+	native2real!(θreal, options, θnative)
 end
