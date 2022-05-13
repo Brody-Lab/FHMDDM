@@ -619,3 +619,242 @@ function dtransformaccumulator(b::Real, ξ::Real)
         end
     end
 end
+
+"""
+	maximize_expectation_of_loglikelihood!(mpGLM, γ)
+
+Learn the filters of a Poisson mixture GLM by maximizing the expectation of the log-likelihood
+
+MODIFIED ARGUMENT
+-`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
+
+UNMODIFIED ARGUMENT
+-`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat");
+julia> maximize_choice_posterior!(model)
+julia> γ = choiceposteriors(model)[1]
+julia> mpGLM = model.trialsets[1].mpGLMs[2]
+julia> FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, γ)
+```
+"""
+function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Matrix{<:Vector{<:Real}}; show_trace::Bool=true, iterations::Integer=20)
+	x₀ = concatenateparameters(mpGLM.θ)
+	nparameters = length(x₀)
+	Q = fill(NaN,1)
+	∇Q = fill(NaN, nparameters)
+	∇∇Q = fill(NaN, nparameters, nparameters)
+	f(x) = -expectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,x)
+	∇f!(∇, x) = negexpectation_of_∇loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+	∇∇f!(∇∇, x) = negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+    results = Optim.optimize(f, ∇f!, ∇∇f!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
+	sortparameters!(mpGLM.θ, Optim.minimizer(results))
+	return nothing
+end
+
+"""
+	expectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,x)
+
+Expectation of the log-likelihood under the posterior probability of the latent variables
+
+MODIFIED ARGUMENT
+-`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
+-`Q`: an one-element vector that quantifies the expectation
+-`∇Q`: gradient of the expectation with respect to the filters in the k-th state
+-`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
+
+UNMODIFIED ARGUMENT
+-`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
+-`x`: filters
+"""
+function expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+	if (x != concatenateparameters(mpGLM.θ)[1]) || isnan(Q[1])
+		sortparameters!(mpGLM.θ, x)
+		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
+	end
+	Q[1]
+end
+
+"""
+	negexpectation_of_∇loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+
+Gradient of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
+
+MODIFIED ARGUMENT
+-`∇`: gradient of the negative of the expectation
+-`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
+-`Q`: an one-element vector that quantifies the expectation
+-`∇Q`: gradient of the expectation with respect to the filters in the k-th state
+-`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
+
+UNMODIFIED ARGUMENT
+-`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
+-`x`: filters
+"""
+function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+	if (x != concatenateparameters(mpGLM.θ)[1]) || isnan(Q[1])
+		sortparameters!(mpGLM.θ, x)
+		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
+	end
+	for i in eachindex(∇)
+		∇[i] = -∇Q[i]
+	end
+	return nothing
+end
+
+"""
+	negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+
+Hessian of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
+
+MODIFIED ARGUMENT
+-`∇∇`: Hessian of the negative of the expectation
+-`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
+-`Q`: an one-element vector that quantifies the expectation
+-`∇Q`: gradient of the expectation with respect to the filters in the k-th state
+-`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
+
+UNMODIFIED ARGUMENT
+-`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
+-`x`: filters
+"""
+function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+	if (x != concatenateparameters(mpGLM.θ)[1]) || isnan(Q[1])
+		sortparameters!(mpGLM.θ, x)
+		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
+	end
+	nparameters = length(x)
+	for i =1:nparameters
+		for j=i:nparameters
+			∇∇[i,j] = ∇∇[j,i] = -∇∇Q[i,j]
+		end
+	end
+	return nothing
+end
+
+"""
+	expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
+
+Compute the expectation of the log-likelihood and its gradient and Hessian
+
+ARGUMENT
+-`Q`: expectation of the log-likelihood under the posterior probability of the latent variables. Only the component in the coupling state `k` is included
+-`∇Q`: first-order derivatives of the expectation
+-`∇∇Q`: second-order derivatives of the expectation
+
+UNMODIFIED ARGUMENT
+-`γ`: posterior probabilities of the latent variables
+-`k`: index of the coupling state
+-`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, ForwardDiff, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat");
+julia> mpGLM = model.trialsets[1].mpGLMs[1]
+julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+julia> x₀ = concatenateparameters(mpGLM.θ)
+julia> nparameters = length(x₀)
+julia> fhand, ghand, hhand = fill(NaN,1), fill(NaN,nparameters), fill(NaN,nparameters,nparameters)
+julia> FHMDDM.expectation_of_∇∇loglikelihood!(fhand, ghand, hhand, γ, mpGLM)
+julia> f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x)
+julia> fauto = f(x₀)
+julia> gauto = ForwardDiff.gradient(f, x₀)
+julia> hauto = ForwardDiff.hessian(f, x₀)
+julia> abs(fauto - fhand[1])
+julia> maximum(abs.(gauto .- ghand))
+julia> maximum(abs.(hauto .- hhand))
+```
+"""
+function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
+										∇Q::Vector{<:Real},
+										∇∇Q::Matrix{<:Real},
+										γ::Matrix{<:Vector{<:Real}},
+										mpGLM::MixturePoissonGLM)
+    @unpack Δt, 𝐕, 𝐗, d𝛏_dB, 𝐲 = mpGLM
+	d𝛏_dB² = d𝛏_dB.^2
+	Ξ,K = size(γ)
+	T = length(𝐲)
+	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
+	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(T) for k=1:K)
+	Q[1] = 0.0
+	∇Q .= 0.0
+	∇∇Q .= 0.0
+	@inbounds for i = 1:Ξ
+		for k = 1:K
+			𝐋 = linearpredictor(mpGLM,i,k)
+			for t=1:T
+				d²ℓ_dL², dℓ_dL, ℓ = differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				Q[1] += γ[i,k][t]*ℓ
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
+				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
+				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+			end
+		end
+	end
+	n𝐮 = length(mpGLM.θ.𝐮)
+	n𝐯ₖ = length(mpGLM.θ.𝐯[1])
+	indices𝐮 = 1:n𝐮
+	𝐔 = @view 𝐗[:, indices𝐮]
+	𝐔ᵀ, 𝐕ᵀ = transpose(𝐔), transpose(𝐕)
+	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
+	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
+	∇Q[indices𝐮] = 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	∇∇Q[indices𝐮, indices𝐮] = 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
+	@inbounds for k=1:K
+		indices𝐯ₖ = n𝐮+(k-1)*n𝐯ₖ+1:n𝐮+k*n𝐯ₖ
+		∇Q[indices𝐯ₖ] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+		∇∇Q[indices𝐮, indices𝐯ₖ] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+		∇∇Q[indices𝐯ₖ, indices𝐯ₖ] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+		for i in indices𝐮
+			for j in indices𝐯ₖ
+				∇∇Q[j,i] = ∇∇Q[i,j]
+			end
+		end
+	end
+	return nothing
+end
+
+"""
+    expectation_of_loglikelihood(γ, mpGLM, x)
+
+ForwardDiff-compatible computation of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron
+
+Ignores the log(y!) term, which does not depend on the parameters
+
+ARGUMENT
+-`γ`: posterior probability of the latent variable
+-`mpGLM`: the GLM of one neuron
+-`x`: weights of the linear filters of the GLM concatenated as a vector of floating-point numbers
+
+RETURN
+-expectation of the log-likelihood of the spike train of one neuron
+"""
+function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}},
+									   mpGLM::MixturePoissonGLM,
+									   x::Vector{<:Real})
+	mpGLM = MixturePoissonGLM(x, mpGLM)
+    @unpack Δt, 𝐲 = mpGLM
+    T = length(𝐲)
+    Ξ,K = size(γ)
+    Q = 0.0
+    @inbounds for i = 1:Ξ
+	    for k = 1:K
+			𝐋 = linearpredictor(mpGLM,i,k)
+            for t = 1:T
+				Q += γ[i,k][t]*poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
+            end
+        end
+    end
+    return Q
+end
