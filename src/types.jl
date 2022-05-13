@@ -49,6 +49,8 @@ Model settings
     a_latency_s::TF=1e-2
 	"type of temporal basis functions"
     basistype::TS="raised_cosine"
+	"lower bound of the sticky bound height"
+	bound_B::TF = 1.0
 	"lower bound of the initial noise"
 	bound_σ²::TF = 1e-4
 	"lower bound of the lapse rate"

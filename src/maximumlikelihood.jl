@@ -315,14 +315,16 @@ ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_13_test/T176_2018_05_03/data.mat");
 julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 julia> ∇nℓ = similar(concatenatedθ)
 julia> memory = FHMDDM.Memoryforgradient(model)
 julia> FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
 julia> using ForwardDiff
 julia> f(x) = -loglikelihood(x, indexθ, model)
+julia> ℓ_auto = f(concatenatedθ)
 julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
+julia> abs(ℓ_auto + memory.ℓ[1])
 julia> maximum(abs.(∇nℓ_auto .- ∇nℓ))
 ```
 """
