@@ -77,7 +77,7 @@ RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
 """
 function Model(options::Options,
-				trialsets::Vector{<:Trialset}; randomize::Bool=false)
+				trialsets::Vector{<:Trialset}; randomize::Bool=true)
 	θnative = randomize ? randomlyinitialize(options) : initializeparameters(options)
 	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # just making a deep copy
 	Model(options=options,
@@ -250,7 +250,7 @@ end
 
 Initialize the values of a subset of the parameters by maximizing the likelihood of only the choices.
 
-The parameters specifying the transition probability of the coupling variable are not modified. The weights of the GLM are computed by maximizing the expectation of complete-data log-likelihood across accumulator states, assuming a coupled state.
+The parameters specifying the transition probability of the coupling variable are not modified. The weights of the GLM are computed by maximizing the expectation of complete-data log-likelihood across accumulator states.
 
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
@@ -264,8 +264,16 @@ julia> FHMDDM.initializeparameters!(model)
 ```
 """
 function initializeparameters!(model::Model)
-	maximize_choice_posterior!(model)
-	learn_state_independent_filters!(model)
+	@unpack options, θnative, θ₀native, θreal, trialsets = model
+	@unpack K = model.options
+	FHMDDM.maximize_choice_posterior!(model)
+	memory = Memoryforgradient(model)
+	choiceposteriors!(memory, model)
+	for i in eachindex(model.trialsets)
+	    for mpGLM in model.trialsets[i].mpGLMs
+	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
+	    end
+	end
 	return nothing
 end
 
@@ -285,7 +293,7 @@ julia> model = Model(datapath; randomize=true)
 julia> ℓs = FHMDDM.initialize_for_stochastic_transition!(model;EMiterations=100)
 ```
 """
-function initialize_for_stochastic_transition!(model::Model; EMiterations::Integer=20, relativeΔℓ::Real=1e-6)
+function initialize_for_stochastic_transition!(model::Model; EMiterations::Integer=1, relativeΔℓ::Real=1e-6)
 	@unpack options, θnative, θ₀native, θreal, trialsets = model
 	@unpack K = model.options
 	θ₀native.πᶜ₁[1] = θnative.πᶜ₁[1] = options.q_πᶜ₁

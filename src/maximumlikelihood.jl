@@ -282,7 +282,7 @@ function loglikelihood(	concatenatedθ::Vector{T},
 				if t ∈ trial.clicks.inputtimesteps
 					cL = sum(adaptedclicks.C[trial.clicks.left[t]])
 					cR = sum(adaptedclicks.C[trial.clicks.right[t]])
-					𝛍 = expλΔt.*𝛏 .+ (cR-cL)*dμ_dΔc
+					𝛍 = expλΔt.*𝛏 .+ (cR-cL).*dμ_dΔc
 					σ = √((cR+cL)*θnative.σ²ₛ[1] + Δt*θnative.σ²ₐ[1])
 					transitionmatrix!(Aᵃinput, 𝛍, σ, 𝛏)
 					Aᵃ = Aᵃinput

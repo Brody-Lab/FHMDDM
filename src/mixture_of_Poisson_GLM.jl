@@ -47,7 +47,7 @@ function likelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer,
 end
 
 """
-	Poissonlikelihood(λΔt, y, y!)
+	Poissonlikelihood(λΔt, L, y)
 
 Probability of a Poisson observation
 
