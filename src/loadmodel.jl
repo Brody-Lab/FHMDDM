@@ -233,16 +233,16 @@ function randomlyinitialize(options::Options)
 	Latentθ(Aᶜ₁₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₁₁],
 			Aᶜ₂₂=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₂₂],
 			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
-			k=options.fit_k ? rand(1) : [options.q_k],
-			λ=options.fit_λ ? [1-2rand()] : zeros(1),
-			μ₀=options.fit_μ₀ ? [1-2rand()] : zeros(1),
+			k=options.fit_k ? [options.bounds_k[1]+rand()*diff(options.bounds_k)[1]] : [options.q_k],
+			λ=options.fit_λ ? [(1-2rand())*options.bound_λ] : zeros(1),
+			μ₀=options.fit_μ₀ ? [(1-2rand())*options.bound_μ₀] : zeros(1),
 			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
 			πᶜ₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_πᶜ₁],
 			ψ=options.fit_ψ ? [options.bound_ψ + rand()*(1-2*options.bound_ψ)] : [options.q_ψ],
 			σ²ₐ=options.fit_σ²ₐ ? [options.bounds_σ²ₐ[1]+rand()*diff(options.bounds_σ²ₐ)[1]] : [options.q_σ²ₐ],
 			σ²ᵢ=options.fit_σ²ᵢ ? [options.bounds_σ²ᵢ[1]+rand()*diff(options.bounds_σ²ᵢ)[1]] : [options.q_σ²ᵢ],
 			σ²ₛ=options.fit_σ²ₛ ? [options.bounds_σ²ₛ[1]+rand()*diff(options.bounds_σ²ₛ)[1]] : [options.q_σ²ₛ],
-			wₕ=options.fit_wₕ ? [1-2rand()] : zeros(1))
+			wₕ=options.fit_wₕ ? [(1-2rand())*options.bound_wₕ] : zeros(1))
 end
 
 """

@@ -42,6 +42,18 @@ function save(model::Model,
 end
 
 """
+"""
+function save(model::Model)
+    dict = Dict("theta_native"=> dictionary(model.θnative),
+                "theta_real"=> dictionary(model.θreal),
+                "theta0_native" => dictionary(model.θ₀native),
+                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
+                "Phi"=>model.trialsets[1].mpGLMs[1].Φ)
+    matwrite(model.options.resultspath, dict)
+    return nothing
+end
+
+"""
     save
 
 Save the results of crossvalidation

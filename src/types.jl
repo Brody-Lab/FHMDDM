@@ -62,6 +62,8 @@ Model settings
 	bound_wₕ::TF = 5.0
 	"lower bound of the probabilities for the coupling variable"
 	bound_z::TF = 1e-4
+	"bounds of the change rate of the adaptation"
+	bounds_k::TVF = [1e-4, 1e3]
 	"bounds of the accumulation noise"
 	bounds_σ²ₐ::TVF = [1e-4, 50.0]
 	"bounds of the initial noise"
