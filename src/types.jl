@@ -42,7 +42,8 @@ Model settings
 @with_kw struct Options{TB<:Bool,
 						TS<:String,
 						TF<:AbstractFloat,
-						TI<:Integer}
+						TI<:Integer,
+						TVF<:Vector{<:AbstractFloat}}
 	"number of temporal basis functions for the accumulator per s"
     a_basis_per_s::TI=10
 	"response latency of the accumulator to the clicks"
@@ -51,12 +52,22 @@ Model settings
     basistype::TS="raised_cosine"
 	"lower bound of the sticky bound height"
 	bound_B::TF = 1.0
-	"lower bound of the initial noise"
-	bound_σ²::TF = 1e-4
+	"upper bound of the feedback"
+	bound_λ::TF = 5.0
+	"upper bound of the bias"
+	bound_μ₀::TF = 5.0
 	"lower bound of the lapse rate"
 	bound_ψ::TF = 1e-4
+	"upper bound of the history weight"
+	bound_wₕ::TF = 5.0
 	"lower bound of the probabilities for the coupling variable"
 	bound_z::TF = 1e-4
+	"bounds of the accumulation noise"
+	bounds_σ²ₐ::TVF = [1e-4, 50.0]
+	"bounds of the initial noise"
+	bounds_σ²ᵢ::TVF = [1e-4, 10.0]
+	"bounds of the sensory noise"
+	bounds_σ²ₛ::TVF = [1e-6, 5.0]
 	"full path of the data"
     datapath::TS=""
 	"duration of each timestep in seconds"
@@ -106,7 +117,7 @@ Model settings
 	"value in native space of the variance of the initial probability of the accumulator variable that corresponds to zero in real space"
 	q_σ²ᵢ::TF=1e-3; 	@assert q_σ²ᵢ >= 0
 	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
-	q_σ²ₛ::TF=1e-3;	 	@assert q_σ²ₛ >= 0
+	q_σ²ₛ::TF=1e-4;	 	@assert q_σ²ₛ >= 0
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
     "number of states of the discrete accumulator variable"

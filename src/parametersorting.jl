@@ -78,15 +78,15 @@ RETURN
 """
 function sortparameters(latentθindex::Latentθ, ∇ℓ::Vector{<:Real})
 	isfitted = trues(length(∇ℓ))
-	latentparameternames = fieldnames(Latentθ)
+	latentparameternames = fieldnames(FHMDDM.Latentθ)
 	isfitted[1:length(latentparameternames)] .= false
-	for parametername in latentparameternames
-		i = getfield(latentθindex, parametername)[1]
+	for j = 1:length(latentparameternames)
+		i = getfield(latentθindex, latentparameternames[j])[1]
 		if i > 0
-			isfitted[i] = true
+			isfitted[j] = true
 		end
 	end
-	if any(isfitted .= false)
+	if any(isfitted .== false)
 		return ∇ℓ[isfitted]
 	else
 		return ∇ℓ
@@ -109,13 +109,13 @@ function sortparameters(latentθindex::Latentθ, ∇∇ℓ::Matrix{<:Real})
 	isfitted = trues(size(∇∇ℓ,1))
 	latentparameternames = fieldnames(Latentθ)
 	isfitted[1:length(latentparameternames)] .= false
-	for parametername in latentparameternames
-		i = getfield(latentθindex, parametername)[1]
+	for j = 1:length(latentparameternames)
+		i = getfield(latentθindex, latentparameternames[j])[1]
 		if i > 0
-			isfitted[i] = true
+			isfitted[j] = true
 		end
 	end
-	if any(isfitted .= false)
+	if any(isfitted .== false)
 		return ∇∇ℓ[isfitted, isfitted]
 	else
 		return ∇∇ℓ

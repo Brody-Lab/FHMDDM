@@ -19,9 +19,9 @@ julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_twopasshessian(model
 ```
 """
 function check_twopasshessian(model::Model)
-	concatenatedθ, indexθ = concatenateparameters(model)
+	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.twopasshessian!(model,concatenatedθ,indexθ)
-	f(x) = loglikelihood(x, indexθ, model)
+	f(x) = FHMDDM.loglikelihood(x, indexθ, model)
 	ℓauto = f(concatenatedθ)
 	∇auto = ForwardDiff.gradient(f, concatenatedθ)
 	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
@@ -52,16 +52,16 @@ julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian!(model, concatenatedθ, in
 ```
 """
 function twopasshessian!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::Indexθ)
-	sortparameters!(model, concatenatedθ, indexθ)
-	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
-	native2real!(∇ℓ, ∇∇ℓ, indexθ.latentθ, model)
-	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
-	∇∇ℓ = sortparameters(indexθ.latentθ, ∇∇ℓ)
+	FHMDDM.sortparameters!(model, concatenatedθ, indexθ)
+	ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian(model)
+	FHMDDM.native2real!(∇ℓ, ∇∇ℓ, indexθ.latentθ, model)
+	∇ℓ = FHMDDM.sortparameters(indexθ.latentθ, ∇ℓ)
+	∇∇ℓ = FHMDDM.sortparameters(indexθ.latentθ, ∇∇ℓ)
 	return ℓ, ∇ℓ, ∇∇ℓ
 end
 
 """
-	twopasshessian!(model)
+	twopasshessian(model)
 
 Compute the hessian as the Jacobian of the expectation conjugate gradient
 

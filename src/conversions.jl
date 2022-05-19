@@ -26,9 +26,9 @@ function native2real(options::Options,
 			ϕ = [logit(θnative.ϕ[1]) - logit(options.q_ϕ)],
 			πᶜ₁ = [logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)],
 			ψ 	= [ψreal],
-			σ²ₐ = [log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)],
-			σ²ᵢ = [log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)],
-			σ²ₛ = [log((θnative.σ²ₛ[1]-options.bound_σ²) /options.q_σ²ₛ)],
+			σ²ₐ = [logit((θnative.σ²ₐ[1]-options.bounds_σ²ₐ[1])/diff(options.bounds_σ²ₐ)[1])-logit(options.q_σ²ₐ)],
+			σ²ᵢ = [logit((θnative.σ²ᵢ[1]-options.bounds_σ²ᵢ[1])/diff(options.bounds_σ²ᵢ)[1])-logit(options.q_σ²ᵢ)],
+			σ²ₛ = [logit((θnative.σ²ₛ[1]-options.bounds_σ²ₛ[1])/diff(options.bounds_σ²ₛ)[1])-logit(options.q_σ²ₛ)],
 			wₕ = [θnative.wₕ[1]])
 end
 
@@ -51,8 +51,8 @@ function native2real!(θreal::Latentθ,
 	θreal.Aᶜ₂₂[1] = logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)
 	θreal.B[1] = logit((θnative.B[1]-options.bound_B)/2/options.q_B)
 	θreal.k[1] = log(θnative.k[1]/options.q_k)
-	θreal.λ[1] = θnative.λ[1]
-	θreal.μ₀[1] = θnative.μ₀[1]
+	θreal.λ[1] = atanh(θnative.λ[1]/options.bound_λ)
+	θreal.μ₀[1] = atanh(θnative.μ₀[1]/options.bound_μ₀)
 	θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
 	θreal.πᶜ₁[1] = logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)
 	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
@@ -61,10 +61,10 @@ function native2real!(θreal::Latentθ,
 		ψreal = logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
 	end
 	θreal.ψ[1] = ψreal
-	θreal.σ²ₐ[1] = log((θnative.σ²ₐ[1]-options.bound_σ²)/options.q_σ²ₐ)
-	θreal.σ²ᵢ[1] = log((θnative.σ²ᵢ[1]-options.bound_σ²)/options.q_σ²ᵢ)
-	θreal.σ²ₛ[1] = log((θnative.σ²ₛ[1]-options.bound_σ²)/options.q_σ²ₛ)
-	θreal.wₕ[1] = θnative.wₕ[1]
+	θreal.σ²ₐ[1] = logit((θnative.σ²ₐ[1]-options.bounds_σ²ₐ[1])/diff(options.bounds_σ²ₐ)[1])-logit(options.q_σ²ₐ)
+	θreal.σ²ᵢ[1] = logit((θnative.σ²ᵢ[1]-options.bounds_σ²ᵢ[1])/diff(options.bounds_σ²ᵢ)[1])-logit(options.q_σ²ᵢ)
+	θreal.σ²ₛ[1] = logit((θnative.σ²ₛ[1]-options.bounds_σ²ₛ[1])/diff(options.bounds_σ²ₛ)[1])-logit(options.q_σ²ₛ)
+	θreal.wₕ[1] = atanh(θnative.wₕ[1]/options.bound_wₕ)
 	return nothing
 end
 
@@ -88,6 +88,9 @@ function native2real!(g::Latentθ,
 	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
 	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
 	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
 	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
 		dψnative_dψreal = θnative.ψ[1]*(1-θnative.ψ[1])
 	else
@@ -101,12 +104,15 @@ function native2real!(g::Latentθ,
 	fB = logistic(θreal.B[1])
 	g.B[1] *= 2options.q_B*fB*(1-fB)
 	g.k[1] *= θnative.k[1]
+	g.λ[1] *= options.bound_λ*(1.0 - tanh(θreal.λ[1])^2)
+	g.μ₀[1] *= options.bound_μ₀*(1.0 - tanh(θreal.μ₀[1])^2)
 	g.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
 	g.πᶜ₁[1] *= f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
 	g.ψ[1]   *= dψnative_dψreal
-	g.σ²ₐ[1] *= options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
-	g.σ²ᵢ[1] *= options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
-	g.σ²ₛ[1] *= options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
+	g.σ²ₐ[1] *= diff(options.bounds_σ²ₐ)[1]*tmpσ²ₐ*(1-tmpσ²ₐ)
+	g.σ²ᵢ[1] *= diff(options.bounds_σ²ᵢ)[1]*tmpσ²ᵢ*(1-tmpσ²ᵢ)
+	g.σ²ₛ[1] *= diff(options.bounds_σ²ₛ)[1]*tmpσ²ₛ*(1-tmpσ²ₛ)
+	g.wₕ[1] *= options.bound_wₕ*(1.0 - tanh(θreal.wₕ[1])^2)
 	return nothing
 end
 
@@ -131,8 +137,8 @@ function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, latent�
 	for parametername in fieldnames(Latentθ)
 		d1 = getfield(firstderivatives, parametername)[1]
 		d2 = getfield(secondderivatives, parametername)[1]
-		if d1 != 1.0
-			i = getfield(latentθindex, parametername)[1]
+		i = getfield(latentθindex, parametername)[1]
+		if i > 0
 			∇∇ℓ[i,:] .*= d1
 			∇∇ℓ[:,i] .*= d1
 			∇∇ℓ[i,i] += d2*∇ℓ[i]
@@ -183,6 +189,9 @@ function differentiate_native_wrt_real(model::Model)
 	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
 	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
 	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
 	f_bound_z = 1.0-2.0*options.bound_z
 	f_bound_ψ = 1.0-2.0*options.bound_ψ
 	d = Latentθ()
@@ -191,15 +200,15 @@ function differentiate_native_wrt_real(model::Model)
 	fB = logistic(θreal.B[1])
 	d.B[1] = 2options.q_B*fB*(1-fB)
 	d.k[1] = θnative.k[1]
-	d.λ[1] = 1.0
-	d.μ₀[1] = 1.0
+	d.λ[1] = options.bound_λ*(1.0 - tanh(θreal.λ[1])^2)
+	d.μ₀[1] = options.bound_μ₀*(1.0 - tanh(θreal.μ₀[1])^2)
 	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
 	d.πᶜ₁[1] = f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
 	d.ψ[1] = f_bound_ψ*tmpψ*(1.0 - tmpψ)
-	d.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
-	d.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
-	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
-	d.wₕ[1] = 1.0
+	d.σ²ₐ[1] = diff(options.bounds_σ²ₐ)[1]*tmpσ²ₐ*(1-tmpσ²ₐ)
+	d.σ²ᵢ[1] = diff(options.bounds_σ²ᵢ)[1]*tmpσ²ᵢ*(1-tmpσ²ᵢ)
+	d.σ²ₛ[1] = diff(options.bounds_σ²ₛ)[1]*tmpσ²ₛ*(1-tmpσ²ₛ)
+	d.wₕ[1] = options.bound_wₕ*(1.0 - tanh(θreal.wₕ[1])^2)
 	return d
 end
 
@@ -220,6 +229,9 @@ function differentiate_twice_native_wrt_real(model::Model)
 	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
 	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
 	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
 	f_bound_z = 1.0-2.0*options.bound_z
 	f_bound_ψ = 1.0-2.0*options.bound_ψ
 	d = Latentθ()
@@ -228,15 +240,18 @@ function differentiate_twice_native_wrt_real(model::Model)
 	fB = logistic(θreal.B[1])
 	d.B[1] = 2options.q_B*(fB*(1-fB)^2 - fB^2*(1-fB))
 	d.k[1] = θnative.k[1]
-	d.λ[1] = 0.0
-	d.μ₀[1] = 0.0
+	fλ = tanh(θreal.λ[1])
+	d.λ[1] = 2*options.bound_λ*(fλ^3 - fλ)
+	fμ₀ = tanh(θreal.μ₀[1])
+	d.μ₀[1] = 2*options.bound_μ₀*(fμ₀^3 - fμ₀)
 	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])^2 - θnative.ϕ[1]^2*(1.0 - θnative.ϕ[1])
 	d.πᶜ₁[1] = f_bound_z*(tmpπᶜ₁*(1-tmpπᶜ₁)^2 - tmpπᶜ₁^2*(1-tmpπᶜ₁))
 	d.ψ[1] = f_bound_ψ*(tmpψ*(1-tmpψ)^2 - tmpψ^2*(1-tmpψ))
-	d.σ²ₐ[1] = options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
-	d.σ²ᵢ[1] = options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
-	d.σ²ₛ[1] = options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
-	d.wₕ[1] = 0.0
+	d.σ²ₐ[1] = diff(options.bounds_σ²ₐ)[1]*(tmpσ²ₐ*(1-tmpσ²ₐ)^2 - tmpσ²ₐ^2*(1-tmpσ²ₐ))
+	d.σ²ᵢ[1] = diff(options.bounds_σ²ᵢ)[1]*(tmpσ²ᵢ*(1-tmpσ²ᵢ)^2 - tmpσ²ᵢ^2*(1-tmpσ²ᵢ))
+	d.σ²ₛ[1] = diff(options.bounds_σ²ₛ)[1]*(tmpσ²ₛ*(1-tmpσ²ₛ)^2 - tmpσ²ₛ^2*(1-tmpσ²ₛ))
+	fwₕ = tanh(θreal.wₕ[1])
+	d.wₕ[1] = 2*options.bound_wₕ*(fwₕ^3 - fwₕ)
 	return d
 end
 
@@ -263,15 +278,15 @@ function real2native(options::Options,
 			Aᶜ₂₂ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))],
 			B = [options.bound_B + 2options.q_B*logistic(θreal.B[1])],
 			k = [options.q_k*exp(θreal.k[1])],
-			λ = [1.0*θreal.λ[1]], # the multiplication by 1 is for ReverseDiff
-			μ₀ = [1.0*θreal.μ₀[1]],
+			λ = [options.bound_λ*tanh(θreal.λ[1])],
+			μ₀ = [options.bound_μ₀*tanh(θreal.μ₀[1])],
 			ϕ = [logistic(θreal.ϕ[1] + logit(options.q_ϕ))],
 			πᶜ₁ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))],
 			ψ   = [ψnative],
-			σ²ₐ = [options.bound_σ² + options.q_σ²ₐ*exp(θreal.σ²ₐ[1])],
-			σ²ᵢ = [options.bound_σ² + options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])],
-			σ²ₛ = [options.bound_σ² + options.q_σ²ₛ*exp(θreal.σ²ₛ[1])],
-			wₕ = [1.0*θreal.wₕ[1]])
+			σ²ₐ = [options.bounds_σ²ₐ[1] + diff(options.bounds_σ²ₐ)[1]*logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))],
+			σ²ᵢ = [options.bounds_σ²ᵢ[1] + diff(options.bounds_σ²ᵢ)[1]*logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))],
+			σ²ₛ = [options.bounds_σ²ₛ[1] + diff(options.bounds_σ²ₛ)[1]*logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))],
+			wₕ = [options.bound_wₕ*tanh(θreal.wₕ[1])])
 end
 
 """
@@ -293,8 +308,8 @@ function real2native!(θnative::Latentθ,
 	θnative.Aᶜ₂₂[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
 	θnative.B[1] = options.bound_B + 2options.q_B*logistic(θreal.B[1])
 	θnative.k[1] = options.q_k*exp(θreal.k[1])
-	θnative.λ[1] = θreal.λ[1]
-	θnative.μ₀[1] = θreal.μ₀[1]
+	θnative.λ[1] = options.bound_λ*tanh(θreal.λ[1])
+	θnative.μ₀[1] = options.bound_μ₀*tanh(θreal.μ₀[1])
 	θnative.ϕ[1] = logistic(θreal.ϕ[1] + logit(options.q_ϕ))
 	θnative.πᶜ₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
 	if options.q_ψ == 0.0
@@ -302,10 +317,10 @@ function real2native!(θnative::Latentθ,
 	else
 		θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
 	end
-	θnative.σ²ₐ[1] = options.bound_σ² + options.q_σ²ₐ*exp(θreal.σ²ₐ[1])
-	θnative.σ²ᵢ[1] = options.bound_σ² + options.q_σ²ᵢ*exp(θreal.σ²ᵢ[1])
-	θnative.σ²ₛ[1] = options.bound_σ² + options.q_σ²ₛ*exp(θreal.σ²ₛ[1])
-	θnative.wₕ[1] = θreal.wₕ[1]
+	θnative.σ²ₐ[1] = options.bounds_σ²ₐ[1] + diff(options.bounds_σ²ₐ)[1]*logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	θnative.σ²ᵢ[1] = options.bounds_σ²ᵢ[1] + diff(options.bounds_σ²ᵢ)[1]*logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	θnative.σ²ₛ[1] = options.bounds_σ²ₛ[1] + diff(options.bounds_σ²ₛ)[1]*logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
+	θnative.wₕ[1] = options.bound_wₕ*tanh(θreal.wₕ[1])
 	return nothing
 end
 
@@ -319,9 +334,14 @@ function dictionary(options::Options)
 			"a_latency_s"=>options.a_latency_s,
 			"basistype"=>options.basistype,
 			"bound_B"=>options.bound_B,
+			"bound_lambda"=>options.bound_λ,
+			"bound_mu0"=>options.bound.μ₀,
 			"bound_psi"=>options.bound_ψ,
-			"bound_sigma2"=>options.bound_σ²,
+			"bound_w_h"=>options.bound.wₕ,
 			"bound_z"=>options.bound_z,
+			"bounds_sigma2a"=>options.bounds_σ²ₐ,
+			"bounds_sigma2i"=>options.bounds_σ²ᵢ,
+			"bounds_sigma2s"=>options.bounds_σ²ₛ,
 			"datapath"=>options.datapath,
 			"dt"=>options.Δt,
 			"K"=>options.K,
@@ -472,9 +492,14 @@ function Options(options::Dict)
 			a_latency_s = options["a_latency_s"],
 			basistype = options["basistype"],
 			bound_B = options["bound_B"],
+			bound_λ = options["bound_lambda"],
+			bound_μ₀ = options["bound_mu0"],
 			bound_ψ = options["bound_psi"],
-			bound_σ² = options["bound_sigma2"],
+			bound_wₕ = options["bound_w_h"],
 			bound_z = options["bound_z"],
+			bounds_σ²ₐ = vec(options["bounds_sigma2a"]),
+			bounds_σ²ᵢ = vec(options["bounds_sigma2i"]),
+			bounds_σ²ₛ = vec(options["bounds_sigma2s"]),
 			datapath = options["datapath"],
 			Δt = options["dt"],
 			K = convert(Int64, options["K"]),

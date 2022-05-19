@@ -521,8 +521,13 @@ function GLMθ(K::Integer,
 			𝐕::Matrix{<:AbstractFloat})
 	n𝐯 =size(𝐕,2)
 	n𝐮 = size(𝐗,2)-size(𝐕,2)
+	if K == 1
+		𝐯 = [ones(n𝐯)]
+	else
+		𝐯 = collect(i*ones(n𝐯) for i = -1:2/(K-1):1)
+	end
 	θ = GLMθ(𝐮 = 1.0 .- 2.0.*rand(n𝐮),
-			 𝐯 = [-ones(n𝐯), ones(n𝐯)])
+			 𝐯 = 𝐯)
 end
 
 """
@@ -641,7 +646,7 @@ julia> mpGLM = model.trialsets[1].mpGLMs[2]
 julia> FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, γ)
 ```
 """
-function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Matrix{<:Vector{<:Real}}; show_trace::Bool=true, iterations::Integer=20)
+function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Matrix{<:Vector{<:Real}}; show_trace::Bool=false, iterations::Integer=20)
 	x₀ = concatenateparameters(mpGLM.θ)
 	nparameters = length(x₀)
 	Q = fill(NaN,1)
