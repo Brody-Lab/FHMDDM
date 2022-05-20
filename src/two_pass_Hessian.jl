@@ -14,14 +14,14 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_19_test/T176_2018_05_03/data.mat")
 julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_twopasshessian(model)
 ```
 """
 function check_twopasshessian(model::Model)
-	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-	ℓhand, ∇hand, ∇∇hand = FHMDDM.twopasshessian!(model,concatenatedθ,indexθ)
-	f(x) = FHMDDM.loglikelihood(x, indexθ, model)
+	concatenatedθ, indexθ = concatenateparameters(model)
+	ℓhand, ∇hand, ∇∇hand = twopasshessian!(model,concatenatedθ,indexθ)
+	f(x) = loglikelihood(x, indexθ, model)
 	ℓauto = f(concatenatedθ)
 	∇auto = ForwardDiff.gradient(f, concatenatedθ)
 	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
@@ -52,11 +52,11 @@ julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian!(model, concatenatedθ, in
 ```
 """
 function twopasshessian!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::Indexθ)
-	FHMDDM.sortparameters!(model, concatenatedθ, indexθ)
-	ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian(model)
-	FHMDDM.native2real!(∇ℓ, ∇∇ℓ, indexθ.latentθ, model)
-	∇ℓ = FHMDDM.sortparameters(indexθ.latentθ, ∇ℓ)
-	∇∇ℓ = FHMDDM.sortparameters(indexθ.latentθ, ∇∇ℓ)
+	sortparameters!(model, concatenatedθ, indexθ)
+	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
+	native2real!(∇ℓ, ∇∇ℓ, model)
+	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
+	∇∇ℓ = sortparameters(indexθ.latentθ, ∇∇ℓ)
 	return ℓ, ∇ℓ, ∇∇ℓ
 end
 
@@ -82,13 +82,13 @@ julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian(model)
 """
 function twopasshessian(model::Model)
 	@unpack trialsets = model
-	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
-	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
+	sameacrosstrials = Sameacrosstrials(model)
+	memoryforhessian = Memoryforhessian(model, sameacrosstrials)
 	@inbounds for trialsetindex in eachindex(trialsets)
-		𝐋 = FHMDDM.linearpredictor(trialsets[trialsetindex].mpGLMs)
+		𝐋 = linearpredictor(trialsets[trialsetindex].mpGLMs)
 		offset = 0
 		for trialindex in eachindex(trialsets[trialsetindex].trials)
-			FHMDDM.twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
+			twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
 			offset+=model.trialsets[trialsetindex].trials[trialindex].ntimesteps
 		end
 	end
@@ -515,7 +515,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 		for ij in eachindex(pY[t])
 			pY[t][ij] = 1.0
 			for n=1:nneurons
-				pY[t][ij] *= Poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])
+				pY[t][ij] *= poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])
 			end
 		end
 		r = 0
@@ -642,23 +642,6 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 		end
 	end
 	return nothing
-end
-
-"""
-	Poissonlikelihood(λΔt, y)
-
-Likelihood of observation `y` given Poisson rate `λΔt`
-"""
-function Poissonlikelihood(λΔt::Real, y::Integer)
-	if y==0
-		exp(-λΔt)
-	elseif y==1
-		λΔt/exp(λΔt)
-	elseif y == 2
-		λΔt^2 / exp(λΔt) / 2
-	else
-		λΔt^y / exp(λΔt) / factorial(y)
-	end
 end
 
 """

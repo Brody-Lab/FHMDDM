@@ -266,7 +266,7 @@ julia> FHMDDM.initializeparameters!(model)
 function initializeparameters!(model::Model)
 	@unpack options, θnative, θ₀native, θreal, trialsets = model
 	@unpack K = model.options
-	FHMDDM.maximize_choice_posterior!(model)
+	maximize_choice_posterior!(model)
 	memory = Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
@@ -300,35 +300,35 @@ function initialize_for_stochastic_transition!(model::Model; EMiterations::Integ
 	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = min(0.95, options.q_Aᶜ₁₁)
 	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 1.0 - options.q_Aᶜ₂₂
 	native2real!(θreal, options, θnative)
-	FHMDDM.maximize_choice_posterior!(model)
-	memory = FHMDDM.Memoryforgradient(model)
-	FHMDDM.choiceposteriors!(memory, model)
+	maximize_choice_posterior!(model)
+	memory = Memoryforgradient(model)
+	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
 	    for mpGLM in model.trialsets[i].mpGLMs
-	        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
+	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
 	    end
 	end
-	FHMDDM.posteriors!(memory, model)
+	posteriors!(memory, model)
 	for i in eachindex(model.trialsets)
 	    for mpGLM in model.trialsets[i].mpGLMs
-	        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
+	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
 	    end
 	end
 	ℓs = fill(NaN, EMiterations)
 	∑γ = fill(NaN, model.options.K)
 	∑χ = fill(NaN, model.options.K, model.options.K)
 	for i = 1:EMiterations
-		FHMDDM.joint_posteriors_of_coupling!(memory, model, ∑χ, ∑γ)
+		joint_posteriors_of_coupling!(memory, model, ∑χ, ∑γ)
 		ℓs[i] = memory.ℓ[1]
 		if (i > 1) && (ℓs[i]-ℓs[i-1] >= 0.0) && ((ℓs[i]-ℓs[i-1])/abs(ℓs[i-1]) < relativeΔℓ)
 			break
 		end
 		for s in eachindex(model.trialsets)
 		    for mpGLM in model.trialsets[s].mpGLMs
-		        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[s])
+		        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[s])
 		    end
 		end
-		FHMDDM.maximizeECDLL!(model, ∑χ, ∑γ)
+		maximizeECDLL!(model, ∑χ, ∑γ)
 	end
 	return ℓs
 end

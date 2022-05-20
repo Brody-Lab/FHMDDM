@@ -21,15 +21,15 @@ function native2real(options::Options,
 			Aᶜ₂₂ = [logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)],
 			B = [logit((θnative.B[1]-options.bound_B)/2/options.q_B)],
 			k = [logit((θnative.k[1]-options.bounds_k[1])/diff(options.bounds_k)[1])-logit(options.q_k)],
-			λ = [θnative.λ[1]],
-			μ₀ = [θnative.μ₀[1]],
+			λ = [atanh(θnative.λ[1]/options.bound_λ)],
+			μ₀ = [atanh(θnative.μ₀[1]/options.bound_μ₀)],
 			ϕ = [logit(θnative.ϕ[1]) - logit(options.q_ϕ)],
 			πᶜ₁ = [logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)],
 			ψ 	= [ψreal],
 			σ²ₐ = [logit((θnative.σ²ₐ[1]-options.bounds_σ²ₐ[1])/diff(options.bounds_σ²ₐ)[1])-logit(options.q_σ²ₐ)],
 			σ²ᵢ = [logit((θnative.σ²ᵢ[1]-options.bounds_σ²ᵢ[1])/diff(options.bounds_σ²ᵢ)[1])-logit(options.q_σ²ᵢ)],
 			σ²ₛ = [logit((θnative.σ²ₛ[1]-options.bounds_σ²ₛ[1])/diff(options.bounds_σ²ₛ)[1])-logit(options.q_σ²ₛ)],
-			wₕ = [θnative.wₕ[1]])
+			wₕ = [atanh(θnative.wₕ[1]/options.bound_wₕ)])
 end
 
 """
@@ -132,19 +132,17 @@ MODIFIED ARGUMENT
 -`∇ℓ`: gradient of the log-likelihood with respect to all parameters in real space
 -`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all parameters in real space
 """
-function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, latentθindex::Latentθ, model::Model)
+function native2real!(∇ℓ::Vector{<:Real}, ∇∇ℓ::Matrix{<:Real}, model::Model)
 	firstderivatives = differentiate_native_wrt_real(model)
 	secondderivatives = differentiate_twice_native_wrt_real(model)
-	for parametername in fieldnames(Latentθ)
-		d1 = getfield(firstderivatives, parametername)[1]
-		d2 = getfield(secondderivatives, parametername)[1]
-		i = getfield(latentθindex, parametername)[1]
-		if i > 0
-			∇∇ℓ[i,:] .*= d1
-			∇∇ℓ[:,i] .*= d1
-			∇∇ℓ[i,i] += d2*∇ℓ[i]
-			∇ℓ[i] *= d1
-		end
+	parameternames = fieldnames(Latentθ)
+	for i = 1:length(parameternames)
+		d1 = getfield(firstderivatives, parameternames[i])[1]
+		d2 = getfield(secondderivatives, parameternames[i])[1]
+		∇∇ℓ[i,:] .*= d1
+		∇∇ℓ[:,i] .*= d1
+		∇∇ℓ[i,i] += d2*∇ℓ[i]
+		∇ℓ[i] *= d1
 	end
 	return nothing
 end

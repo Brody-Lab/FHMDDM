@@ -61,12 +61,21 @@ OUTPUT
 """
 function poissonlikelihood(Δt::Real, L::Real, y::Integer)
 	λΔt = softplus(L)*Δt
+	poissonlikelihood(λΔt, y)
+end
+
+"""
+	poissonlikelihood(λΔt, y)
+
+Likelihood of observation `y` given Poisson rate `λΔt`
+"""
+function poissonlikelihood(λΔt::Real, y::Integer)
 	if y==0
-		1/exp(λΔt)
+		exp(-λΔt)
 	elseif y==1
-		λΔt/exp(λΔt)
+		λΔt*exp(-λΔt)
 	else
-		λΔt^y / exp(λΔt) / factorial(y)
+		λΔt^y * exp(-λΔt) / factorial(y)
 	end
 end
 
