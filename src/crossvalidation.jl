@@ -9,7 +9,6 @@ ARGUMENT
 OPTIONAL ARGUMENT
 -`kfold`: number of cross-validation folds
 -`iterations`: maximum number of iterations the solver goes through before stopping
--`randomize`: whether to randomly initiate the parameters controlling the latent parameters
 
 OUTPUT
 -an instance of `CVResults`
@@ -33,10 +32,9 @@ julia> save(cvresults, model.options)
 """
 function crossvalidate(model::Model;
                        kfold::Integer=5,
-					   iterations=1000,
-					   randomize::Bool=true)
+					   iterations=1000)
     cvindices = CVIndices(model, kfold)
-	results = pmap(cvindices->maxmizeposterior(cvindices, model; iterations=iterations, randomize=randomize), cvindices)
+	results = pmap(cvindices->maxmizeposterior(cvindices, model; iterations=iterations), cvindices)
 	trainingmodels = collect(result[1] for result in results)
 	losses = collect(result[2] for result in results)
 	gradientnorms = collect(result[3] for result in results)
@@ -68,8 +66,8 @@ RETURN
 -`losses`: the value of the cost function in each iteration
 -`gradientnorms`: the 2-norm of the gradient the cost function in each iteration
 """
-function maxmizeposterior(cvindices::CVIndices, model::Model; iterations::Integer, randomize::Bool=true)
-	θ₀native = randomize ? randomlyinitialize(model.options) : initializeparameters(model.options)
+function maxmizeposterior(cvindices::CVIndices, model::Model; iterations::Integer)
+	θ₀native = initializeparameters(model.options)
 	trainingmodel = Model(trialsets = trainingset(cvindices, model.trialsets),
 						  options = model.options,
 						  θ₀native = θ₀native,

@@ -17,17 +17,17 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat");
 ```
 """
-function Model(datapath::String; randomize::Bool=true)
+function Model(datapath::String)
     dataMAT = matopen(datapath);
     options = Options(read(dataMAT, "options"))
     trialsets = vec(map(trialset->Trialset(options, trialset), read(dataMAT, "data")))
     if isfile(options.resultspath)
         Model(options, options.resultspath, trialsets)
     else
-        Model(options, trialsets; randomize=randomize)
+        Model(options, trialsets)
     end
 end
 
@@ -76,10 +76,9 @@ ARGUMENT
 RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function Model(options::Options,
-				trialsets::Vector{<:Trialset}; randomize::Bool=true)
-	θnative = randomize ? randomlyinitialize(options) : initializeparameters(options)
-	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # just making a deep copy
+function Model(options::Options, trialsets::Vector{<:Trialset})
+	θnative = initializeparameters(options)
+	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # making a deep copy
 	Model(options=options,
 		   θnative=θnative,
 		   θreal=native2real(options, θnative),
@@ -200,49 +199,26 @@ end
 """
 	initializeparameters(options)
 
-Initialize the value of each model parameters in native space with defaults
-
-RETURN
--values of model parameter in native space
-"""
-function initializeparameters(options::Options)
-	Latentθ(Aᶜ₁₁=[options.q_Aᶜ₁₁],
-			Aᶜ₂₂=[options.q_Aᶜ₂₂],
-			B=[options.q_B],
-			k=[options.q_k],
-			λ=options.fit_λ ? [-1e-2] : zeros(1),
-			μ₀=zeros(1),
-			ϕ=[options.q_ϕ],
-			πᶜ₁=[options.q_πᶜ₁],
-			ψ=[options.q_ψ],
-			σ²ₐ=[options.q_σ²ₐ],
-			σ²ᵢ=[options.q_σ²ᵢ],
-			σ²ₛ=[options.q_σ²ₛ],
-			wₕ=zeros(1))
-end
-
-"""
-	initializeparameters(options)
-
 Initialize the value of each model parameters in native space by sampling from a Uniform random variable
 
 RETURN
 -values of model parameter in native space
 """
-function randomlyinitialize(options::Options)
-	Latentθ(Aᶜ₁₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₁₁],
-			Aᶜ₂₂=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_Aᶜ₂₂],
-			B=options.fit_B ? 2options.q_B*rand(1) : [options.q_B],
-			k=options.fit_k ? [options.bounds_k[1]+rand()*diff(options.bounds_k)[1]] : [options.q_k],
-			λ=options.fit_λ ? [(1-2rand())*options.bound_λ] : zeros(1),
-			μ₀=options.fit_μ₀ ? [(1-2rand())*options.bound_μ₀] : zeros(1),
-			ϕ=options.fit_ϕ ? rand(1) : [options.q_ϕ],
-			πᶜ₁=options.K==2 ? [options.bound_z + rand()*(1-2*options.bound_z)] : [options.q_πᶜ₁],
-			ψ=options.fit_ψ ? [options.bound_ψ + rand()*(1-2*options.bound_ψ)] : [options.q_ψ],
-			σ²ₐ=options.fit_σ²ₐ ? [options.bounds_σ²ₐ[1]+rand()*diff(options.bounds_σ²ₐ)[1]] : [options.q_σ²ₐ],
-			σ²ᵢ=options.fit_σ²ᵢ ? [options.bounds_σ²ᵢ[1]+rand()*diff(options.bounds_σ²ᵢ)[1]] : [options.q_σ²ᵢ],
-			σ²ₛ=options.fit_σ²ₛ ? [options.bounds_σ²ₛ[1]+rand()*diff(options.bounds_σ²ₛ)[1]] : [options.q_σ²ₛ],
-			wₕ=options.fit_wₕ ? [(1-2rand())*options.bound_wₕ] : zeros(1))
+function initializeparameters(options::Options)
+	θnative = Latentθ()
+	for field in fieldnames(Latentθ)
+		if any(field .== (:Aᶜ₁₁, :Aᶜ₂₂, :πᶜ₁))
+			fit = options.K == 2
+		else
+			fit = getfield(options, Symbol("fit_"*string(field)))
+		end
+		lqu = getfield(options, Symbol("lqu_"*string(field)))
+		l = lqu[1]
+		q = lqu[2]
+		u = lqu[3]
+		getfield(θnative, field)[1] = l + (u-l)*(fit ? rand() : q)
+	end
+	return θnative
 end
 
 """
@@ -259,7 +235,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
-julia> model = Model(datapath; randomize=true)
+julia> model = Model(datapath)
 julia> FHMDDM.initializeparameters!(model)
 ```
 """
@@ -289,16 +265,16 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_11_test/T176_2018_05_03_001/data.mat"
-julia> model = Model(datapath; randomize=true)
+julia> model = Model(datapath)
 julia> ℓs = FHMDDM.initialize_for_stochastic_transition!(model;EMiterations=100)
 ```
 """
 function initialize_for_stochastic_transition!(model::Model; EMiterations::Integer=1, relativeΔℓ::Real=1e-6)
 	@unpack options, θnative, θ₀native, θreal, trialsets = model
 	@unpack K = model.options
-	θ₀native.πᶜ₁[1] = θnative.πᶜ₁[1] = options.q_πᶜ₁
-	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = min(0.95, options.q_Aᶜ₁₁)
-	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 1.0 - options.q_Aᶜ₂₂
+	θ₀native.πᶜ₁[1] = θnative.πᶜ₁[1] = 0.999
+	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = 0.95
+	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.001
 	native2real!(θreal, options, θnative)
 	maximize_choice_posterior!(model)
 	memory = Memoryforgradient(model)
@@ -334,7 +310,7 @@ function initialize_for_stochastic_transition!(model::Model; EMiterations::Integ
 end
 
 """
-	maximizeECDLL!(model, ∑χ)
+	maximizeECDLL!(model, ∑χ, ∑γ)
 
 Optimize the parameters of the coupling variable by maximizing the expectation of the complete-data log-likelihood
 
@@ -347,8 +323,8 @@ UNMODIFIED ARGUMENT
 """
 function maximizeECDLL!(model::Model, ∑χ::Matrix{<:Real}, ∑γ::Vector{<:Real})
 	@unpack options, θnative, θreal = model
-	θnative.Aᶜ₁₁[1] = max(min(∑χ[1,1]/(∑χ[1,1]+∑χ[2,1]), 1-options.bound_z), options.bound_z)
-	θnative.Aᶜ₂₂[1] = max(min(∑χ[2,2]/(∑χ[2,2]+∑χ[1,2]), 1-options.bound_z), options.bound_z)
-	θnative.πᶜ₁[1] = max(min(∑γ[1]/(∑γ[1]+∑γ[2]), 1-options.bound_z), options.bound_z)
+	θnative.Aᶜ₁₁[1] = max(min(∑χ[1,1]/(∑χ[1,1]+∑χ[2,1]), options.lqu_Aᶜ₁₁[3]), options.lqu_Aᶜ₁₁[1])
+	θnative.Aᶜ₂₂[1] = max(min(∑χ[2,2]/(∑χ[2,2]+∑χ[1,2]), options.lqu_Aᶜ₂₂[3]), options.lqu_Aᶜ₂₂[1])
+	θnative.πᶜ₁[1] = max(min(∑γ[1]/(∑γ[1]+∑γ[2]),options.lqu_πᶜ₁[3]), options.lqu_πᶜ₁[1])
 	native2real!(θreal, options, θnative)
 end

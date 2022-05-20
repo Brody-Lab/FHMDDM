@@ -24,9 +24,8 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
-julia> model = Model(datapath)
-julia> initializeparameters!(model)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_19_test/T176_2018_05_03/data.mat")
+julia> FHMDDM.initializeparameters!(model)
 julia> losses, gradientnorms = maximizeposterior!(model)
 ```
 """
@@ -57,9 +56,17 @@ function maximizeposterior!(model::Model;
 								  store_trace=store_trace,
                                   x_tol=x_tol)
 	θ₀ = concatenateparameters(model)[1]
-	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
+	optimizationresults = [] # so that the variable is not confined to the scope of the while loop
+	ongoing = true
+	while ongoing
+		print(θ₀)
+		memory.concatenatedθ .= rand(length(θ₀))
+		optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
+		ongoing = isnan(Optim.minimum(optimizationresults))
+	end
     θₘₐₚ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₐₚ, memory.indexθ)
+	real2native!(model.θnative, model.options, model.θreal)
 	println(optimizationresults)
 	losses, gradientnorms = fill(NaN, iterations+1), fill(NaN, iterations+1)
 	if store_trace

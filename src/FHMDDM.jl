@@ -14,6 +14,7 @@ using   Distributed, # packages whose name and exported function is in scope
 import  Flux # packages whose name but not its exported function is in scope
 export  crossvalidate, # module-specific functions and types in this module that we can call in the REPL without preceding with the name of the module
         expectedemissions,
+        initializeparameters!,
         initialize_for_stochastic_transition!,
         Model,
         maximize_choice_posterior!,

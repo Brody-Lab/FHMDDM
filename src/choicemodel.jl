@@ -50,6 +50,7 @@ function maximize_choice_posterior!(model::Model;
     println(optimizationresults)
 	θₘₗ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₗ, memory.indexθ.latentθ)
+	real2native!(model.θnative, model.options, model.θreal)
 end
 
 """
@@ -84,6 +85,7 @@ function maximizechoiceLL!(model::Model;
     println(optimizationresults)
 	θₘₗ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₗ, memory.indexθ.latentθ)
+	real2native!(model.θnative, model.options, model.θreal)
 end
 
 """

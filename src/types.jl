@@ -50,26 +50,6 @@ Model settings
     a_latency_s::TF=1e-2
 	"type of temporal basis functions"
     basistype::TS="raised_cosine"
-	"lower bound of the sticky bound height"
-	bound_B::TF = 1.0
-	"upper bound of the feedback"
-	bound_λ::TF = 5.0
-	"upper bound of the bias"
-	bound_μ₀::TF = 5.0
-	"lower bound of the lapse rate"
-	bound_ψ::TF = 1e-4
-	"upper bound of the history weight"
-	bound_wₕ::TF = 5.0
-	"lower bound of the probabilities for the coupling variable"
-	bound_z::TF = 1e-4
-	"bounds of the change rate of the adaptation"
-	bounds_k::TVF = [1e-4, 1e3]
-	"bounds of the accumulation noise"
-	bounds_σ²ₐ::TVF = [1e-4, 50.0]
-	"bounds of the initial noise"
-	bounds_σ²ᵢ::TVF = [1e-4, 10.0]
-	"bounds of the sensory noise"
-	bounds_σ²ₛ::TVF = [1e-6, 5.0]
 	"full path of the data"
     datapath::TS=""
 	"duration of each timestep in seconds"
@@ -100,26 +80,33 @@ Model settings
 	initial_glm_L2_coefficient::TF=0.0
 	"initial coefficient for L2 regularization for the ddm parameters"
 	initial_ddm_L2_coefficient::TF=0.0
-	"value in native space of the transition probability of the coupling variable to remain in the coupled state that corresponds to zero in real space"
-	q_Aᶜ₁₁::TF=1-1e-3; 	@assert q_Aᶜ₁₁ >= 0 && q_Aᶜ₁₁ <= 1
-	"value in native space of the transition probability of the coupling variable to remain in the uncoupled state that corresponds to zero in real space"
-	q_Aᶜ₂₂::TF= 1e-3; 	@assert q_Aᶜ₂₂ >= 0 && q_Aᶜ₂₂ <= 1
-	"value of the bound height in native space that corresponds to zero in real space"
-	q_B::TF=30.0; 		@assert q_B > 0
-	"value of the adaptation change rate in native space that corresponds to zero in real space"
-	q_k::TF=1e-3; 		@assert q_k > 0
-	"value in native space of the sensitization strength parameter that corresponds to zero in real space"
-	q_ϕ::TF=1-1e-3; 	@assert q_ϕ >= 0 && q_ϕ <= 1
-	"value in native space of the prior probability of the coupling variable in coupled state that corresponds to zero in real space"
-	q_πᶜ₁::TF=1-1e-3; 	@assert q_πᶜ₁ >= 0 && q_πᶜ₁ <= 1
-	"value in native space of the behavioral lapse rate that corresponds to zero in real space"
-	q_ψ::TF=1e-3; 		@assert q_ψ >= 0 && q_ψ <= 1
-	"value in native space of the variance of per-timestep noise that corresponds to zero in real space"
-	q_σ²ₐ::TF=1e-3; 	@assert q_σ²ₐ >= 0
-	"value in native space of the variance of the initial probability of the accumulator variable that corresponds to zero in real space"
-	q_σ²ᵢ::TF=1e-3; 	@assert q_σ²ᵢ >= 0
-	"value in native space of the variance of the variance of per-click noise that corresponds to zero in real space"
-	q_σ²ₛ::TF=1e-4;	 	@assert q_σ²ₛ >= 0
+	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
+	"transition probability of the coupling variable to remain in the coupled state"
+	lqu_Aᶜ₁₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₁₁[1]) && (lqu_Aᶜ₁₁[1] <= lqu_Aᶜ₁₁[2]) && (lqu_Aᶜ₁₁[2] < lqu_Aᶜ₁₁[3]) && (lqu_Aᶜ₁₁[3] <= 1.0)
+	"transition probability of the coupling variable to remain in the decoupled state"
+	lqu_Aᶜ₂₂::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₂₂[1]) && (lqu_Aᶜ₂₂[1] <= lqu_Aᶜ₂₂[2]) && (lqu_Aᶜ₂₂[2] < lqu_Aᶜ₂₂[3]) && (lqu_Aᶜ₂₂[3] <= 1.0)
+	"bound height"
+	lqu_B::TVF=[1.0, 30.5, 60.0];	@assert (eps() <= lqu_B[1]) && (lqu_B[1] <= lqu_B[2]) && (lqu_B[2] < lqu_B[3]) && (lqu_B[3] < Inf)
+	"adaptation change rate"
+	lqu_k::TVF=[1e-4, 1e-3, 1e3];	@assert (0.0 <= lqu_k[1]) && (lqu_k[1] <= lqu_k[2]) && (lqu_k[2] < lqu_k[3]) && (lqu_k[3] < Inf)
+	"feedback"
+	lqu_λ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_λ[1]) && (lqu_λ[1] <= lqu_λ[2]) && (lqu_λ[2] < lqu_λ[3]) && (lqu_λ[3] < Inf)
+	"bias"
+	lqu_μ₀::TVF = [-10.0, 0.0, 10.0]; 	@assert (-Inf < lqu_μ₀[1]) && (lqu_μ₀[1] <= lqu_μ₀[2]) && (lqu_μ₀[2] < lqu_μ₀[3]) && (lqu_μ₀[3] < Inf)
+	"adaptation strength"
+	lqu_ϕ::TVF=[1e-4, 1-1e-3, 1.0-1e-4]; 	@assert (0.0 <= lqu_ϕ[1]) && (lqu_ϕ[1] <= lqu_ϕ[2]) && (lqu_ϕ[2] < lqu_ϕ[3]) && (lqu_ϕ[3] <= 1.0)
+	"prior probability of the coupled state"
+	lqu_πᶜ₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_πᶜ₁[1]) && (lqu_πᶜ₁[1] <= lqu_πᶜ₁[2]) && (lqu_πᶜ₁[2] < lqu_πᶜ₁[3]) && (lqu_πᶜ₁[3] <= 1.0)
+	"behavioral lapse rate"
+	lqu_ψ::TVF=[1e-6, 1e-3, 0.5-1e-6]; 		@assert (eps() <= lqu_ψ[1]) && (lqu_ψ[1] <= lqu_ψ[2]) && (lqu_ψ[2] < lqu_ψ[3]) && (lqu_ψ[3] <= 0.5) # lapse rate of 0 will result in underflow
+	"variance of per-timestep nois"
+	lqu_σ²ₐ::TVF=[1e-6, 1e-3, 20.0]; 		@assert (eps() < lqu_σ²ₐ[1]) && (lqu_σ²ₐ[1] <= lqu_σ²ₐ[2]) && (lqu_σ²ₐ[2] < lqu_σ²ₐ[3]) && (lqu_σ²ₐ[3] < Inf)
+	"variance of the initial probability of the accumulator variable"
+	lqu_σ²ᵢ::TVF=[1e-6, 1e-3, 20.0];	@assert (eps() < lqu_σ²ᵢ[1]) && (lqu_σ²ᵢ[1] <= lqu_σ²ᵢ[2]) && (lqu_σ²ᵢ[2] < lqu_σ²ᵢ[3]) && (lqu_σ²ᵢ[3] < Inf)
+	"variance of the variance of per-click noise"
+	lqu_σ²ₛ::TVF=[1e-6, 1e-4, 10.0];	@assert (eps() < lqu_σ²ₛ[1]) && (lqu_σ²ₛ[1] <= lqu_σ²ₛ[2]) && (lqu_σ²ₛ[2] < lqu_σ²ₛ[3]) && (lqu_σ²ₛ[3] < Inf)
+	"weight of previous answer"
+	lqu_wₕ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_wₕ[1]) && (lqu_wₕ[1] <= lqu_wₕ[2]) && (lqu_wₕ[2] < lqu_wₕ[3]) && (lqu_wₕ[3] < Inf)
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
     "number of states of the discrete accumulator variable"

@@ -1,35 +1,83 @@
 """
-    native2real(options, θnative)
+    real2native!(θnative, options, θreal)
 
-Map values of model parameters from native space to real space
+Map values of model parameters from real space to native space
+
+MODIFIED ARGUMENT
+-`θnative: values of model parameters in native space
+
+UNMODIFIED ARGUMENT
+-`options`: model settings
+-`θreal': values of model parameters in real space
+"""
+function real2native!(θnative::Latentθ, options::Options, θreal::Latentθ)
+	for field in fieldnames(Latentθ)
+		lqu = getfield(options, Symbol("lqu_"*string(field)))
+		l = lqu[1]
+		q = lqu[2]
+		u = lqu[3]
+		n = getfield(θnative, field)
+		r = getfield(θreal, field)[1]
+		n[1] = real2native(r,q,l,u)
+	end
+	# θnative.Aᶜ₁₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	# θnative.Aᶜ₂₂[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	# θnative.B[1] = options.bound_B + 2options.q_B*logistic(θreal.B[1])
+	# θnative.k[1] = options.bounds_k[1] + diff(options.bounds_k)[1]*logistic(θreal.k[1] + logit(options.q_k))
+	# θnative.λ[1] = options.bound_λ*tanh(θreal.λ[1])
+	# θnative.μ₀[1] = options.bound_μ₀*tanh(θreal.μ₀[1])
+	# θnative.ϕ[1] = logistic(θreal.ϕ[1] + logit(options.q_ϕ))
+	# θnative.πᶜ₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	# if options.q_ψ == 0.0
+	# 	θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1])
+	# else
+	# 	θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
+	# end
+	# θnative.σ²ₐ[1] = options.bounds_σ²ₐ[1] + diff(options.bounds_σ²ₐ)[1]*logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	# θnative.σ²ᵢ[1] = options.bounds_σ²ᵢ[1] + diff(options.bounds_σ²ᵢ)[1]*logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	# θnative.σ²ₛ[1] = options.bounds_σ²ₛ[1] + diff(options.bounds_σ²ₛ)[1]*logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
+	# θnative.wₕ[1] = options.bound_wₕ*tanh(θreal.wₕ[1])
+	return nothing
+end
+
+"""
+	real2native(r,q,l,u)
+
+Convert a parameter from real space to latent space
+
+ARGUMENT
+-`r`: value in real space
+-`q`: value in native space equal to a zero-valued in real space
+-`l`: lower bound in native space
+-`u`: upper bound in native space
+
+RETURN
+-scalar representing the value in native space
+"""
+function real2native(r::Real, q::Real, l::Real, u::Real)
+	if q == l
+		l + (u-l)*logistic(r)
+	else
+		l + (u-l)*logistic(r+logit((q-l)/(u-l)))
+	end
+end
+
+"""
+    real2native(options, θreal)
+
+Map values of model parameters from real space to native space
 
 ARGUMENT
 -`options`: model settings
--`θnative: values of model parameters in their native space`
+-`θreal: values of model parameters in real space
 
 RETURN
--values of model parameters in real space
+-values of model parameters in their native space
 """
-function native2real(options::Options,
-                     θnative::Latentθ)
-	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
- 		ψreal = logit(θnative.ψ[1])
-	else
-		ψreal = logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
-	end
-	Latentθ(Aᶜ₁₁ = [logit((θnative.Aᶜ₁₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₁₁)],
-			Aᶜ₂₂ = [logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)],
-			B = [logit((θnative.B[1]-options.bound_B)/2/options.q_B)],
-			k = [logit((θnative.k[1]-options.bounds_k[1])/diff(options.bounds_k)[1])-logit(options.q_k)],
-			λ = [atanh(θnative.λ[1]/options.bound_λ)],
-			μ₀ = [atanh(θnative.μ₀[1]/options.bound_μ₀)],
-			ϕ = [logit(θnative.ϕ[1]) - logit(options.q_ϕ)],
-			πᶜ₁ = [logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)],
-			ψ 	= [ψreal],
-			σ²ₐ = [logit((θnative.σ²ₐ[1]-options.bounds_σ²ₐ[1])/diff(options.bounds_σ²ₐ)[1])-logit(options.q_σ²ₐ)],
-			σ²ᵢ = [logit((θnative.σ²ᵢ[1]-options.bounds_σ²ᵢ[1])/diff(options.bounds_σ²ᵢ)[1])-logit(options.q_σ²ᵢ)],
-			σ²ₛ = [logit((θnative.σ²ₛ[1]-options.bounds_σ²ₛ[1])/diff(options.bounds_σ²ₛ)[1])-logit(options.q_σ²ₛ)],
-			wₕ = [atanh(θnative.wₕ[1]/options.bound_wₕ)])
+function real2native(options::Options, θreal::Latentθ)
+	θnative = Latentθ()
+	real2native!(θnative, options, θreal)
+	return θnative
 end
 
 """
@@ -44,77 +92,75 @@ UNMODIFIED ARGUMENT
 -`options`: model settings
 -`θnative: values of model parameters in their native space
 """
-function native2real!(θreal::Latentθ,
-					  options::Options,
-					  θnative::Latentθ)
-	θreal.Aᶜ₁₁[1] = logit((θnative.Aᶜ₁₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₁₁)
-	θreal.Aᶜ₂₂[1] = logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)
-	θreal.B[1] = logit((θnative.B[1]-options.bound_B)/2/options.q_B)
-	θreal.k[1] = logit((θnative.k[1]-options.bounds_k[1])/diff(options.bounds_k)[1])-logit(options.q_k)
-	θreal.λ[1] = atanh(θnative.λ[1]/options.bound_λ)
-	θreal.μ₀[1] = atanh(θnative.μ₀[1]/options.bound_μ₀)
-	θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
-	θreal.πᶜ₁[1] = logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)
-	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
- 		ψreal = logit(θnative.ψ[1])
-	else
-		ψreal = logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
+function native2real!(θreal::Latentθ, options::Options, θnative::Latentθ)
+	for field in fieldnames(Latentθ)
+		lqu = getfield(options, Symbol("lqu_"*string(field)))
+		l = lqu[1]
+		q = lqu[2]
+		u = lqu[3]
+		n = getfield(θnative, field)[1]
+		r = getfield(θreal, field)
+		r[1] = native2real(n,q,l,u)
 	end
-	θreal.ψ[1] = ψreal
-	θreal.σ²ₐ[1] = logit((θnative.σ²ₐ[1]-options.bounds_σ²ₐ[1])/diff(options.bounds_σ²ₐ)[1])-logit(options.q_σ²ₐ)
-	θreal.σ²ᵢ[1] = logit((θnative.σ²ᵢ[1]-options.bounds_σ²ᵢ[1])/diff(options.bounds_σ²ᵢ)[1])-logit(options.q_σ²ᵢ)
-	θreal.σ²ₛ[1] = logit((θnative.σ²ₛ[1]-options.bounds_σ²ₛ[1])/diff(options.bounds_σ²ₛ)[1])-logit(options.q_σ²ₛ)
-	θreal.wₕ[1] = atanh(θnative.wₕ[1]/options.bound_wₕ)
+	# θreal.Aᶜ₁₁[1] = logit((θnative.Aᶜ₁₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₁₁)
+	# θreal.Aᶜ₂₂[1] = logit((θnative.Aᶜ₂₂[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_Aᶜ₂₂)
+	# θreal.B[1] = logit((θnative.B[1]-options.bound_B)/2/options.q_B)
+	# θreal.k[1] = logit((θnative.k[1]-options.bounds_k[1])/diff(options.bounds_k)[1])-logit(options.q_k)
+	# θreal.λ[1] = atanh(θnative.λ[1]/options.bound_λ)
+	# θreal.μ₀[1] = atanh(θnative.μ₀[1]/options.bound_μ₀)
+	# θreal.ϕ[1] = logit(θnative.ϕ[1]) - logit(options.q_ϕ)
+	# θreal.πᶜ₁[1] = logit((θnative.πᶜ₁[1]-options.bound_z)/(1.0-2.0*options.bound_z)) - logit(options.q_πᶜ₁)
+	# if options.bound_ψ == 0.0 || options.q_ψ == 0.0
+ 	# 	ψreal = logit(θnative.ψ[1])
+	# else
+	# 	ψreal = logit((θnative.ψ[1]-options.bound_ψ) / (1.0-2.0*options.bound_ψ)) - logit(options.q_ψ)
+	# end
+	# θreal.ψ[1] = ψreal
+	# θreal.σ²ₐ[1] = logit((θnative.σ²ₐ[1]-options.bounds_σ²ₐ[1])/diff(options.bounds_σ²ₐ)[1])-logit(options.q_σ²ₐ)
+	# θreal.σ²ᵢ[1] = logit((θnative.σ²ᵢ[1]-options.bounds_σ²ᵢ[1])/diff(options.bounds_σ²ᵢ)[1])-logit(options.q_σ²ᵢ)
+	# θreal.σ²ₛ[1] = logit((θnative.σ²ₛ[1]-options.bounds_σ²ₛ[1])/diff(options.bounds_σ²ₛ)[1])-logit(options.q_σ²ₛ)
+	# θreal.wₕ[1] = atanh(θnative.wₕ[1]/options.bound_wₕ)
 	return nothing
 end
 
 """
-	native2real!(g, options, θnative, θreal)
+	real2native(r,q,l,u)
 
-Convert each partial derivative from native space to real space
-
-This involves multiplying each partial derivative in native space by the derivative of the parameter in native space with respect to the parameter in real space
+Convert a parameter from real space to latent space
 
 ARGUMENT
--`g`: gradient
--`options`: model settings
--`θnative`: values of the parameters in native space
--`θreal`: values of the parameters in real space
+-`n`: value in native space
+-`q`: value in native space equal to a zero-valued in real space
+-`l`: lower bound in native space
+-`u`: upper bound in native space
+
+RETURN
+-scalar representing the value in real space
 """
-function native2real!(g::Latentθ,
-					  options::Options,
-					  θnative::Latentθ,
-					  θreal::Latentθ)
-	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
-	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
-	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	tmpk = logistic(θreal.k[1] + logit(options.q_k))
-	tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
-	tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
-	tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
-	if options.bound_ψ == 0.0 || options.q_ψ == 0.0
-		dψnative_dψreal = θnative.ψ[1]*(1-θnative.ψ[1])
+function native2real(n::Real, q::Real, l::Real, u::Real)
+	if q == l
+		logit((n-l)/(u-l))
 	else
-		tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
-		f_bound_ψ = 1.0-2.0*options.bound_ψ
-		dψnative_dψreal = f_bound_ψ*tmpψ*(1.0 - tmpψ)
+		logit((n-l)/(u-l)) - logit((q-l)/(u-l))
 	end
-	f_bound_z = 1.0-2.0*options.bound_z
-	g.Aᶜ₁₁[1] *= f_bound_z*tmpAᶜ₁₁*(1.0 - tmpAᶜ₁₁)
-	g.Aᶜ₂₂[1] *= f_bound_z*tmpAᶜ₂₂*(1.0 - tmpAᶜ₂₂)
-	fB = logistic(θreal.B[1])
-	g.B[1] *= 2options.q_B*fB*(1-fB)
-	g.k[1] *= diff(options.bounds_k)[1]*tmpk*(1-tmpk)
-	g.λ[1] *= options.bound_λ*(1.0 - tanh(θreal.λ[1])^2)
-	g.μ₀[1] *= options.bound_μ₀*(1.0 - tanh(θreal.μ₀[1])^2)
-	g.ϕ[1] *= θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
-	g.πᶜ₁[1] *= f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
-	g.ψ[1]   *= dψnative_dψreal
-	g.σ²ₐ[1] *= diff(options.bounds_σ²ₐ)[1]*tmpσ²ₐ*(1-tmpσ²ₐ)
-	g.σ²ᵢ[1] *= diff(options.bounds_σ²ᵢ)[1]*tmpσ²ᵢ*(1-tmpσ²ᵢ)
-	g.σ²ₛ[1] *= diff(options.bounds_σ²ₛ)[1]*tmpσ²ₛ*(1-tmpσ²ₛ)
-	g.wₕ[1] *= options.bound_wₕ*(1.0 - tanh(θreal.wₕ[1])^2)
-	return nothing
+end
+
+"""
+    native2real(options, θnative)
+
+Map values of model parameters from native space to real space
+
+ARGUMENT
+-`options`: model settings
+-`θnative: values of model parameters in their native space`
+
+RETURN
+-values of model parameters in real space
+"""
+function native2real(options::Options, θnative::Latentθ)
+	θreal = Latentθ()
+	native2real!(θreal,options,θnative)
+	return θreal
 end
 
 """
@@ -183,34 +229,68 @@ RETURN
 -`derivatives`: an instance of `Latentθ` containing the derivative of each parameter in its native space with respect to its value in real space
 """
 function differentiate_native_wrt_real(model::Model)
-	@unpack options, θreal, θnative = model
-	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
-	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
-	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
-	tmpk = logistic(θreal.k[1] + logit(options.q_k))
-	tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
-	tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
-	tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
-	f_bound_z = 1.0-2.0*options.bound_z
-	f_bound_ψ = 1.0-2.0*options.bound_ψ
-	d = Latentθ()
-	d.Aᶜ₁₁[1] = f_bound_z*tmpAᶜ₁₁*(1.0 - tmpAᶜ₁₁)
-	d.Aᶜ₂₂[1] = f_bound_z*tmpAᶜ₂₂*(1.0 - tmpAᶜ₂₂)
-	fB = logistic(θreal.B[1])
-	d.B[1] = 2options.q_B*fB*(1-fB)
-	d.k[1] = θnative.k[1]
-	d.λ[1] = options.bound_λ*(1.0 - tanh(θreal.λ[1])^2)
-	d.μ₀[1] = options.bound_μ₀*(1.0 - tanh(θreal.μ₀[1])^2)
-	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
-	d.πᶜ₁[1] = f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
-	d.ψ[1] = f_bound_ψ*tmpψ*(1.0 - tmpψ)
-	d.k[1] = diff(options.bounds_k)[1]*tmpk*(1-tmpk)
-	d.σ²ₐ[1] = diff(options.bounds_σ²ₐ)[1]*tmpσ²ₐ*(1-tmpσ²ₐ)
-	d.σ²ᵢ[1] = diff(options.bounds_σ²ᵢ)[1]*tmpσ²ᵢ*(1-tmpσ²ᵢ)
-	d.σ²ₛ[1] = diff(options.bounds_σ²ₛ)[1]*tmpσ²ₛ*(1-tmpσ²ₛ)
-	d.wₕ[1] = options.bound_wₕ*(1.0 - tanh(θreal.wₕ[1])^2)
-	return d
+	@unpack options, θreal = model
+	derivatives = Latentθ()
+	for field in fieldnames(Latentθ)
+		lqu = getfield(options, Symbol("lqu_"*string(field)))
+		l = lqu[1]
+		q = lqu[2]
+		u = lqu[3]
+		r = getfield(θreal, field)[1]
+		d = getfield(derivatives, field)
+ 		d[1] = differentiate_native_wrt_real(r,q,l,u)
+	end
+	return derivatives
+	# tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	# tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	# tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	# tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	# tmpk = logistic(θreal.k[1] + logit(options.q_k))
+	# tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	# tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	# tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
+	# f_bound_z = 1.0-2.0*options.bound_z
+	# f_bound_ψ = 1.0-2.0*options.bound_ψ
+	# d = Latentθ()
+	# d.Aᶜ₁₁[1] = f_bound_z*tmpAᶜ₁₁*(1.0 - tmpAᶜ₁₁)
+	# d.Aᶜ₂₂[1] = f_bound_z*tmpAᶜ₂₂*(1.0 - tmpAᶜ₂₂)
+	# fB = logistic(θreal.B[1])
+	# d.B[1] = 2options.q_B*fB*(1-fB)
+	# d.k[1] = θnative.k[1]
+	# d.λ[1] = options.bound_λ*(1.0 - tanh(θreal.λ[1])^2)
+	# d.μ₀[1] = options.bound_μ₀*(1.0 - tanh(θreal.μ₀[1])^2)
+	# d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])
+	# d.πᶜ₁[1] = f_bound_z*tmpπᶜ₁*(1.0 - tmpπᶜ₁)
+	# d.ψ[1] = f_bound_ψ*tmpψ*(1.0 - tmpψ)
+	# d.k[1] = diff(options.bounds_k)[1]*tmpk*(1-tmpk)
+	# d.σ²ₐ[1] = diff(options.bounds_σ²ₐ)[1]*tmpσ²ₐ*(1-tmpσ²ₐ)
+	# d.σ²ᵢ[1] = diff(options.bounds_σ²ᵢ)[1]*tmpσ²ᵢ*(1-tmpσ²ᵢ)
+	# d.σ²ₛ[1] = diff(options.bounds_σ²ₛ)[1]*tmpσ²ₛ*(1-tmpσ²ₛ)
+	# d.wₕ[1] = options.bound_wₕ*(1.0 - tanh(θreal.wₕ[1])^2)
+	# return d
+end
+
+"""
+	differentiate_native_wrt_real(r,q,l,u)
+
+Derivative of the native value of a parameter with respect to its value in real space
+
+ARGUMENT
+-`r`: value in real space
+-`q`: value in native space equal to a zero-valued in real space
+-`l`: lower bound in native space
+-`u`: upper bound in native space
+
+RETURN
+-a scalar representing the derivative
+"""
+function differentiate_native_wrt_real(r::Real, q::Real, l::Real, u::Real)
+	if q == l
+		x = logistic(r)
+	else
+		x = logistic(r + logit((q-l)/(u-l)))
+	end
+	(u-l)*x*(1.0-x)
 end
 
 """
@@ -225,106 +305,71 @@ RETURN
 -`derivatives`: an instance of `Latentθ` containing the derivative of each parameter in its native space with respect to its value in real space
 """
 function differentiate_twice_native_wrt_real(model::Model)
-	@unpack options, θreal, θnative = model
-	tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
-	tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
-	tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
-	tmpk = logistic(θreal.k[1] + logit(options.q_k))
-	tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
-	tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
-	tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
-	f_bound_z = 1.0-2.0*options.bound_z
-	f_bound_ψ = 1.0-2.0*options.bound_ψ
-	d = Latentθ()
-	d.Aᶜ₁₁[1] = f_bound_z*(tmpAᶜ₁₁*(1-tmpAᶜ₁₁)^2 - tmpAᶜ₁₁^2*(1-tmpAᶜ₁₁))
-	d.Aᶜ₂₂[1] = f_bound_z*(tmpAᶜ₂₂*(1-tmpAᶜ₂₂)^2 - tmpAᶜ₂₂^2*(1-tmpAᶜ₂₂))
-	fB = logistic(θreal.B[1])
-	d.B[1] = 2options.q_B*(fB*(1-fB)^2 - fB^2*(1-fB))
-	d.k[1] = θnative.k[1]
-	fλ = tanh(θreal.λ[1])
-	d.λ[1] = 2*options.bound_λ*(fλ^3 - fλ)
-	fμ₀ = tanh(θreal.μ₀[1])
-	d.μ₀[1] = 2*options.bound_μ₀*(fμ₀^3 - fμ₀)
-	d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])^2 - θnative.ϕ[1]^2*(1.0 - θnative.ϕ[1])
-	d.πᶜ₁[1] = f_bound_z*(tmpπᶜ₁*(1-tmpπᶜ₁)^2 - tmpπᶜ₁^2*(1-tmpπᶜ₁))
-	d.ψ[1] = f_bound_ψ*(tmpψ*(1-tmpψ)^2 - tmpψ^2*(1-tmpψ))
-	d.k[1] = diff(options.bounds_k)[1]*(tmpk*(1-tmpk)^2 - tmpk^2*(1-tmpk))
-	d.σ²ₐ[1] = diff(options.bounds_σ²ₐ)[1]*(tmpσ²ₐ*(1-tmpσ²ₐ)^2 - tmpσ²ₐ^2*(1-tmpσ²ₐ))
-	d.σ²ᵢ[1] = diff(options.bounds_σ²ᵢ)[1]*(tmpσ²ᵢ*(1-tmpσ²ᵢ)^2 - tmpσ²ᵢ^2*(1-tmpσ²ᵢ))
-	d.σ²ₛ[1] = diff(options.bounds_σ²ₛ)[1]*(tmpσ²ₛ*(1-tmpσ²ₛ)^2 - tmpσ²ₛ^2*(1-tmpσ²ₛ))
-	fwₕ = tanh(θreal.wₕ[1])
-	d.wₕ[1] = 2*options.bound_wₕ*(fwₕ^3 - fwₕ)
-	return d
+	@unpack options, θreal = model
+	derivatives = Latentθ()
+	for field in fieldnames(Latentθ)
+		lqu = getfield(options, Symbol("lqu_"*string(field)))
+		l = lqu[1]
+		q = lqu[2]
+		u = lqu[3]
+		r = getfield(θreal, field)[1]
+		d = getfield(derivatives, field)
+ 		d[1] = differentiate_twice_native_wrt_real(r,q,l,u)
+	end
+	return derivatives
+	# tmpAᶜ₁₁ = logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
+	# tmpAᶜ₂₂ = logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
+	# tmpπᶜ₁ 	= logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
+	# tmpψ 	= logistic(θreal.ψ[1] + logit(options.q_ψ))
+	# tmpk = logistic(θreal.k[1] + logit(options.q_k))
+	# tmpσ²ₐ = logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
+	# tmpσ²ᵢ = logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
+	# tmpσ²ₛ = logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
+	# f_bound_z = 1.0-2.0*options.bound_z
+	# f_bound_ψ = 1.0-2.0*options.bound_ψ
+	# d = Latentθ()
+	# d.Aᶜ₁₁[1] = f_bound_z*(tmpAᶜ₁₁*(1-tmpAᶜ₁₁)^2 - tmpAᶜ₁₁^2*(1-tmpAᶜ₁₁))
+	# d.Aᶜ₂₂[1] = f_bound_z*(tmpAᶜ₂₂*(1-tmpAᶜ₂₂)^2 - tmpAᶜ₂₂^2*(1-tmpAᶜ₂₂))
+	# fB = logistic(θreal.B[1])
+	# d.B[1] = 2options.q_B*(fB*(1-fB)^2 - fB^2*(1-fB))
+	# d.k[1] = θnative.k[1]
+	# fλ = tanh(θreal.λ[1])
+	# d.λ[1] = 2*options.bound_λ*(fλ^3 - fλ)
+	# fμ₀ = tanh(θreal.μ₀[1])
+	# d.μ₀[1] = 2*options.bound_μ₀*(fμ₀^3 - fμ₀)
+	# d.ϕ[1] = θnative.ϕ[1]*(1.0 - θnative.ϕ[1])^2 - θnative.ϕ[1]^2*(1.0 - θnative.ϕ[1])
+	# d.πᶜ₁[1] = f_bound_z*(tmpπᶜ₁*(1-tmpπᶜ₁)^2 - tmpπᶜ₁^2*(1-tmpπᶜ₁))
+	# d.ψ[1] = f_bound_ψ*(tmpψ*(1-tmpψ)^2 - tmpψ^2*(1-tmpψ))
+	# d.k[1] = diff(options.bounds_k)[1]*(tmpk*(1-tmpk)^2 - tmpk^2*(1-tmpk))
+	# d.σ²ₐ[1] = diff(options.bounds_σ²ₐ)[1]*(tmpσ²ₐ*(1-tmpσ²ₐ)^2 - tmpσ²ₐ^2*(1-tmpσ²ₐ))
+	# d.σ²ᵢ[1] = diff(options.bounds_σ²ᵢ)[1]*(tmpσ²ᵢ*(1-tmpσ²ᵢ)^2 - tmpσ²ᵢ^2*(1-tmpσ²ᵢ))
+	# d.σ²ₛ[1] = diff(options.bounds_σ²ₛ)[1]*(tmpσ²ₛ*(1-tmpσ²ₛ)^2 - tmpσ²ₛ^2*(1-tmpσ²ₛ))
+	# fwₕ = tanh(θreal.wₕ[1])
+	# d.wₕ[1] = 2*options.bound_wₕ*(fwₕ^3 - fwₕ)
+	# return d
 end
 
 """
-    real2native(options, θreal)
+	differentiate_twice_native_wrt_real(r,q,l,u)
 
-Map values of model parameters from real space to native space
+Second derivative of the native value of a parameter with respect to its value in real space
 
 ARGUMENT
--`options`: model settings
--`θreal: values of model parameters in real space
+-`r`: value in real space
+-`q`: value in native space equal to a zero-valued in real space
+-`l`: lower bound in native space
+-`u`: upper bound in native space
 
 RETURN
--values of model parameters in their native space
+-a scalar representing the second derivative
 """
-function real2native(options::Options,
-                     θreal::Latentθ)
-	if options.q_ψ == 0.0
-		ψnative = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1])
+function differentiate_twice_native_wrt_real(r::Real, q::Real, l::Real, u::Real)
+	if q == l
+		x = logistic(r)
 	else
-		ψnative = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
+		x = logistic(r + logit((q-l)/(u-l)))
 	end
-	Latentθ(Aᶜ₁₁ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))],
-			Aᶜ₂₂ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))],
-			B = [options.bound_B + 2options.q_B*logistic(θreal.B[1])],
-			k = [options.bounds_k[1] + diff(options.bounds_k)[1]*logistic(θreal.k[1] + logit(options.q_k))],
-			λ = [options.bound_λ*tanh(θreal.λ[1])],
-			μ₀ = [options.bound_μ₀*tanh(θreal.μ₀[1])],
-			ϕ = [logistic(θreal.ϕ[1] + logit(options.q_ϕ))],
-			πᶜ₁ = [options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))],
-			ψ   = [ψnative],
-			σ²ₐ = [options.bounds_σ²ₐ[1] + diff(options.bounds_σ²ₐ)[1]*logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))],
-			σ²ᵢ = [options.bounds_σ²ᵢ[1] + diff(options.bounds_σ²ᵢ)[1]*logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))],
-			σ²ₛ = [options.bounds_σ²ₛ[1] + diff(options.bounds_σ²ₛ)[1]*logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))],
-			wₕ = [options.bound_wₕ*tanh(θreal.wₕ[1])])
-end
-
-"""
-    real2native!(θnative, options, θreal)
-
-Map values of model parameters from real space to native space
-
-MODIFIED ARGUMENT
--`θnative: values of model parameters in native space
-
-UNMODIFIED ARGUMENT
--`options`: model settings
--`θreal': values of model parameters in real space
-"""
-function real2native!(θnative::Latentθ,
-					  options::Options,
-					  θreal::Latentθ)
-	θnative.Aᶜ₁₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₁₁[1] + logit(options.q_Aᶜ₁₁))
-	θnative.Aᶜ₂₂[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.Aᶜ₂₂[1] + logit(options.q_Aᶜ₂₂))
-	θnative.B[1] = options.bound_B + 2options.q_B*logistic(θreal.B[1])
-	θnative.k[1] = options.bounds_k[1] + diff(options.bounds_k)[1]*logistic(θreal.k[1] + logit(options.q_k))
-	θnative.λ[1] = options.bound_λ*tanh(θreal.λ[1])
-	θnative.μ₀[1] = options.bound_μ₀*tanh(θreal.μ₀[1])
-	θnative.ϕ[1] = logistic(θreal.ϕ[1] + logit(options.q_ϕ))
-	θnative.πᶜ₁[1] = options.bound_z + (1.0-2.0*options.bound_z)*logistic(θreal.πᶜ₁[1] + logit(options.q_πᶜ₁))
-	if options.q_ψ == 0.0
-		θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1])
-	else
-		θnative.ψ[1] = options.bound_ψ + (1.0-2.0*options.bound_ψ)*logistic(θreal.ψ[1] + logit(options.q_ψ))
-	end
-	θnative.σ²ₐ[1] = options.bounds_σ²ₐ[1] + diff(options.bounds_σ²ₐ)[1]*logistic(θreal.σ²ₐ[1] + logit(options.q_σ²ₐ))
-	θnative.σ²ᵢ[1] = options.bounds_σ²ᵢ[1] + diff(options.bounds_σ²ᵢ)[1]*logistic(θreal.σ²ᵢ[1] + logit(options.q_σ²ᵢ))
-	θnative.σ²ₛ[1] = options.bounds_σ²ₛ[1] + diff(options.bounds_σ²ₛ)[1]*logistic(θreal.σ²ₛ[1] + logit(options.q_σ²ₛ))
-	θnative.wₕ[1] = options.bound_wₕ*tanh(θreal.wₕ[1])
-	return nothing
+	(u-l)*(x*(1.0-x)^2 - x^2*(1-x))
 end
 
 """
@@ -336,16 +381,6 @@ function dictionary(options::Options)
 	Dict(	"a_basis_per_s"=>options.a_basis_per_s,
 			"a_latency_s"=>options.a_latency_s,
 			"basistype"=>options.basistype,
-			"bound_B"=>options.bound_B,
-			"bound_lambda"=>options.bound_λ,
-			"bound_mu0"=>options.bound.μ₀,
-			"bound_psi"=>options.bound_ψ,
-			"bound_w_h"=>options.bound.wₕ,
-			"bound_z"=>options.bound_z,
-			"bounds_k"=>options.bounds_k,
-			"bounds_sigma2a"=>options.bounds_σ²ₐ,
-			"bounds_sigma2i"=>options.bounds_σ²ᵢ,
-			"bounds_sigma2s"=>options.bounds_σ²ₛ,
 			"datapath"=>options.datapath,
 			"dt"=>options.Δt,
 			"K"=>options.K,
@@ -361,16 +396,19 @@ function dictionary(options::Options)
 			"fit_w_h"=>options.fit_wₕ,
 			"initial_glm_L2_coefficient"=>options.initial_glm_L2_coefficient,
 			"initial_ddm_L2_coefficient"=>options.initial_ddm_L2_coefficient,
-			"q_Ac11"=>options.q_Aᶜ₁₁,
-			"q_Ac22"=>options.q_Aᶜ₂₂,
-			"q_B"=>options.q_B,
-			"q_k"=>options.q_k,
-			"q_phi"=>options.q_ϕ,
-			"q_pic1"=>options.q_πᶜ₁,
-			"q_psi"=>options.q_ψ,
-			"q_sigma2_a"=>options.q_σ²ₐ,
-			"q_sigma2_i"=>options.q_σ²ᵢ,
-			"q_sigma2_s"=>options.q_σ²ₛ,
+			"lqu_Ac11"=>options.lqu_Aᶜ₁₁,
+			"lqu_Ac22"=>options.lqu_Aᶜ₂₂,
+			"lqu_B"=>	options.lqu_B,
+			"lqu_k"=>	options.lqu_k,
+			"lqu_λ"=>	options.lqu_λ,
+			"lqu_μ₀"=>	options.lqu_μ₀,
+			"lqu_ϕ"=>	options.lqu_ϕ,
+			"lqu_πᶜ₁"=>	options.lqu_πᶜ₁,
+			"lqu_ψ"=>	options.lqu_ψ,
+			"lqu_σ²ₐ"=>	options.lqu_σ²ₐ,
+			"lqu_σ²ᵢ"=>	options.lqu_σ²ᵢ,
+			"lqu_σ²ₛ"=>	options.lqu_σ²ₛ,
+			"lqu_wₕ"=>	options.lqu_wₕ,
 			"resultspath"=>options.resultspath,
 			"Xi"=>options.Ξ)
 end
@@ -495,16 +533,6 @@ function Options(options::Dict)
 	Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
 			a_latency_s = options["a_latency_s"],
 			basistype = options["basistype"],
-			bound_B = options["bound_B"],
-			bound_λ = options["bound_lambda"],
-			bound_μ₀ = options["bound_mu0"],
-			bound_ψ = options["bound_psi"],
-			bound_wₕ = options["bound_w_h"],
-			bound_z = options["bound_z"],
-			bounds_k = vec(options["bounds_k"]),
-			bounds_σ²ₐ = vec(options["bounds_sigma2a"]),
-			bounds_σ²ᵢ = vec(options["bounds_sigma2i"]),
-			bounds_σ²ₛ = vec(options["bounds_sigma2s"]),
 			datapath = options["datapath"],
 			Δt = options["dt"],
 			K = convert(Int64, options["K"]),
@@ -520,16 +548,19 @@ function Options(options::Dict)
 			fit_wₕ = options["fit_w_h"],
 			initial_glm_L2_coefficient=options["initial_glm_L2_coefficient"],
 			initial_ddm_L2_coefficient=options["initial_ddm_L2_coefficient"],
-			q_Aᶜ₁₁ = options["q_Ac11"],
-			q_Aᶜ₂₂ = options["q_Ac22"],
-			q_B = options["q_B"],
-			q_k = options["q_k"],
-			q_ϕ = options["q_phi"],
-			q_πᶜ₁ = options["q_pic1"],
-			q_ψ = options["q_psi"],
-			q_σ²ₐ = options["q_sigma2_a"],
-			q_σ²ᵢ = options["q_sigma2_i"],
-			q_σ²ₛ = options["q_sigma2_s"],
+			lqu_Aᶜ₁₁= vec(options["lqu_Ac11"]),
+			lqu_Aᶜ₂₂= vec(options["lqu_Ac22"]),
+			lqu_B 	= vec(options["lqu_B"]),
+			lqu_k	= vec(options["lqu_k"]),
+			lqu_λ	= vec(options["lqu_lambda"]),
+			lqu_μ₀	= vec(options["lqu_mu0"]),
+			lqu_ϕ	= vec(options["lqu_phi"]),
+			lqu_πᶜ₁	= vec(options["lqu_pic1"]),
+			lqu_ψ	= vec(options["lqu_psi"]),
+			lqu_σ²ₐ	= vec(options["lqu_sigma2_a"]),
+			lqu_σ²ᵢ	= vec(options["lqu_sigma2_i"]),
+			lqu_σ²ₛ	= vec(options["lqu_sigma2_s"]),
+			lqu_wₕ	= vec(options["lqu_w_h"]),
 			resultspath = options["resultspath"],
 			Ξ = convert(Int64, options["Xi"]))
 end

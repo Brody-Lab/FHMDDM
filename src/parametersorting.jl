@@ -336,10 +336,12 @@ julia> concatenatedθ = rand(length(concatenatedθ))
 julia> model = Model(concatenatedθ, indexθ, model)
 ```
 """
-function Model(concatenatedθ::Vector{<:Real},
+function Model(concatenatedθ::Vector{type},
 	 		   indexθ::Indexθ,
-			   model::Model)
+			   model::Model) where {type<:Real}
 	θreal = Latentθ(concatenatedθ, indexθ.latentθ, model.θreal)
+	θnative = Latentθ((zeros(type,1) for field in fieldnames(Latentθ))...)
+	real2native!(θnative, model.options, θreal)
 	trialsets = map(model.trialsets, indexθ.glmθ) do trialset, glmθindex
 					mpGLMs =map(trialset.mpGLMs, glmθindex) do mpGLM, glmθindex
 								MixturePoissonGLM(concatenatedθ, mpGLM; offset=glmθindex.𝐮[1]-1)
@@ -347,7 +349,7 @@ function Model(concatenatedθ::Vector{<:Real},
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
 	Model(	options = model.options,
-			θnative = real2native(model.options, θreal),
+			θnative = θnative,
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=trialsets)
