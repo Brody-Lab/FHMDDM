@@ -274,7 +274,7 @@ function initialize_for_stochastic_transition!(model::Model; EMiterations::Integ
 	@unpack K = model.options
 	θ₀native.πᶜ₁[1] = θnative.πᶜ₁[1] = 0.999
 	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = 0.95
-	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.001
+	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.999
 	native2real!(θreal, options, θnative)
 	maximize_choice_posterior!(model)
 	memory = Memoryforgradient(model)

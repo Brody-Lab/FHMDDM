@@ -56,14 +56,7 @@ function maximizeposterior!(model::Model;
 								  store_trace=store_trace,
                                   x_tol=x_tol)
 	θ₀ = concatenateparameters(model)[1]
-	optimizationresults = [] # so that the variable is not confined to the scope of the while loop
-	ongoing = true
-	while ongoing
-		print(θ₀)
-		memory.concatenatedθ .= rand(length(θ₀))
-		optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
-		ongoing = isnan(Optim.minimum(optimizationresults))
-	end
+	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
     θₘₐₚ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₐₚ, memory.indexθ)
 	real2native!(model.θnative, model.options, model.θreal)

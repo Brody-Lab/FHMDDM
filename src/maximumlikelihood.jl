@@ -52,12 +52,7 @@ function maximizelikelihood!(model::Model,
 								  store_trace=store_trace,
                                   x_tol=x_tol)
 	θ₀ = concatenateparameters(model)[1]
-	optimizationresults = [] # so that the variable is not confined to the scope of the while loop
-	ongoing = true
-	while ongoing
-		optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
-		ongoing = isnan(Optim.minimum(optimizationresults))
-	end
+	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
     θₘₗ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₗ, memory.indexθ)
 	real2native!(model.θnative, model.options, model.θreal)
