@@ -107,6 +107,8 @@ Model settings
 	lqu_σ²ₛ::TVF=[1e-6, 1e-4, 10.0];	@assert (eps() < lqu_σ²ₛ[1]) && (lqu_σ²ₛ[1] <= lqu_σ²ₛ[2]) && (lqu_σ²ₛ[2] < lqu_σ²ₛ[3]) && (lqu_σ²ₛ[3] < Inf)
 	"weight of previous answer"
 	lqu_wₕ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_wₕ[1]) && (lqu_wₕ[1] <= lqu_wₕ[2]) && (lqu_wₕ[2] < lqu_wₕ[3]) && (lqu_wₕ[3] < Inf)
+	"minimum value of the prior and transition probabilities of the accumulator"
+	minpa::TF=1e-8
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
     "number of states of the discrete accumulator variable"
@@ -313,6 +315,8 @@ First and second partial derivatives of a probability vector of the accumulator 
 	"------hyperparameters------"
 	"duration of the time step"
 	Δt::TR
+	"minimum value of the accumulator prior or transition probability"
+	minpa::TR
 	"number of discrete states of the accumulator"
 	Ξ::TI
 
@@ -357,6 +361,8 @@ First and second partial derivatives of a probability vector of the accumulator 
 	d²𝛍_dBdλ::TVR = Δt.*expλΔt.*d𝛏_dB
 	"location of the previous reward"
 	previousanswer::TVI = zeros(Int,1)
+	"1.0 - Ξ*minpa"
+	one_minus_Ξminpa::TR = 1.0 - Ξ*minpa
 
 	"------intermediate quantities updated at each time step------"
 	"differential auditory input: sum of the adapted magnitude from all right clicks, minus the summed adapted magnitudes from left clicks, for all clicks in the time step"

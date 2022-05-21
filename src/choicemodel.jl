@@ -188,18 +188,18 @@ function choiceLL(concatenatedθ::Vector{T},
 				model::Model) where {T<:Real}
 	model = Model(concatenatedθ, indexθ, model)
 	@unpack options, θnative, θreal, trialsets = model
-	@unpack Δt, Ξ = options
+	@unpack Δt, minpa, Ξ = options
 	Aᵃinput, Aᵃsilent = zeros(T,Ξ,Ξ), zeros(T,Ξ,Ξ)
 	expλΔt = exp(θnative.λ[1]*Δt)
 	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
 	d𝛏_dB = (2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	𝛏 = θnative.B[1].*d𝛏_dB
-	transitionmatrix!(Aᵃsilent, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
+	transitionmatrix!(Aᵃsilent, minpa, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
 	ℓ = zero(T)
 	@inbounds for s in eachindex(trialsets)
 		for m in eachindex(trialsets[s].trials)
 			trial = trialsets[s].trials[m]
-			f = probabilityvector(θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
+			f = probabilityvector(minpa, θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
 			if length(trial.clicks.time) > 0
 				adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
 			end
@@ -209,7 +209,7 @@ function choiceLL(concatenatedθ::Vector{T},
 					cR = sum(adaptedclicks.C[trial.clicks.right[t]])
 					𝛍 = expλΔt.*𝛏 .+ (cR-cL)*dμ_dΔc
 					σ = √((cR+cL)*θnative.σ²ₛ[1] + Δt*θnative.σ²ₐ[1])
-					transitionmatrix!(Aᵃinput, 𝛍, σ, 𝛏)
+					transitionmatrix!(Aᵃinput, minpa, 𝛍, σ, 𝛏)
 					Aᵃ = Aᵃinput
 				else
 					Aᵃ = Aᵃsilent
@@ -285,7 +285,7 @@ function ∇negativechoiceLL!(∇nℓ::Vector{<:Real},
 	if concatenatedθ != memory.concatenatedθ
 		P = update_for_choiceLL!(memory, model, concatenatedθ)
 	else
-		P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+		P = Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ)
 	end
 	∇choiceLL!(memory,model,P)
 	indexall = 0
@@ -477,8 +477,8 @@ function update_for_choiceLL!(memory::Memoryforgradient,
 	sortparameters!(model, memory.concatenatedθ, memory.indexθ.latentθ)
 	real2native!(model.θnative, model.options, model.θreal)
 	@unpack options, θnative = model
-	@unpack Δt, K, Ξ = options
-	P = Probabilityvector(Δt, θnative, Ξ)
+	@unpack Δt, K, minpa, Ξ = options
+	P = Probabilityvector(Δt, minpa, θnative, Ξ)
 	update_for_∇transition_probabilities!(P)
 	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
 	return P

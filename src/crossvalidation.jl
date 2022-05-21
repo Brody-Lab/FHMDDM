@@ -160,7 +160,7 @@ function relative_loglikelihood(model::Model,
 								fractionright::Vector{<:AbstractFloat})
 	@unpack options, θnative, trialsets = model
 	@unpack Aᶜ₁₁, Aᶜ₂₂, πᶜ₁ = θnative
-	@unpack Δt, K, Ξ = options
+	@unpack Δt, K, minpa, Ξ = options
 	Aᶜᵀ = [Aᶜ₁₁[1] 1-Aᶜ₁₁[1]; 1-Aᶜ₂₂[1] Aᶜ₂₂[1]]
 	πᶜᵀ = [πᶜ₁[1] 1-πᶜ₁[1]]
 	Aᵃinput, Aᵃsilent = zeros(Ξ,Ξ), zeros(Ξ,Ξ)
@@ -168,7 +168,7 @@ function relative_loglikelihood(model::Model,
 	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
 	d𝛏_dB = (2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	𝛏 = θnative.B[1].*d𝛏_dB
-	transitionmatrix!(Aᵃsilent, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
+	transitionmatrix!(Aᵃsilent, minpa, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
 	σᵢ = √θnative.σ²ᵢ[1]
 	ℓ𝑑 = zeros(length(model.trialsets))
 	ℓ𝑦 = map(trialset->zeros(length(trialset.mpGLMs)), model.trialsets)
@@ -181,7 +181,7 @@ function relative_loglikelihood(model::Model,
 		for m in eachindex(model.trialsets[i].trials)
 			@unpack choice, clicks, ntimesteps, previousanswer = trialsets[i].trials[m]
 			μ = θnative.μ₀[1] + previousanswer*θnative.wₕ[1]
-			p𝐚 = probabilityvector(μ, σᵢ, 𝛏)
+			p𝐚 = probabilityvector(minpa, μ, σᵢ, 𝛏)
 			p𝐜ᵀ = πᶜᵀ
 			if length(clicks.time) > 0
 				adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
@@ -194,7 +194,7 @@ function relative_loglikelihood(model::Model,
 						cR = sum(adaptedclicks.C[clicks.right[t]])
 						𝛍 = expλΔt.*𝛏 .+ (cR-cL).*dμ_dΔc
 						σ = √((cR+cL)*θnative.σ²ₛ[1] + Δt*θnative.σ²ₐ[1])
-						transitionmatrix!(Aᵃinput, 𝛍, σ, 𝛏)
+						transitionmatrix!(Aᵃinput, minpa, 𝛍, σ, 𝛏)
 						Aᵃ = Aᵃinput
 					else
 						Aᵃ = Aᵃsilent

@@ -243,7 +243,7 @@ function loglikelihood(	concatenatedθ::Vector{T},
 						model::Model) where {T<:Real}
 	model = Model(concatenatedθ, indexθ, model)
 	@unpack options, θnative, θreal, trialsets = model
-	@unpack Δt, K, Ξ = options
+	@unpack Δt, minpa, K, Ξ = options
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t
@@ -252,12 +252,16 @@ function loglikelihood(	concatenatedθ::Vector{T},
 			end
 		end
     likelihood!(p𝐘𝑑, trialsets, θnative.ψ[1])
-	Aᵃinput, Aᵃsilent = zeros(T,Ξ,Ξ), zeros(T,Ξ,Ξ)
+	Aᵃinput = ones(T,Ξ,Ξ).*minpa
+	one_minus_Ξminpa = 1.0-Ξ*minpa
+	Aᵃinput[1,1] += one_minus_Ξminpa
+	Aᵃinput[Ξ,Ξ] += one_minus_Ξminpa
+	Aᵃsilent = copy(Aᵃinput)
 	expλΔt = exp(θnative.λ[1]*Δt)
 	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, θnative.λ[1])
 	d𝛏_dB = (2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	𝛏 = θnative.B[1].*d𝛏_dB
-	transitionmatrix!(Aᵃsilent, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
+	transitionmatrix!(Aᵃsilent, minpa, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
 	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
 	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
 	πᶜ₁ = θnative.πᶜ₁[1]
@@ -272,7 +276,7 @@ function loglikelihood(	concatenatedθ::Vector{T},
 	@inbounds for s in eachindex(trialsets)
 		for m in eachindex(trialsets[s].trials)
 			trial = trialsets[s].trials[m]
-			pa₁ = probabilityvector(θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
+			pa₁ = probabilityvector(minpa, θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
 			f = p𝐘𝑑[s][m][1] .* pa₁ .* πᶜᵀ
 			D = sum(f)
 			f./=D
@@ -286,7 +290,7 @@ function loglikelihood(	concatenatedθ::Vector{T},
 					cR = sum(adaptedclicks.C[trial.clicks.right[t]])
 					𝛍 = expλΔt.*𝛏 .+ (cR-cL).*dμ_dΔc
 					σ = √((cR+cL)*θnative.σ²ₛ[1] + Δt*θnative.σ²ₐ[1])
-					transitionmatrix!(Aᵃinput, 𝛍, σ, 𝛏)
+					transitionmatrix!(Aᵃinput, minpa, 𝛍, σ, 𝛏)
 					Aᵃ = Aᵃinput
 				else
 					Aᵃ = Aᵃsilent
@@ -337,7 +341,7 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 	if concatenatedθ != memory.concatenatedθ
 		P = update!(memory, model, concatenatedθ)
 	else
-		P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+		P = Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ)
 	end
 	∇loglikelihood!(memory,model,P)
 	indexall = 0
@@ -519,7 +523,7 @@ julia> memory = FHMDDM.Memoryforgradient(model)
 """
 function Memoryforgradient(model::Model; choicemodel::Bool=false)
 	@unpack options, θnative = model
-	@unpack Δt, K, Ξ = options
+	@unpack Δt, K, minpa, Ξ = options
 	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
 	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
 	πᶜ₁ = θnative.πᶜ₁[1]
@@ -555,15 +559,16 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 					GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
 				end
 			end
+	one_minus_Ξminpa = 1.0 - Ξ*minpa
 	Aᵃinput=map(1:maxclicks) do t
-				A = zeros(Ξ,Ξ)
-				A[1,1] = A[Ξ,Ξ] = 1.0
+				A = ones(Ξ,Ξ).*minpa
+				A[1,1] += one_minus_Ξminpa
+				A[Ξ,Ξ] += one_minus_Ξminpa
 				return A
 			end
+	Aᵃsilent = copy(Aᵃinput[1])
 	∇Aᵃinput = collect(collect(zeros(Ξ,Ξ) for q=1:nθ_paₜaₜ₋₁) for t=1:maxclicks)
-	Aᵃsilent = zeros(Ξ, Ξ)
 	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
-	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t
@@ -669,8 +674,8 @@ function update!(memory::Memoryforgradient,
 	    likelihood!(memory.p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
 	end
 	@unpack options, θnative = model
-	@unpack Δt, K, Ξ = options
-	P = Probabilityvector(Δt, θnative, Ξ)
+	@unpack Δt, K, minpa, Ξ = options
+	P = Probabilityvector(Δt, minpa, θnative, Ξ)
 	update_for_∇transition_probabilities!(P)
 	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
 	if K == 2

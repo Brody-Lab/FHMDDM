@@ -950,7 +950,7 @@ julia> S = FHMDDM.Sameacrosstrials(model)
 """
 function Sameacrosstrials(model::Model)
 	@unpack options, θnative, θreal, trialsets = model
-	@unpack Δt, K, Ξ = options
+	@unpack Δt, K, minpa, Ξ = options
 	Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
 	Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
 	πᶜ₁ = θnative.πᶜ₁[1]
@@ -998,12 +998,14 @@ function Sameacrosstrials(model::Model)
 		index_pY_in_θ[i][indexθ_pY[i]] = 1:length(indexθ_pY[i])
 	end
 	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
-	P = Probabilityvector(Δt, θnative, Ξ)
+	P = Probabilityvector(Δt, minpa, θnative, Ξ)
 	update_for_∇∇transition_probabilities!(P)
 	∇∇Aᵃsilent = map(i->zeros(Ξ,Ξ), CartesianIndices((nθ_paₜaₜ₋₁,nθ_paₜaₜ₋₁)))
 	∇Aᵃsilent = map(i->zeros(Ξ,Ξ), 1:nθ_paₜaₜ₋₁)
-	Aᵃsilent = zeros(typeof(θnative.B[1]), Ξ, Ξ)
-	Aᵃsilent[1,1] = Aᵃsilent[Ξ, Ξ] = 1.0
+	Aᵃsilent = ones(typeof(θnative.B[1]), Ξ, Ξ).*minpa
+	one_minus_Ξminpa = 1.0-Ξ*minpa
+	Aᵃsilent[1,1] += one_minus_Ξminpa
+	Aᵃsilent[Ξ, Ξ] += one_minus_Ξminpa
 	∇∇transitionmatrix!(∇∇Aᵃsilent, ∇Aᵃsilent, Aᵃsilent, P)
 	Sameacrosstrials(Aᵃsilent=Aᵃsilent,
 					∇Aᵃsilent=∇Aᵃsilent,
@@ -1037,7 +1039,7 @@ julia> M = FHMDDM.Memoryforhessian(model, S)
 """
 function Memoryforhessian(model::Model, S::Sameacrosstrials)
 	@unpack options, θnative, θreal, trialsets = model
-	@unpack Δt, K, Ξ = options
+	@unpack Δt, K, minpa, Ξ = options
 	maxclicks = maximum_number_of_clicks(model)
 	maxtimesteps = maximum_number_of_time_steps(model)
 	maxneurons = maximum(map(trialset-> length(trialset.mpGLMs), trialsets))
@@ -1056,9 +1058,11 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					end
 				end
 			end
+	one_minus_Ξminpa = 1.0-Ξ*minpa
 	Aᵃinput=map(1:maxclicks) do t
-				A = zeros(Ξ,Ξ)
-				A[1,1] = A[Ξ,Ξ] = 1.0
+				A = ones(Ξ,Ξ).*minpa
+				A[1,1] += one_minus_Ξminpa
+				A[Ξ,Ξ] += one_minus_Ξminpa
 				return A
 			end
 	∇Aᵃinput = collect(collect(zeros(Ξ,Ξ) for q=1:S.nθ_paₜaₜ₋₁) for t=1:maxclicks)
@@ -1087,7 +1091,7 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					λ=λ,
 					∇logpy=∇logpy,
 					∇∇logpy=∇∇logpy,
-					P = Probabilityvector(Δt, θnative, Ξ),
+					P = Probabilityvector(Δt, minpa, θnative, Ξ),
 					∇pa₁=∇pa₁,
 					∇∇pa₁=∇∇pa₁,
 					pY=pY,

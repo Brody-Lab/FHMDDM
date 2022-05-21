@@ -166,8 +166,8 @@ julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
 julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
 """
-function Probabilityvector(Δt::Real, θnative::Latentθ, Ξ::Integer)
-	Probabilityvector(Δt=Δt, Ξ=Ξ, B=θnative.B[1], k=θnative.k[1], λ=θnative.λ[1], μ₀=θnative.μ₀[1], ϕ=θnative.ϕ[1], σ²ₐ=θnative.σ²ₐ[1], σ²ᵢ=θnative.σ²ᵢ[1], σ²ₛ=θnative.σ²ₛ[1], wₕ=θnative.wₕ[1])
+function Probabilityvector(Δt::Real, minpa::AbstractFloat, θnative::Latentθ, Ξ::Integer)
+	Probabilityvector(Δt=Δt, minpa=minpa, Ξ=Ξ, B=θnative.B[1], k=θnative.k[1], λ=θnative.λ[1], μ₀=θnative.μ₀[1], ϕ=θnative.ϕ[1], σ²ₐ=θnative.σ²ₐ[1], σ²ᵢ=θnative.σ²ᵢ[1], σ²ₛ=θnative.σ²ₛ[1], wₕ=θnative.wₕ[1])
 end
 
 """
@@ -194,7 +194,7 @@ EXAMPLE
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
 julia> Ξ = model.options.Ξ
-julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, Ξ);
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, Ξ);
 julia> ∇∇A = map(i->zeros(Ξ,Ξ), CartesianIndices((6,6)));
 julia> ∇A = map(i->zeros(Ξ,Ξ), 1:6);
 julia> A = zeros(Ξ,Ξ);
@@ -264,7 +264,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
-julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ);
 julia> A = zeros(P.Ξ,P.Ξ);
 julia> A[1,1] = A[P.Ξ, P.Ξ] = 1.0;
 julia> clicks = model.trialsets[1].trials[1].clicks;
@@ -460,7 +460,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
-julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ);
 julia> clicks = model.trialsets[1].trials[1].clicks;
 julia> adaptedclicks = FHMDDM.∇∇adapt(clicks, model.θnative.k[1], model.θnative.ϕ[1]);
 julia> FHMDDM.update_for_∇∇transition_probabilities!(P, adaptedclicks, clicks, 3);
@@ -649,7 +649,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
-julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ);
 julia> ∇∇𝛑 = map(i->zeros(P.Ξ), CartesianIndices((4,4)))
 julia> ∇𝛑 = map(i->zeros(P.Ξ), 1:4)
 julia> FHMDDM.∇∇priorprobability!(∇∇𝛑, ∇𝛑, P, -1)
@@ -773,7 +773,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
-julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ);
 julia> clicks = model.trialsets[1].trials[1].clicks;
 julia> adaptedclicks = FHMDDM.∇∇adapt(clicks, model.θnative.k[1], model.θnative.ϕ[1]);
 julia> FHMDDM.update_for_∇∇transition_probabilities!(P, adaptedclicks, clicks, 3)
@@ -782,7 +782,7 @@ julia> FHMDDM.differentiate_twice_wrt_transition_parameters!(P,2)
 ```
 """
 function differentiate_twice_wrt_transition_parameters!(P::Probabilityvector, j::Integer)
-	for i = 1:P.Ξ
+	@inbounds for i = 1:P.Ξ
 		P.d²𝛑_dBdk[i] = P.dμ_dk[1]*P.d²𝛑_dBdμ[i] + P.dσ²_dk[1]*P.d²𝛑_dBdσ²[i]
 		P.d²𝛑_dBdλ[i] = P.d²𝛍_dBdλ[j]*P.d𝛑_dμ[i] + P.d𝛍_dλ[j]*P.d²𝛑_dBdμ[i]
 		P.d²𝛑_dBdϕ[i] = P.dμ_dϕ[1]*P.d²𝛑_dBdμ[i] + P.dσ²_dϕ[1]*P.d²𝛑_dBdσ²[i]
@@ -824,7 +824,7 @@ UNMODIFIED ARGUMENT
 -`j`: the index of the state of the accumulator variable in the previous time step
 """
 function differentiate_wrt_transition_parameters!(P::Probabilityvector, j::Integer)
-	for i = 1:P.Ξ
+	@inbounds for i = 1:P.Ξ
 		P.d𝛑_dk[i] = P.dσ²_dk[1]*P.d𝛑_dσ²[i] + P.dμ_dk[1]*P.d𝛑_dμ[i]
 		P.d𝛑_dλ[i] = P.d𝛍_dλ[j]*P.d𝛑_dμ[i]
 		P.d𝛑_dϕ[i] = P.dσ²_dϕ[1]*P.d𝛑_dσ²[i] + P.dμ_dϕ[1]*P.d𝛑_dμ[i]
@@ -851,7 +851,7 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_01_test/data.mat");
-julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+julia> P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ);
 julia> clicks = model.trialsets[1].trials[1].clicks;
 julia> adaptedclicks = FHMDDM.∇∇adapt(clicks, model.θnative.k[1], model.θnative.ϕ[1]);
 julia> FHMDDM.update_for_∇∇transition_probabilities!(P, adaptedclicks, clicks, 3)
@@ -859,33 +859,47 @@ julia> FHMDDM.differentiate_twice_wrt_Bμσ²!(P, 2)
 ```
 """
 function differentiate_twice_wrt_Bμσ²!(P::Probabilityvector, j::Integer)
-	differentiate_wrt_Bμσ²!(P, j)
 	Ξ = P.Ξ
-	fη = P.𝐟 .* P.𝛈
-	Δfη = diff(fη)
-	Δfω = diff(P.𝐟 .* P.𝛚)
-	Δfωz = diff(P.𝐟 .* P.𝛚 .* P.𝐳)
-	Δfz = diff(P.𝐟 .* P.𝐳)
-	Δζ = diff(P.𝐟 .* (P.𝐳.^2 .- 1.0) ./ 4.0 ./ P.σ[1].^3 ./ P.Δξ)
-	P.d²𝛑_dBdB[1] 	= ((fη[1] + P.𝛚[2]*Δfη[1])/P.σ[1] - 2P.d𝛑_dB[1])/P.B
-	P.d²𝛑_dBdμ[1] 	= (-Δfω[1]/P.σ[1] - P.d𝛑_dμ[1])/P.B
-	P.d²𝛑_dBdσ²[1] = (-Δfωz[1]/2/P.σ²[1] - P.d𝛑_dσ²[1])/P.B
-	P.d²𝛑_dμdσ²[1] = Δfz[1]/P.Δξσ²2[1]
-	P.d²𝛑_dσ²dσ²[1]= Δζ[1]
-	for i=2:Ξ-1
-		P.d²𝛑_dBdB[i] 	= ((P.𝛚[i+1]*Δfη[i] - P.𝛚[i-1]*Δfη[i-1])/P.σ[1] - 2P.d𝛑_dB[i])/P.B
-		P.d²𝛑_dBdμ[i] 	= ((Δfω[i-1]-Δfω[i])/P.σ[1] - P.d𝛑_dμ[i])/P.B
-		P.d²𝛑_dBdσ²[i] = ((Δfωz[i-1]-Δfωz[i])/2/P.σ²[1] - P.d𝛑_dσ²[i])/P.B
-		P.d²𝛑_dμdσ²[i] = (Δfz[i]-Δfz[i-1])/P.Δξσ²2[1]
-		P.d²𝛑_dσ²dσ²[i] = Δζ[i] - Δζ[i-1]
-	end
-	P.d²𝛑_dBdB[Ξ]	= -((fη[Ξ] + P.𝛚[Ξ-1]*Δfη[Ξ-1])/P.σ[1] + 2P.d𝛑_dB[Ξ])/P.B
-	P.d²𝛑_dBdμ[Ξ]	= (Δfω[Ξ-1]/P.σ[1] - P.d𝛑_dμ[Ξ])/P.B
-	P.d²𝛑_dBdσ²[Ξ] = (Δfωz[Ξ-1]/2/P.σ²[1] - P.d𝛑_dσ²[Ξ])/P.B
-	P.d²𝛑_dμdσ²[Ξ] = -Δfz[Ξ-1]/P.Δξσ²2[1]
-	P.d²𝛑_dσ²dσ²[Ξ] = -Δζ[Ξ-1]
-	for i = 1:Ξ
-		P.d²𝛑_dμdμ[i] = 2P.d𝛑_dσ²[i]
+	if (j == 1) || (j == Ξ)
+		P.d²𝛑_dBdB .= 0.0
+		P.d²𝛑_dBdμ .= 0.0
+		P.d²𝛑_dBdσ² .= 0.0
+		P.d²𝛑_dμdμ .= 0.0
+		P.d²𝛑_dμdσ² .= 0.0
+		P.d²𝛑_dσ²dσ² .= 0.0
+	else
+		differentiate_wrt_Bμσ²!(P, j)
+		fη = P.𝐟 .* P.𝛈
+		Δfη = diff(fη)
+		Δfω = diff(P.𝐟 .* P.𝛚)
+		Δfωz = diff(P.𝐟 .* P.𝛚 .* P.𝐳)
+		Δfz = diff(P.𝐟 .* P.𝐳)
+		Δζ = diff(P.𝐟 .* (P.𝐳.^2 .- 1.0) ./ 4.0 ./ P.σ[1].^3 ./ P.Δξ)
+		P.d²𝛑_dBdB[1] 	= ((fη[1] + P.𝛚[2]*Δfη[1])/P.σ[1] - 2P.d𝛑_dB[1]/P.one_minus_Ξminpa)/P.B
+		P.d²𝛑_dBdμ[1] 	= (-Δfω[1]/P.σ[1] - P.d𝛑_dμ[1]/P.one_minus_Ξminpa)/P.B
+		P.d²𝛑_dBdσ²[1] = (-Δfωz[1]/2/P.σ²[1] - P.d𝛑_dσ²[1]/P.one_minus_Ξminpa)/P.B
+		P.d²𝛑_dμdσ²[1] = Δfz[1]/P.Δξσ²2[1]
+		P.d²𝛑_dσ²dσ²[1]= Δζ[1]
+		@inbounds for i=2:Ξ-1
+			P.d²𝛑_dBdB[i] 	= ((P.𝛚[i+1]*Δfη[i] - P.𝛚[i-1]*Δfη[i-1])/P.σ[1] - 2P.d𝛑_dB[i]/P.one_minus_Ξminpa)/P.B
+			P.d²𝛑_dBdμ[i] 	= ((Δfω[i-1]-Δfω[i])/P.σ[1] - P.d𝛑_dμ[i]/P.one_minus_Ξminpa)/P.B
+			P.d²𝛑_dBdσ²[i] = ((Δfωz[i-1]-Δfωz[i])/2/P.σ²[1] - P.d𝛑_dσ²[i]/P.one_minus_Ξminpa)/P.B
+			P.d²𝛑_dμdσ²[i] = (Δfz[i]-Δfz[i-1])/P.Δξσ²2[1]
+			P.d²𝛑_dσ²dσ²[i] = Δζ[i] - Δζ[i-1]
+		end
+		P.d²𝛑_dBdB[Ξ]	= -((fη[Ξ] + P.𝛚[Ξ-1]*Δfη[Ξ-1])/P.σ[1] + 2P.d𝛑_dB[Ξ]/P.one_minus_Ξminpa)/P.B
+		P.d²𝛑_dBdμ[Ξ]	= (Δfω[Ξ-1]/P.σ[1] - P.d𝛑_dμ[Ξ]/P.one_minus_Ξminpa)/P.B
+		P.d²𝛑_dBdσ²[Ξ] = (Δfωz[Ξ-1]/2/P.σ²[1] - P.d𝛑_dσ²[Ξ]/P.one_minus_Ξminpa)/P.B
+		P.d²𝛑_dμdσ²[Ξ] = -Δfz[Ξ-1]/P.Δξσ²2[1]
+		P.d²𝛑_dσ²dσ²[Ξ] = -Δζ[Ξ-1]
+		P.d²𝛑_dBdB	.*= P.one_minus_Ξminpa
+		P.d²𝛑_dBdμ .*= P.one_minus_Ξminpa
+		P.d²𝛑_dBdσ² .*= P.one_minus_Ξminpa
+		P.d²𝛑_dμdσ² .*= P.one_minus_Ξminpa
+		P.d²𝛑_dσ²dσ² .*= P.one_minus_Ξminpa
+		@inbounds for i = 1:Ξ
+			P.d²𝛑_dμdμ[i] = 2P.d𝛑_dσ²[i]
+		end
 	end
 	return nothing
 end
@@ -904,19 +918,28 @@ UNMODIFIED ARGUMENT
 -`j`: the index of the state of the accumulator variable in the previous time step. For computing prior probability, set j to be (P.Ξ + 1)/2
 """
 function differentiate_wrt_Bμσ²!(P::Probabilityvector, j::Integer)
-	evaluate_using_Bμσ²!(P, j)
 	Ξ = P.Ξ
-	P.d𝛑_dB[1] = (P.Φ[1] - P.𝛑[1] + P.𝛚[2]*P.ΔΦ[1])/P.B
-	P.d𝛑_dμ[1] = -P.ΔΦ[1]/P.Δξ
-	P.d𝛑_dσ²[1] = P.Δf[1]/P.σ2Δξ[1]
-	for i = 2:P.Ξ-1
-		P.d𝛑_dB[i] = (P.𝛚[i+1]*P.ΔΦ[i] - P.𝛚[i-1]*P.ΔΦ[i-1] - P.𝛑[i])/P.B
-		P.d𝛑_dμ[i] = (P.ΔΦ[i-1] - P.ΔΦ[i])/P.Δξ
-		P.d𝛑_dσ²[i] = (P.Δf[i]-P.Δf[i-1])/P.σ2Δξ[1]
-    end
-	P.d𝛑_dB[Ξ] = (P.Ψ[Ξ] - P.𝛑[Ξ] - P.𝛚[Ξ-1]*P.ΔΦ[Ξ-1])/P.B
-	P.d𝛑_dμ[Ξ] = P.ΔΦ[Ξ-1]/P.Δξ
-	P.d𝛑_dσ²[Ξ] = -P.Δf[Ξ-1]/P.σ2Δξ[1]
+	if (j == 1) || (j == Ξ)
+		P.d𝛑_dB .= 0.0
+		P.d𝛑_dμ .= 0.0
+		P.d𝛑_dσ² .= 0.0
+	else
+		evaluate_using_Bμσ²!(P, j)
+		P.d𝛑_dB[1] = (P.Φ[1] - (P.𝛑[1]-P.minpa)/P.one_minus_Ξminpa + P.𝛚[2]*P.ΔΦ[1])/P.B
+		P.d𝛑_dμ[1] = -P.ΔΦ[1]/P.Δξ
+		P.d𝛑_dσ²[1] = P.Δf[1]/P.σ2Δξ[1]
+		@inbounds for i = 2:Ξ-1
+			P.d𝛑_dB[i] = (P.𝛚[i+1]*P.ΔΦ[i] - P.𝛚[i-1]*P.ΔΦ[i-1] - (P.𝛑[i]-P.minpa)/P.one_minus_Ξminpa)/P.B
+			P.d𝛑_dμ[i] = (P.ΔΦ[i-1] - P.ΔΦ[i])/P.Δξ
+			P.d𝛑_dσ²[i] = (P.Δf[i]-P.Δf[i-1])/P.σ2Δξ[1]
+	    end
+		P.d𝛑_dB[Ξ] = (P.Ψ[Ξ] - (P.𝛑[Ξ]-P.minpa)/P.one_minus_Ξminpa - P.𝛚[Ξ-1]*P.ΔΦ[Ξ-1])/P.B
+		P.d𝛑_dμ[Ξ] = P.ΔΦ[Ξ-1]/P.Δξ
+		P.d𝛑_dσ²[Ξ] = -P.Δf[Ξ-1]/P.σ2Δξ[1]
+		P.d𝛑_dB .*= P.one_minus_Ξminpa
+		P.d𝛑_dμ .*= P.one_minus_Ξminpa
+		P.d𝛑_dσ² .*= P.one_minus_Ξminpa
+	end
 	return nothing
 end
 
@@ -935,29 +958,40 @@ UNMODIFIED ARGUMENT
 """
 function evaluate_using_Bμσ²!(P::Probabilityvector, j::Integer)
 	Ξ = P.Ξ
-	expλΔt_dξⱼ_dB = P.expλΔt*P.d𝛏_dB[j]
-	Ξd2m1 = (P.Ξ-2)/2
-	for i = 1:Ξ
-		P.𝛈[i] = P.d𝛏_dB[i] - expλΔt_dξⱼ_dB
-		P.𝛚[i] = P.𝛈[i]*Ξd2m1
-		P.𝐳[i] = (P.𝛏[i] - P.𝛍[j])/P.σ[1]
-		P.𝐟[i] = normpdf(P.𝐳[i])
-		P.Φ[i] = normcdf(P.𝐳[i])
-		P.Ψ[i] = normccdf(P.𝐳[i])
-	end
-	for i = 1:Ξ-1
-		P.Δf[i] = P.𝐟[i+1] - P.𝐟[i]
-		if P.𝛍[j] <= P.𝛏[i]
-			P.ΔΦ[i] = P.Ψ[i] - P.Ψ[i+1]
-		else
-			P.ΔΦ[i] = P.Φ[i+1] - P.Φ[i]
+	if j == 1
+		P.𝛑 .= P.minpa
+		P.𝛑[1] += P.one_minus_Ξminpa
+	elseif j == Ξ
+		P.𝛑 .= P.minpa
+		P.𝛑[Ξ] += P.one_minus_Ξminpa
+	else
+		expλΔt_dξⱼ_dB = P.expλΔt*P.d𝛏_dB[j]
+		Ξd2m1 = (P.Ξ-2)/2
+		@inbounds for i = 1:Ξ
+			P.𝛈[i] = P.d𝛏_dB[i] - expλΔt_dξⱼ_dB
+			P.𝛚[i] = P.𝛈[i]*Ξd2m1
+			P.𝐳[i] = (P.𝛏[i] - P.𝛍[j])/P.σ[1]
+			P.𝐟[i] = normpdf(P.𝐳[i])
+			P.Φ[i] = normcdf(P.𝐳[i])
+			P.Ψ[i] = normccdf(P.𝐳[i])
+		end
+		@inbounds for i = 1:Ξ-1
+			P.Δf[i] = P.𝐟[i+1] - P.𝐟[i]
+			if P.𝛍[j] <= P.𝛏[i]
+				P.ΔΦ[i] = P.Ψ[i] - P.Ψ[i+1]
+			else
+				P.ΔΦ[i] = P.Φ[i+1] - P.Φ[i]
+			end
+		end
+		P.𝛑[1] = P.Φ[1] + P.σ_Δξ[1]*(P.Δf[1] + P.𝐳[2]*P.ΔΦ[1])
+		@inbounds for i = 2:Ξ-1
+			P.𝛑[i] = P.σ_Δξ[1]*(P.Δf[i] - P.Δf[i-1] + P.𝐳[i+1]*P.ΔΦ[i] - P.𝐳[i-1]*P.ΔΦ[i-1])
+		end
+		P.𝛑[Ξ] = P.Ψ[Ξ] - P.σ_Δξ[1]*(P.Δf[Ξ-1] + P.𝐳[Ξ-1]*P.ΔΦ[Ξ-1])
+		@inbounds for i = 1:Ξ
+			P.𝛑[i] = P.𝛑[i]*P.one_minus_Ξminpa + P.minpa
 		end
 	end
-	P.𝛑[1] = P.Φ[1] + P.σ_Δξ[1]*(P.Δf[1] + P.𝐳[2]*P.ΔΦ[1])
-	for i = 2:Ξ-1
-		P.𝛑[i] = P.σ_Δξ[1]*(P.Δf[i] - P.Δf[i-1] + P.𝐳[i+1]*P.ΔΦ[i] - P.𝐳[i-1]*P.ΔΦ[i-1])
-	end
-	P.𝛑[Ξ] = P.Ψ[Ξ] - P.σ_Δξ[1]*(P.Δf[Ξ-1] + P.𝐳[Ξ-1]*P.ΔΦ[Ξ-1])
 	return nothing
 end
 
@@ -1045,12 +1079,12 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_09_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat");
 julia> maxabsdiff∇∇, maxabsdiff∇ = FHMDDM.check∇∇transitionmatrix(model)
 ```
 """
 function check∇∇transitionmatrix(model::Model)
-	@unpack Δt, Ξ = model.options
+	@unpack Δt, minpa,Ξ = model.options
 	@unpack θnative = model
 	x₀ = [θnative.B[1], θnative.k[1], θnative.λ[1], θnative.ϕ[1], θnative.σ²ₐ[1], θnative.σ²ₛ[1]]
 	nparameters = length(x₀)
@@ -1058,10 +1092,11 @@ function check∇∇transitionmatrix(model::Model)
 	maxabsdiff∇, ∇auto = zeros(nparameters), zeros(nparameters)
 	∇∇hand = map(i->zeros(Ξ,Ξ), CartesianIndices((nparameters,nparameters)));
 	∇hand = map(i->zeros(Ξ,Ξ), 1:nparameters);
-	P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
-	A = zeros(Ξ,Ξ);
-	A[1,1] = A[Ξ,Ξ] = 1.0
-	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+	P = Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ)
+	A = ones(Ξ,Ξ).*minpa;
+	one_minus_Ξminpa = 1.0 - Ξ*minpa
+	A[1,1] += one_minus_Ξminpa
+	A[Ξ,Ξ] += one_minus_Ξminpa
 	for s in eachindex(model.trialsets)
 		for m in eachindex(model.trialsets[s].trials)
 			trial = model.trialsets[s].trials[m]
@@ -1071,7 +1106,7 @@ function check∇∇transitionmatrix(model::Model)
 				∇∇transitionmatrix!(∇∇hand, ∇hand, A, P)
 				for j = 2:Ξ-1
 					for i = 1:Ξ
-						f(x) = accumulatorprobability(trial.clicks,Δt,i,j,t,Ξ,x)
+						f(x) = accumulatorprobability(trial.clicks,Δt,i,j,minpa,t,Ξ,x)
 						ForwardDiff.hessian!(∇∇auto, f, x₀)
 						ForwardDiff.gradient!(∇auto, f, x₀)
 						for q = 1:nparameters
@@ -1089,7 +1124,7 @@ function check∇∇transitionmatrix(model::Model)
 end
 
 """
-    accumulatorprobability(clicktimes,i,j,t,x)
+    accumulatorprobability(clicks,i,j,minpa,t,Ξ,x)
 
 Compute the transition probability of the accumulator variable `p(aₜ=i ∣ aₜ₋₁=j)`
 
@@ -1098,6 +1133,7 @@ INPUT
 -`Δt`: duration of each time step
 -`i`: state of the accumulator at time step t
 -`j`: state of the accumulator at time step t-1
+-`minpa`: minimum probablility
 -'t': time step
 -`Ξ`: number of states into which the accumulator is discretized
 -`x`: vector containing the alphabetically concatenated values of the parameters
@@ -1110,13 +1146,14 @@ EXAMPLE
 julia> using FHMDDM
 julia> clicks = FHMDDM.sampleclicks(0.01, 40, 0.01, 100, 30);
 julia> x = [10.0, 0.5, -0.5, 0.8, 2.0, 0.4];
-julia> p = FHMDDM.transitionprobability(clicks,0.01,4,10,20,53,x)
+julia> p = FHMDDM.accumulatorprobability(clicks,0.01,4,10,1e-8,20,53,x)
 ```
 """
 function accumulatorprobability(clicks::Clicks,
 							   Δt::AbstractFloat,
                                i::Integer,
                                j::Integer,
+							   minpa::AbstractFloat,
                                t::Integer,
 							   Ξ::Integer,
                                x::Vector{<:Real})
@@ -1134,16 +1171,17 @@ function accumulatorprobability(clicks::Clicks,
 	𝛏 = B.*(2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	μ = exp(λ*Δt)*𝛏[j] + (cR-cL)*differentiate_μ_wrt_Δc(Δt, λ)
 	σ = √( (cL+cR)*σ²ₛ + Δt*σ²ₐ )
-	probabilityvector(μ, σ, 𝛏)[i]
+	probabilityvector(minpa, μ, σ, 𝛏)[i]
 end
 
 
 """
-    probabilityvector(μ, σ, 𝛏)
+    probabilityvector(minpa, μ, σ, 𝛏)
 
 Discrete representation of a Gaussian PDF
 
 ARGUMENT
+-`minpa`: minimum probability
 -`μ`: mean
 -`σ`: standard deviation
 -`𝛏`: discrete values used for representation
@@ -1153,18 +1191,19 @@ RETURN
 
 EXAMPLE
 ```julia-repl
-julia> μ=1.0; σ=2.0; Ξ=7; B=10.0; 𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2); probabilityvector(μ,σ,𝛏)
+julia> μ=1.0; σ=2.0; Ξ=7; B=10.0; 𝛏 = B*(2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2); probabilityvector(1e-8,μ,σ,𝛏)
 7-element Array{Float64,1}:
- 3.471030649983585e-7
- 0.0010013743804762956
- 0.09689448862754767
- 0.5678589080695604
- 0.31962072539725905
- 0.014594917590384344
- 2.9238831707279765e-5
+ 3.571030407011439e-7
+ 0.001001384310380089
+ 0.09689449184493346
+ 0.5678588783194369
+ 0.3196207130238083
+ 0.014594926568740113
+ 2.9248829660561547e-5
 ```
 """
-function probabilityvector(μ::T,
+function probabilityvector(minpa::AbstractFloat,
+						   μ::T,
 						   σ::T,
 						   𝛏::Vector{T}) where {T<:Real}
 	Ξ = length(𝛏)
@@ -1188,6 +1227,11 @@ function probabilityvector(μ::T,
         𝐩[i] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
     end
     𝐩[Ξ] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
+	one_minus_Ξminpa = 1.0 - Ξ*minpa
+	for i = 1:Ξ
+		𝐩[i] *= one_minus_Ξminpa
+		𝐩[i] += minpa
+	end
 	return 𝐩
 end
 
@@ -1200,6 +1244,7 @@ MODIFIED ARGUMENT
 -`A`: a square matrix describing the transitions of the accumulator variable at a single time step
 
 UNMODIFIED ARGUMENT
+-`minpa`: minimum probability
 -`𝛍`: mean of the Gaussian PDF of the accumulator variable conditioned on its value in the previous time step
 -`σ`: standard deviation of the Weiner process at this time step
 -`𝛏`: a vector specifying the equally-spaced values into which the accumulator variable is discretized
@@ -1208,6 +1253,7 @@ RETURN
 -nothing
 """
 function transitionmatrix!(A::Matrix{T},
+						   minpa::AbstractFloat,
                            𝛍::Vector{<:Real},
                            σ::Real,
                            𝛏::Vector{<:Real}) where {T<:Real}
@@ -1215,10 +1261,11 @@ function transitionmatrix!(A::Matrix{T},
 	Ξ_1 = Ξ-1
 	σ_Δξ = σ/(𝛏[2]-𝛏[1])
     ΔΦ = zeros(T, Ξ_1)
-	A[1,1] = 1.0
-	A[2:Ξ,1] .= 0.0
-	A[1:Ξ_1,Ξ] .= 0.0
-	A[Ξ,Ξ] = 1.0
+	one_minus_Ξminpa = 1.0 - Ξ*minpa
+	A[:,1] .= minpa
+	A[1,1] += one_minus_Ξminpa
+	A[:,Ξ] .= minpa
+	A[Ξ,Ξ] += one_minus_Ξminpa
     @inbounds for j = 2:Ξ_1
         𝐳 = (𝛏 .- 𝛍[j])./σ
         Δf = diff(normpdf.(𝐳))
@@ -1236,6 +1283,10 @@ function transitionmatrix!(A::Matrix{T},
             A[i,j] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
         end
         A[Ξ,j] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
+		for i = 1:Ξ
+			A[i,j] *= one_minus_Ξminpa
+			A[i,j] += minpa
+		end
     end
     return nothing
 end
@@ -1264,22 +1315,21 @@ julia> maxabsdiff∇∇, maxabsdiff∇ = FHMDDM.check∇∇priorprobability(mode
 ```
 """
 function check∇∇priorprobability(model::Model)
-	@unpack Δt, Ξ = model.options
+	@unpack Δt, minpa, Ξ = model.options
 	@unpack θnative = model
 	x₀ = [θnative.B[1], θnative.μ₀[1], θnative.σ²ᵢ[1], θnative.wₕ[1]]
 	nparameters = length(x₀)
 	maxabsdiff∇∇, ∇∇auto = zeros(nparameters,nparameters), zeros(nparameters,nparameters)
 	maxabsdiff∇, ∇auto = zeros(nparameters), zeros(nparameters)
-	P = Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
+	P = Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ)
 	∇∇hand = map(i->zeros(Ξ), CartesianIndices((nparameters,nparameters)))
 	∇hand = map(i->zeros(Ξ), 1:nparameters)
-	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ)
 	for s in eachindex(model.trialsets)
 		for m in eachindex(model.trialsets[s].trials)
 			@unpack previousanswer = model.trialsets[s].trials[m]
 			∇∇priorprobability!(∇∇hand, ∇hand, P, previousanswer)
 			for i = 1:Ξ
-				f(x) = accumulatorprobability(Δt,i,previousanswer,Ξ,x)
+				f(x) = accumulatorprobability(Δt,i,minpa,previousanswer,Ξ,x)
 				ForwardDiff.hessian!(∇∇auto, f, x₀)
 				ForwardDiff.gradient!(∇auto, f, x₀)
 				for q = 1:nparameters
@@ -1295,7 +1345,7 @@ function check∇∇priorprobability(model::Model)
 end
 
 """
-    accumulatorprobability(Δt, i, previousanswer, Ξ, x)
+    accumulatorprobability(Δt, i, minpa, previousanswer, Ξ, x)
 
 Compute the transition probability of the accumulator variable `p(aₜ=i ∣ aₜ₋₁=j)`
 
@@ -1315,12 +1365,13 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> x = [10.0, 0.5, 2.0, 0.8];
-julia> FHMDDM.accumulatorprobability(0.01, 26, 1, 53, x)
+julia> FHMDDM.accumulatorprobability(0.01, 26, 1e-8, 1, 53, x)
 	0.0542176221212666
 ```
 """
 function accumulatorprobability(Δt::AbstractFloat,
                                 i::Integer,
+								minpa::AbstractFloat,
 								previousanswer::Real,
 								Ξ::Integer,
                                 x::Vector{<:Real})
@@ -1332,7 +1383,7 @@ function accumulatorprobability(Δt::AbstractFloat,
 	𝛏 = B.*(2 .*collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	μ = μ₀ + previousanswer*wₕ
 	σ = √σ²ᵢ
-	probabilityvector(μ, σ, 𝛏)[i]
+	probabilityvector(minpa, μ, σ, 𝛏)[i]
 end
 
 """
@@ -1353,7 +1404,7 @@ function compare_exact_approximate_transition_matrices(model::Model)
 	@unpack Δt, Ξ = model.options
 	Aexact, Aapprox, maxabsdiff = zeros(Ξ,Ξ), zeros(Ξ,Ξ), zeros(Ξ,Ξ)
 	Aexact[1,1] = Aexact[Ξ,Ξ] = 1.0
-	P = FHMDDM.Probabilityvector(model.options.Δt, model.θnative, model.options.Ξ);
+	P = FHMDDM.Probabilityvector(model.options.Δt, model.options.minpa, model.θnative, model.options.Ξ);
 	for i in eachindex(model.trialsets)
 		for m in eachindex(model.trialsets[i].trials)
 			trial = model.trialsets[i].trials[m]
@@ -1448,184 +1499,4 @@ function expm1_div_x(x)
     y = exp(x)
     y == 1. ? one(y) : (y-1.)/log(y)
 
-end
-
-
-
-
-
-
-
-
-
-
-"""
-    conditionedmean(Δc, Δt, λ, 𝛏)
-
-Mean of the Gaussian PDF of the accumulator variable conditioned on its value in the previous time step
-
-ARGUMENT
--`Δc`: right input minus left input
--`Δt`: size of the time step
--`λ`: leak or instability
--`𝛏`: conditional values of the accumulator variable in the previous time step
-
-RETURN
--a vector whose j-th element represents the mean of the accumulator conditioned on the accumulator in the previous time step equal to 𝛏[j]
-"""
-function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, 𝛏::Vector{<:Real})
-	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, λ)
-	exp(λ*Δt).*𝛏 .+ Δc*dμ_dΔc
-end
-
-"""
-    conditionedmean(Δc, Δt, λ, ξ)
-
-Mean of the Gaussian PDF of the accumulator variable conditioned on its value in the previous time step
-
-ARGUMENT
--`Δc`: right input minus left input
--`Δt`: size of the time step
--`λ`: leak or instability
--`ξ`: conditional value of the accumulator variable in the previous time step
-
-RETURN
--the mean of the accumulator conditioned on the accumulator in the previous time step equal to 𝛏[j]
-"""
-function conditionedmean(Δc::Real, Δt::AbstractFloat, λ::Real, ξ::Real)
-	dμ_dΔc = differentiate_μ_wrt_Δc(Δt, λ)
-	exp(λ*Δt)*ξ + Δc*dμ_dΔc
-end
-
-"""
-    transitionmatrix!(A, ∂μ, ∂σ², ∂B, 𝛍, σ, 𝛚, 𝛏)
-
-Compute the transition matrix and partial derivatives with respect to the means, variance, and the bound parameter (in real space)
-
-MODIFIED ARGUMENT
--`A`: the transition matrix. Expects the `A[2:end,1] .== 0` and `A[1:end-1,end] .== 0`
--`∂μ`: the first order partial derivative of the transition matrix with respect to the mean in each column.
--`∂σ²`: the first order partial derivative of the transition matrix with respect to the variance.
--`∂B`: the first order partial derivative of the transition matrix with respect to the bound height.
-
-UNMODIFIED ARGUMENT
--`𝛍`: mean of the Gaussian PDF's
--`σ`: standard deviation of the Gaussian PDF's
--`𝛚`: temporary quantity used to compute the partial derivative with respect to the bound parameter (in real space)
--`𝛏`: value of the accumulator variable in the previous time step
-"""
-function transitionmatrix!(	A::Matrix{T},
-							∂μ::Matrix{<:Real},
-							∂σ²::Matrix{<:Real},
-							∂B::Matrix{<:Real},
-							𝛍::Vector{<:Real},
-							σ::Real,
-							Ω::Matrix{<:Real},
-							𝛏::Vector{<:Real}) where {T<:Real}
-	Ξ = length(𝛏)
-	Ξ_1 = Ξ-1
-	B = 𝛏[end]*(Ξ-2)/Ξ_1
-	Δξ = 𝛏[2]-𝛏[1]
-	σ_Δξ = σ/Δξ
-    σ2Δξ = 2σ*Δξ
-    A[1,1] = 1.0
-    A[Ξ,Ξ] = 1.0
-	ΔΦ = zeros(T, Ξ_1)
-    @inbounds for j = 2:Ξ_1
-        𝐳 = (𝛏 .- 𝛍[j])./σ
-        Δf = diff(normpdf.(𝐳))
-        Φ = normcdf.(𝐳)
-        C = normccdf.(𝐳) # complementary cumulative distribution function
-        for i = 1:Ξ_1
-            if 𝛍[j] <= 𝛏[i]
-                ΔΦ[i] = C[i] - C[i+1]
-            else
-                ΔΦ[i] = Φ[i+1] - Φ[i]
-            end
-        end
-        A[1,j] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
-        ∂μ[1,j] = -ΔΦ[1]/Δξ
-        ∂σ²[1,j] = Δf[1]/σ2Δξ
-        ∂B[1,j] = (Φ[1] - A[1,j] + Ω[2,j]*ΔΦ[1])/B
-        for i = 2:Ξ_1
-            A[i,j] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
-            ∂μ[i,j] = (ΔΦ[i-1] - ΔΦ[i])/Δξ
-            ∂σ²[i,j] = (Δf[i]-Δf[i-1])/σ2Δξ
-            ∂B[i,j] = (Ω[i+1,j]*ΔΦ[i] - Ω[i-1,j]*ΔΦ[i-1] - A[i,j])/B
-        end
-        A[Ξ,j] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
-        ∂μ[Ξ,j] = ΔΦ[Ξ_1]/Δξ
-        ∂σ²[Ξ,j] = -Δf[Ξ_1]/σ2Δξ
-        ∂B[Ξ,j] = (C[Ξ] - A[Ξ,j] - Ω[Ξ_1,j]*ΔΦ[Ξ_1])/B
-    end
-    return nothing
-end
-
-
-"""
-    probabilityvector(π, ∂μ, ∂σ², ∂B, μ, σ, 𝛏)
-
-Discrete representation of a Gaussian PDF and its partial derivative with respect to the mean, variance, and bound (in real space)
-
-MODIFIED ARGUMENT
--`π`: probability vector
--`∂μ`: the first order partial derivative with respect to the mean in each column.
--`∂σ²`: the first order partial derivative with respect to the variance.
--`∂B`: the first order partial derivative of the transition matrix with respect to the bound height.
-
-UNMODIFIED ARGUMENT
--`μ`: mean
--`σ`: standard deviation
--`𝛏`: discrete values used for representation
-
-RETURN
--`C`: complementary cumulative distribution function evaluated at each value z-scored value of the accumulator
--`Δf`: Difference between the probability densitiy function evaluated at consecutive z-scored values of the accumulator
--`ΔΦ`: Difference between the cumulative distribution function evaluated at consecutive z-scored valuse of the accumulator
--`f`: probability densitiy function evaluated at z-scored values of the accumulator
--`Φ`: cumulative distribution function evaluated at z-scored values of the accumulator
--`𝐳`: z-scored value of the accumulator
-"""
-function probabilityvector!(π::Vector{T},
-							∂μ::Vector{<:Real},
-							∂σ²::Vector{<:Real},
-							∂B::Vector{<:Real},
-							μ::Real,
-							𝛚::Vector{<:Real},
-							σ::Real,
-							𝛏::Vector{<:Real}) where {T<:Real}
-    Ξ = length(𝛏)
-    Ξ_1 = Ξ-1
-	B = 𝛏[end]*(Ξ-2)/Ξ_1
-    Δξ=𝛏[2]-𝛏[1]
-    σ_Δξ = σ/Δξ
-	σ2Δξ = 2σ*Δξ
-    𝐳 = (𝛏 .- μ)./σ
-	f = normpdf.(𝐳)
-    Δf = diff(f)
-    Φ = normcdf.(𝐳)
-    C = normccdf.(𝐳) # complementary cumulative distribution function
-    ΔΦ = zeros(T, Ξ_1)
-    for i = 1:Ξ_1
-        if μ <= 𝛏[i]
-            ΔΦ[i] = C[i] - C[i+1]
-        else
-            ΔΦ[i] = Φ[i+1] - Φ[i]
-        end
-    end
-    π[1] = Φ[1] + σ_Δξ*(Δf[1] + 𝐳[2]*ΔΦ[1])
-	∂μ[1] = -ΔΦ[1]/Δξ
-	∂σ²[1] = Δf[1]/σ2Δξ
-	∂B[1] = (Φ[1] - π[1] + 𝛚[2]*ΔΦ[1])/B
-	for i = 2:Ξ_1
-        π[i] = σ_Δξ*(Δf[i] - Δf[i-1] + 𝐳[i+1]*ΔΦ[i] - 𝐳[i-1]*ΔΦ[i-1])
-		∂μ[i] = (ΔΦ[i-1] - ΔΦ[i])/Δξ
-		∂σ²[i] = (Δf[i]-Δf[i-1])/σ2Δξ
-		∂B[i] = (𝛚[i+1]*ΔΦ[i] - 𝛚[i-1]*ΔΦ[i-1] - π[i])/B
-    end
-    π[Ξ] = C[Ξ] - σ_Δξ*(Δf[Ξ_1] + 𝐳[Ξ_1]*ΔΦ[Ξ_1])
-	∂μ[Ξ] = ΔΦ[Ξ_1]/Δξ
-	∂σ²[Ξ] = -Δf[Ξ_1]/σ2Δξ
-	∂B[Ξ] = (C[Ξ] - π[Ξ] - 𝛚[Ξ_1]*ΔΦ[Ξ_1])/B
-    return C, Δf, ΔΦ, f, Φ, 𝐳
 end

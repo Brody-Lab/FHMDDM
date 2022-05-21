@@ -429,14 +429,14 @@ RETURN
 function update_for_choice_posteriors!(memory::Memoryforgradient,
 				 					   model::Model)
 	@unpack options, θnative, trialsets = model
-	@unpack Δt, K, Ξ = options
+	@unpack Δt, K, minpa, Ξ = options
 	@unpack p𝐘𝑑 = memory
 	@inbounds for i in eachindex(p𝐘𝑑)
 		for m in eachindex(p𝐘𝑑[i])
 			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, θnative.ψ[1])
 		end
     end
-	P = Probabilityvector(Δt, θnative, Ξ)
+	P = Probabilityvector(Δt, minpa, θnative, Ξ)
 	update_for_∇transition_probabilities!(P)
 	transitionmatrix!(memory.Aᵃsilent, P)
 	if K == 2
