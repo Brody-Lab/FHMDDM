@@ -216,7 +216,7 @@ function initializeparameters(options::Options)
 		l = lqu[1]
 		q = lqu[2]
 		u = lqu[3]
-		getfield(θnative, field)[1] = l + (u-l)*(fit ? rand() : q)
+		getfield(θnative, field)[1] = fit ? l + (u-l)*rand() : q
 	end
 	return θnative
 end
@@ -242,7 +242,7 @@ julia> FHMDDM.initializeparameters!(model)
 function initializeparameters!(model::Model)
 	@unpack options, θnative, θ₀native, θreal, trialsets = model
 	@unpack K = model.options
-	maximize_choice_posterior!(model)
+	maximizechoiceLL!(model)
 	memory = Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
@@ -276,7 +276,7 @@ function initialize_for_stochastic_transition!(model::Model; EMiterations::Integ
 	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = 0.95
 	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.999
 	native2real!(θreal, options, θnative)
-	maximize_choice_posterior!(model)
+	maximizechoiceLL!(model)
 	memory = Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
