@@ -240,7 +240,7 @@ ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat");
 julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 julia> ∇nℓ = similar(concatenatedθ)
 julia> memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
@@ -251,7 +251,7 @@ julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
 julia> maximum(abs.(∇nℓ_auto .- ∇nℓ))
 
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat");
 julia> concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 julia> concatenatedθ = rand(length(concatenatedθ))
 julia> ℓ = FHMDDM.choiceLL(concatenatedθ, indexθ.latentθ, model)

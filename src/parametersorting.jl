@@ -369,12 +369,14 @@ RETURN
 -`model`: the model with new parameter values
 ```
 """
-function Model(concatenatedθ::Vector{<:Real},
+function Model(concatenatedθ::Vector{type},
 	 		   indexθ::Latentθ,
-			   model::Model)
+			   model::Model) where {type<:Real}
 	θreal = Latentθ(concatenatedθ, indexθ, model.θreal)
+	θnative = Latentθ((zeros(type,1) for field in fieldnames(Latentθ))...)
+	real2native!(θnative, model.options, θreal)
 	Model(	options = model.options,
-			θnative = real2native(model.options, θreal),
+			θnative = θnative,
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=model.trialsets)

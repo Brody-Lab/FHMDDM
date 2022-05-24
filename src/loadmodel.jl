@@ -242,7 +242,7 @@ julia> FHMDDM.initializeparameters!(model)
 function initializeparameters!(model::Model)
 	@unpack options, θnative, θ₀native, θreal, trialsets = model
 	@unpack K = model.options
-	maximizechoiceLL!(model)
+	maximize_choice_posterior!(model)
 	memory = Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
@@ -276,7 +276,7 @@ function initialize_for_stochastic_transition!(model::Model; EMiterations::Integ
 	θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = 0.95
 	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.999
 	native2real!(θreal, options, θnative)
-	maximizechoiceLL!(model)
+	maximize_choice_posterior!(model)
 	memory = Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
