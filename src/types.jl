@@ -230,12 +230,15 @@ end
 A factorial hidden Markov drift-diffusion model
 """
 @with_kw struct Model{Toptions<:Options,
+					D<:Diagonal{<:Real, <:Vector{<:Real}},
 					Tθ1<:Latentθ,
 					Tθ2<:Latentθ,
 					Tθ3<:Latentθ,
 					VT<:Vector{<:Trialset}}
 	"settings of the model"
 	options::Toptions
+	"precision matrix of the Gaussian prior on the parameters"
+	precisionmatrix::D
 	"model parameters in their native space (the term 'space' is not meant to be mathematically rigorous. Except for the sticky bound `B`, the native space of all parameters are positive real numbers, which is a vector space. The native space of `B` is upper bounded because I am concerned a large value of `B` would result in a loss of precision in the discretization of the accumulator variable.)"
 	θnative::Tθ1
 	"model parameters in real vector space ℝ"

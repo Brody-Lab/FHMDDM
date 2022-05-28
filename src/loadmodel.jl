@@ -58,6 +58,7 @@ function Model(options::Options,
 		end
 	end
 	Model(options=options,
+		   precisionmatrix=Diagonal(vec(read(resultsMAT, "alphas"))),
 		   θnative=Latentθ(read(resultsMAT, "theta_native")),
 		   θreal=Latentθ(read(resultsMAT, "theta_real")),
 		   θ₀native=Latentθ(read(resultsMAT, "theta0_native")),
@@ -80,10 +81,57 @@ function Model(options::Options, trialsets::Vector{<:Trialset})
 	θnative = initializeparameters(options)
 	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # making a deep copy
 	Model(options=options,
+		   precisionmatrix=initial_precision_matrix(options, trialsets),
 		   θnative=θnative,
 		   θreal=native2real(options, θnative),
 		   θ₀native=θ₀native,
 		   trialsets=trialsets)
+end
+
+"""
+	initial_precision_matrix(options)
+
+Initial values of the inverse of the covariance of the Gaussian prior on the parameters
+
+ARGUMENT
+-`options`: settings of the model
+
+RETURN
+-a diagonal matrix representing the initial precision of the Gaussian prior on the parameters
+"""
+function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset})
+	n_latentθ_fitted = count_latent_parameters_being_fitted(options)
+	n_allθ = n_latentθ_fitted
+	for trialset in trialsets
+		for mpGLM in trialset.mpGLMs
+			n_allθ+=countparameters(mpGLM.θ)
+		end
+	end
+	𝛂 = zeros(n_allθ)
+	index_latentθ = index_latent_parameters(options)
+	for field in (:B, :k, :λ, :μ₀, :ϕ, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
+		i = getfield(index_latentθ, field)[1]
+		if i != 0
+			𝛂[i] = options.initial_ddm_L2_coefficient
+		end
+	end
+	counter = n_latentθ_fitted
+	for trialset in trialsets
+		for mpGLM in trialset.mpGLMs
+			counter +=1
+			for q = 2:length(mpGLM.θ.𝐮)
+				counter +=1
+				𝛂[counter] = options.initial_glm_L2_coefficient
+			end
+			for 𝐯ₖ in mpGLM.θ.𝐯
+				for v in 𝐯ₖ
+					counter +=1
+					𝛂[counter] = options.initial_glm_L2_coefficient
+				end
+			end
+		end
+	end
+	Diagonal(𝛂)
 end
 
 """

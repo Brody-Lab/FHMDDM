@@ -163,7 +163,28 @@ RETURN
 """
 function concatenate_latent_parameters(model::Model)
     @unpack options, θreal = model
+	indexθ = index_latent_parameters(options)
 	concatenatedθ = zeros(0)
+	for field in fieldnames(Latentθ)
+		if getfield(indexθ, field)[1] > 0
+			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
+		end
+	end
+	return concatenatedθ, indexθ
+end
+
+"""
+	index_latent_parameters(options)
+
+Create a structure indexing the parameters of the latent variables
+
+ARGUMENT
+-`options`: settings of the model
+
+RETURN
+-an instance of `Latenθ`
+"""
+function index_latent_parameters(options::Options)
 	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
     counter = 0
 	tofit = true
@@ -181,12 +202,44 @@ function concatenate_latent_parameters(model::Model)
 		if tofit
 			counter += 1
 			getfield(indexθ, field)[1] = counter
-			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
 		else
 			getfield(indexθ, field)[1] = 0
 		end
 	end
-	return concatenatedθ, indexθ
+	return indexθ
+end
+
+"""
+	count_latent_parameters_being_fitted(options)
+
+Count the number of parameters of latent variables being fitted
+
+ARGUMENT
+-`options`: settings of the model
+
+RETURN
+-a positive integer
+"""
+function count_latent_parameters_being_fitted(options::Options)
+	counter = 0
+	tofit = true
+	for field in fieldnames(Latentθ)
+		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+			tofit = options.K == 2
+		else
+			options_field = Symbol("fit_"*String(field))
+			if hasfield(typeof(options), options_field)
+				tofit = getfield(options, options_field)
+			else
+				error("Unrecognized field: "*String(field))
+			end
+		end
+		if tofit
+			counter += 1
+		else
+		end
+	end
+	counter
 end
 
 """
@@ -349,6 +402,7 @@ function Model(concatenatedθ::Vector{type},
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
 	Model(	options = model.options,
+			precisionmatrix = copy(model.precisionmatrix),
 			θnative = θnative,
 			θ₀native=model.θ₀native,
 			θreal = θreal,
@@ -376,6 +430,7 @@ function Model(concatenatedθ::Vector{type},
 	θnative = Latentθ((zeros(type,1) for field in fieldnames(Latentθ))...)
 	real2native!(θnative, model.options, θreal)
 	Model(	options = model.options,
+			precisionmatrix = copy(model.precisionmatrix),
 			θnative = θnative,
 			θ₀native=model.θ₀native,
 			θreal = θreal,

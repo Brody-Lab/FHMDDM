@@ -102,6 +102,17 @@ function twopasshessian(model::Model)
 end
 
 """
+    ∇∇loglikelihood(model)
+
+Return of the Hessian of the log-likelihood given the parameters and data in the structure `model`
+"""
+function ∇∇loglikelihood(model::Model)
+	concatenatedθ, indexθ = concatenateparameters(model)
+	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian!(model, concatenatedθ, indexθ)
+	∇∇ℓ
+end
+
+"""
 	twopasshessian!
 
 Compute the hessian for one trial as the Jacobian of the expectation conjugate gradient
