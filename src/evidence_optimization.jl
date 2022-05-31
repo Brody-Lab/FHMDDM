@@ -120,7 +120,7 @@ function ∇negativelogevidence!(∇n𝐸::Vector{<:Real},
 	∇nℓ = ∇n𝐸 # reuse memory
 	FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, 𝐰)
 	𝐉 = -𝐁 \ Diagonal(𝐰) #Jacobian matrix of the posterior mode 𝐰 with respect to the precisions 𝛂
-	∇n𝐸 .= 𝐉'*(∇nℓ-0.5𝐁₀𝛉ₘₐₚ) + (𝐁 \ (𝐀*𝐉))'*𝐁₀𝛉ₘₐₚ
+	∇n𝐸 .= 𝐉'*(∇nℓ - 0.5𝐁₀𝛉ₘₐₚ + 𝐀*𝐰)
 	𝚲 = I - 𝐀^-1*𝐇
 	𝐐 = zeros(size(𝚲));
 	for i in eachindex(𝛂)
