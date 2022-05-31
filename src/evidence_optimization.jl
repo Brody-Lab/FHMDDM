@@ -28,8 +28,8 @@ MODIFIED ARGUMENT
 """
 function maximizeevidence!(memory::Memoryforgradient,
 						model::Model,
-						𝐀₀::Diagonal{<:Real, <:Vector{<:Real}},
-						𝐇::Matrix{<:Real},
+						𝐀₀::Diagonal,
+						𝐇::Symmetric,
 						𝐁₀𝛉ₘₐₚ::Vector{<:Real};
 						optimizationoptions::Optim.Options=Optim.Options(),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
@@ -63,16 +63,31 @@ RETURN
 function logevidence!(memory::Memoryforgradient,
 					model::Model,
 					𝛂::Vector{<:Real},
-					𝐇::Matrix{<:Real},
+					𝐇::Symmetric,
 					𝐁₀𝛉ₘₐₚ::Vector{<:Real})
-	𝐀 = model.precisionmatrix
-	if 𝛂 != 𝐀.diag
-		𝐀.diag .= 𝛂
-	end
+	𝐀 = Diagonal(𝛂)
 	𝐁 = 𝐀-𝐇
     𝐰 = 𝐁 \ 𝐁₀𝛉ₘₐₚ
-	FHMDDM.loglikelihood!(model, memory, 𝐰)
-	memory.ℓ[1] - 0.5*(transpose(𝐰)*𝐀*𝐰) - 0.5*logdet(𝐀) + 0.5*logdet(𝐁)
+	loglikelihood!(model, memory, 𝐰)
+	logevidence(𝐀, 𝐇, memory.ℓ[1], 𝐰)
+end
+
+"""
+	logevidence(𝐀, 𝐇, ℓ, 𝐰)
+
+Evaluate the log-evidence
+
+ARGUMENT
+-`𝐀`: precision matrix
+-`𝐇`: Hessian of the log-likelihood evaluated at the MAP values of the parameters
+-`ℓ`: log-likelihood evaluated at the approximate posterior mode 𝐰
+-`𝐰`: approximate posterior mode as a function of 𝐀
+
+RETURN
+-log evidence
+"""
+function logevidence(𝐀::Diagonal, 𝐇::Symmetric, ℓ::Real, 𝐰::Vector{<:Real})
+	ℓ - 0.5𝐰'*𝐀*𝐰 - 0.5logdet(I - 𝐀^-1*𝐇)
 end
 
 """
@@ -97,18 +112,24 @@ function ∇negativelogevidence!(∇n𝐸::Vector{<:Real},
 								memory::Memoryforgradient,
 								model::Model,
 								𝛂::Vector{<:Real},
-								𝐇::Matrix{<:Real},
+								𝐇::Symmetric,
 								𝐁₀𝛉ₘₐₚ::Vector{<:Real})
-	𝐀 = model.precisionmatrix
-	if 𝛂 != 𝐀.diag
-		𝐀.diag .= 𝛂
-	end
+	𝐀 = Diagonal(𝛂)
 	𝐁 = 𝐀-𝐇
     𝐰 = 𝐁 \ 𝐁₀𝛉ₘₐₚ
 	∇nℓ = ∇n𝐸 # reuse memory
-	∇negativeloglikelihood!(∇nℓ, memory, model, 𝐰)
-	J𝐰 = -𝐁*Diagonal(𝐁*𝐁₀𝛉ₘₐₚ) #Jacobian matrix of the posterior mode 𝐰 with respect to the precisions 𝛂
-	∇n𝐸 .= J𝐰*(-∇nℓ) - 0.5*𝐰.^2 + J𝐰*𝐀*𝐰 - 0.5*(1.0./𝛂) + 0.5*diag(inv(𝐁))
+	FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, 𝐰)
+	𝐉 = -𝐁 \ Diagonal(𝐰) #Jacobian matrix of the posterior mode 𝐰 with respect to the precisions 𝛂
+	∇n𝐸 .= 𝐉'*(∇nℓ-0.5𝐁₀𝛉ₘₐₚ) + (𝐁 \ (𝐀*𝐉))'*𝐁₀𝛉ₘₐₚ
+	𝚲 = I - 𝐀^-1*𝐇
+	𝐐 = zeros(size(𝚲));
+	for i in eachindex(𝛂)
+		if i > 1
+	    	𝐐[i-1,:] .= 0.0
+		end
+	    𝐐[i,:] = 𝛂[i]^-2 .* 𝐇[i,:]
+	    ∇n𝐸[i] += 0.5tr(𝚲 \ 𝐐)
+	end
 	return nothing
 end
 
@@ -120,6 +141,9 @@ Check whether the hand-coded gradient of the log-evidence matches the automatic 
 ARGUMENT
 -`model`: structure containing the parameters and hyperparameters
 
+OPTIONAL ARGUMENT
+-`simulate`: whether to simulate Hessian and MAP solution. If not, the model is first fitted before a Hessian is computed
+
 RETURN
 -absolute difference between the gradients
 -absolute difference between the log-evidence functions
@@ -128,20 +152,36 @@ EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat")
-julia> FHMDDM.initializemodel!(model)
-julia> FHMDDM.maximizeposterior!(model)
-julia> absdiff∇𝐸, absidff𝐸 = FHMDDM.check_∇logevidence(model)
+julia> absdiff∇𝐸, absidff𝐸 = FHMDDM.check_∇logevidence(model; simulate=true)
 ```
 """
-function check_∇logevidence(model::Model)
+function check_∇logevidence(model::Model; simulate::Bool=true)
+	D = size(model.precisionmatrix,1)
+	𝛂 = rand(D)
+	if simulate
+		𝐑 = 1 .- 2rand(D,D)
+		𝐇 = Symmetric(Diagonal(𝛂) - transpose(𝐑)*𝐑)
+		𝐀 = Diagonal(𝛂)
+		𝐁 = 𝐀-𝐇
+		𝐰 = 1 .- 2rand(D)
+		𝐰 ./= norm(𝐰)
+		𝐁₀𝛉ₘₐₚ = 𝐁*𝐰
+		𝐀₀ = model.precisionmatrix
+		𝛉ₘₐₚ = (𝐀₀-𝐇) \ 𝐁₀𝛉ₘₐₚ
+		indexθ = FHMDDM.concatenateparameters(model)[2]
+		FHMDDM.sortparameters!(model, 𝛉ₘₐₚ, indexθ)
+		FHMDDM.real2native!(model.θnative, model.options, model.θreal)
+	else
+		FHMDDM.initializeparameters!(model)
+		FHMDDM.maximizeposterior!(model)
+		𝐇 = Symmetric(FHMDDM.∇∇loglikelihood(model))
+		𝛉ₘₐₚ, indexθ = FHMDDM.concatenateparameters(model)
+		𝐀₀ = model.precisionmatrix
+		𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
+	end
 	memory = FHMDDM.Memoryforgradient(model)
-	𝐀₀ = copy(model.precisionmatrix)
-    𝐇 = FHMDDM.∇∇loglikelihood(model)
-	𝛉ₘₐₚ, indexθ = FHMDDM.concatenateparameters(model)
-	𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
-	𝛂 = ones(length(𝛉ₘₐₚ))
-	handcoded_gradient = similar(𝛉ₘₐₚ)
 	handcoded_evidence = FHMDDM.logevidence!(memory, model, 𝛂, 𝐇, 𝐁₀𝛉ₘₐₚ)
+	handcoded_gradient = fill(NaN,D)
 	FHMDDM.∇negativelogevidence!(handcoded_gradient, memory, model, 𝛂, 𝐇, 𝐁₀𝛉ₘₐₚ)
     f(x) = FHMDDM.logevidence(x, 𝐁₀𝛉ₘₐₚ, 𝐇, indexθ, model)
 	automatic_evidence = f(𝛂)
@@ -166,11 +206,12 @@ RETURN
 """
 function logevidence(𝛂::Vector{<:Real},
 					𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-					𝐇::Matrix{<:Real},
+					𝐇::Symmetric,
 					indexθ::Indexθ,
 					model::Model)
 	𝐀 = Diagonal(𝛂)
 	𝐁 = 𝐀-𝐇
     𝐰 = 𝐁 \ 𝐁₀𝛉ₘₐₚ
-	FHMDDM.loglikelihood(𝐰, indexθ, model) - 0.5*(transpose(𝐰)*𝐀*𝐰) - 0.5*logdet(𝐀) + 0.5*logdet(𝐁)
+	ℓ = FHMDDM.loglikelihood(𝐰, indexθ, model)
+	logevidence(𝐀, 𝐇, ℓ, 𝐰)
 end

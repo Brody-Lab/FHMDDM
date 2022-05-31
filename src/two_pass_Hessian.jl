@@ -61,6 +61,18 @@ function twopasshessian!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::
 end
 
 """
+    ∇∇loglikelihood(model)
+
+Return of the Hessian of the log-likelihood given the parameters and data in the structure `model`
+"""
+function ∇∇loglikelihood(model::Model)
+	indexθ = concatenateparameters(model)[2]
+	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
+	native2real!(∇ℓ, ∇∇ℓ, model)
+	sortparameters(indexθ.latentθ, ∇∇ℓ)
+end
+
+"""
 	twopasshessian(model)
 
 Compute the hessian as the Jacobian of the expectation conjugate gradient
@@ -99,17 +111,6 @@ function twopasshessian(model::Model)
 		end
 	end
 	return ℓ[1], ∇ℓ, ∇∇ℓ
-end
-
-"""
-    ∇∇loglikelihood(model)
-
-Return of the Hessian of the log-likelihood given the parameters and data in the structure `model`
-"""
-function ∇∇loglikelihood(model::Model)
-	concatenatedθ, indexθ = concatenateparameters(model)
-	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian!(model, concatenatedθ, indexθ)
-	∇∇ℓ
 end
 
 """
