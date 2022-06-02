@@ -119,7 +119,7 @@ function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset
 	for trialset in trialsets
 		for mpGLM in trialset.mpGLMs
 			counter +=1
-			for q = 2:length(mpGLM.θ.𝐮)
+			for q = 2:length(mpGLM.θ.𝐮) # the first coefficient is the baseline
 				counter +=1
 				𝛂[counter] = options.initial_glm_L2_coefficient
 			end
@@ -288,10 +288,33 @@ julia> FHMDDM.initializeparameters!(model)
 ```
 """
 function initializeparameters!(model::Model)
-	@unpack options, θnative, θ₀native, θreal, trialsets = model
-	@unpack K = model.options
+	memory = FHMDDM.Memoryforgradient(model)
+	initializeparameters!(memory, model)
+	return nothing
+end
+
+"""
+	initializeparameters!(memory, model)
+
+Initialize the values of a subset of the parameters by maximizing the likelihood of only the choices.
+
+The parameters specifying the transition probability of the coupling variable are not modified. The weights of the GLM are computed by maximizing the expectation of complete-data log-likelihood across accumulator states.
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables for in-place computations
+-`model`: an instance of the factorial hidden Markov drift-diffusion model
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
+julia> model = Model(datapath)
+julia> memory = FHMDDM.Memoryforgradient(model)
+julia> FHMDDM.initializeparameters!(memory, model)
+```
+"""
+function initializeparameters!(memory::Memoryforgradient, model::Model)
 	maximize_choice_posterior!(model)
-	memory = Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
 	    for mpGLM in model.trialsets[i].mpGLMs

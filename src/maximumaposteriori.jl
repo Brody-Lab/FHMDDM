@@ -18,13 +18,13 @@ OPTIONAL ARGUMENT
 -`x_tol`: threshold for determining convergence in the input vector
 
 RETURN
-`losses`: value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
+`losses`: value of the loss function (negative of the un-normalized posterior probability of the parameters) across iterations. If `store_trace` were set to false, then these are NaN's
 `gradientnorms`: 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
 
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_19_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat")
 julia> FHMDDM.initializeparameters!(model)
 julia> losses, gradientnorms = maximizeposterior!(model)
 ```
@@ -38,13 +38,13 @@ function maximizeposterior!(model::Model;
 							show_trace::Bool=true,
 							store_trace::Bool=true,
 							x_tol::AbstractFloat=0.0)
-	𝛌 = L2regularizer(model)
 	optimizer = LBFGS(linesearch = LineSearches.BackTracking())
 	memory = Memoryforgradient(model)
-    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + ((𝛌.*concatenatedθ) ⋅ concatenatedθ)
+	𝐀 = model.precisionmatrix
+    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + 0.5(concatenatedθ' * 𝐀 * concatenatedθ)
     function g!(∇, concatenatedθ)
 		∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
-		∇ .+= 2.0.*𝛌.*concatenatedθ
+		∇ .+= 𝐀*concatenatedθ
 		return nothing
 	end
     Optim_options = Optim.Options(extended_trace=extended_trace,
@@ -70,49 +70,4 @@ function maximizeposterior!(model::Model;
 		end
 	end
     return losses, gradientnorms
-end
-
-"""
-	L2regularizer(model)
-
-Create a vector of L2 regularization weights
-
-The parameters of the coupling variables are not regularized, and the baseline firing rate of the GLM in each state is not regularized
-
-ARGUMENT
--`λ`: constant used to regularize all parameters that are regularized
--`model`: struct containing the parameters, data, and hyperparameters
-
-OUTPUT
--a vector of L2 regularization weights
-
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
-julia> model = Model(datapath; randomize=true)
-julia> 𝛌 = FHMDDM.L2regularizer(model)
-```
-"""
-function L2regularizer(model::Model)
-	θ, index = concatenateparameters(model)
-	𝛌 = zeros(length(θ))
-	for field in (:B, :k, :λ, :μ₀, :ϕ, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
-		i = getfield(index.latentθ, field)[1]
-		if i != 0
-			𝛌[i] = model.options.initial_ddm_L2_coefficient
-		end
-	end
-	for glmθ in index.glmθ
-		for glmθ in glmθ
-			for q = 2:length(glmθ.𝐮)
-				𝛌[glmθ.𝐮[q]] = model.options.initial_glm_L2_coefficient
-			end
-			for 𝐯ₖ in glmθ.𝐯
-				for v in 𝐯ₖ
-					𝛌[v] = model.options.initial_glm_L2_coefficient
-				end
-			end
-		end
-	end
-	𝛌
 end

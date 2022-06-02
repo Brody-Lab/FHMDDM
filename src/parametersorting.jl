@@ -567,3 +567,41 @@ function countparameters(θ::GLMθ)
 	end
 	return counter
 end
+
+"""
+	indexprecisions(model)
+
+Create a structure indexing the precisions
+
+ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters
+
+RETURN
+-a vector of integers
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
+julia> index𝛂 = FHMDDM.indexprecisions(model)
+```
+"""
+function indexprecisions(model::Model)
+	index𝛂 = Int[]
+	indexθ = concatenateparameters(model)[2]
+	n_latentθ_fitted = 0
+	for field in fieldnames(Latentθ)
+		i = getfield(indexθ.latentθ, field)[1]
+		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+		else
+			index𝛂 = vcat(index𝛂, i)
+			n_latentθ_fitted = max(n_latentθ_fitted, i)
+		end
+	end
+	for glmθ in indexθ.glmθ
+		for glmθ in glmθ
+			index𝛂 = vcat(index𝛂, glmθ.𝐮[2]:glmθ.𝐯[end][end]) #𝐮[1] corresponds to a constant
+		end
+	end
+	index𝛂
+end
