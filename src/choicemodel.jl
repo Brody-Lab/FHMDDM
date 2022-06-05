@@ -22,7 +22,6 @@ julia> FHMDDM.maximize_choice_posterior!(model)
 ```
 """
 function maximize_choice_posterior!(model::Model;
-						 L2coefficient::Real=0.1,
 		                 extended_trace::Bool=true,
 		                 f_tol::AbstractFloat=1e-9,
 		                 g_tol::AbstractFloat=1e-8,
@@ -30,11 +29,12 @@ function maximize_choice_posterior!(model::Model;
 		                 show_every::Integer=10,
 		                 show_trace::Bool=true,
 		                 x_tol::AbstractFloat=1e-5)
+	@unpack α₀_choices = model.options
 	memory = Memoryforgradient(model; choicemodel=true)
-    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ) + L2coefficient*dot(concatenatedθ,concatenatedθ)
+    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ) + α₀_choices*dot(concatenatedθ,concatenatedθ)
 	function g!(∇, concatenatedθ)
 		∇negativechoiceLL!(∇, memory, model, concatenatedθ)
-		∇ .+= 2.0.*L2coefficient.*concatenatedθ
+		∇ .+= α₀_choices.*concatenatedθ
 		return nothing
 	end
     Optim_options = Optim.Options(extended_trace=extended_trace,

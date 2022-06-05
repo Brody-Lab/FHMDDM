@@ -1,4 +1,46 @@
 """
+	learnparameters!(model)
+
+Optimize the parameters of the factorial hidden Markov drift-diffusion model
+
+The value maximized in the optimization is specified in `model.options.objective`
+
+MODIFIED ARGUMENT
+-`model`
+
+RETURN
+-depending on the `model.options.objective`, output of `maximizeevidence!`, `maximizeposterior!`, or `maximizelikelihood!`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05a_test/T176_2018_05_03/data.mat")
+julia> learnparameters!(model)
+julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
+julia> fbz = posterior_first_state(model)
+julia> save(model, fbz, λΔt, pchoice)
+```
+"""
+function learnparameters!(model::Model)
+	@unpack basistype, K, objective = model.options
+	if (K > 1) && (basistype == "none")
+		initialize_for_stochastic_transition!(model)
+	else
+		initializeparameters!(model)
+	end
+	if objective == "evidence"
+		output = maximizeevidence!(model)
+	elseif objective == "posterior"
+		output = maximizeposterior!(model)
+	elseif objective == "likelihood"
+		output = maximizelikelihood!(model)
+	else
+		error(objective, " is not a recognized objective.")
+	end
+	return output
+end
+
+"""
     maximizeposterior!(model)
 
 Optimize the parameters of the factorial hidden Markov drift-diffusion model using a first-order optimizer in Optim
@@ -41,10 +83,10 @@ function maximizeposterior!(model::Model;
 	optimizer = LBFGS(linesearch = LineSearches.BackTracking())
 	memory = Memoryforgradient(model)
 	𝐀 = model.precisionmatrix
-    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + 0.5(concatenatedθ' * 𝐀 * concatenatedθ)
+    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + 0.5dot(concatenatedθ, 𝐀, concatenatedθ)
     function g!(∇, concatenatedθ)
 		∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
-		∇ .+= 𝐀*concatenatedθ
+		∇ .+= 𝐀.diag.*concatenatedθ
 		return nothing
 	end
     Optim_options = Optim.Options(extended_trace=extended_trace,

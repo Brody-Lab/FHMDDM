@@ -20,6 +20,7 @@ export  crossvalidate, # module-specific functions and types in this module that
         maximize_choice_posterior!,
         maximizeposterior!,
         maximizeevidence!,
+        learnparameters!,
         posterior_first_state,
         save
 include("types.jl") # This list contains files that in which functions and types are specified. The file "types.jl" has to be listed first, but the order of the other files does not matter.
@@ -31,8 +32,8 @@ include("E_step.jl")
 include("evidence_optimization.jl")
 include("loadmodel.jl")
 include("maximumlikelihood.jl")
-include("maximumaposteriori.jl")
 include("mixture_of_Poisson_GLM.jl")
+include("parameterlearning.jl")
 include("parametersorting.jl")
 include("temporal_basis_functions.jl")
 include("sampling.jl")

@@ -77,9 +77,9 @@ Model settings
 	"whether to fit the weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
 	fit_wₕ::TB=true
 	"initial coefficient for L2 regularization for the non-constant parameters of each neuron's GLM"
-	initial_glm_L2_coefficient::TF=0.0
+	α₀::TF=0.0
 	"initial coefficient for L2 regularization for the ddm parameters"
-	initial_ddm_L2_coefficient::TF=0.0
+	α₀_choices::TF=0.0
 	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
 	"transition probability of the coupling variable to remain in the coupled state"
 	lqu_Aᶜ₁₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₁₁[1]) && (lqu_Aᶜ₁₁[1] <= lqu_Aᶜ₁₁[2]) && (lqu_Aᶜ₁₁[2] < lqu_Aᶜ₁₁[3]) && (lqu_Aᶜ₁₁[3] <= 1.0)
@@ -109,6 +109,8 @@ Model settings
 	lqu_wₕ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_wₕ[1]) && (lqu_wₕ[1] <= lqu_wₕ[2]) && (lqu_wₕ[2] < lqu_wₕ[3]) && (lqu_wₕ[3] < Inf)
 	"minimum value of the prior and transition probabilities of the accumulator"
 	minpa::TF=1e-8
+	"value to maximized to learn the parameters"
+	objective::String; @assert any(objective .== ["evidence", "posterior", "likelihood"])
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
     "number of states of the discrete accumulator variable"
@@ -286,8 +288,7 @@ Results of cross-validation
 @with_kw struct CVResults{VC<:Vector{<:CVIndices},
 							VL<:Vector{<:Latentθ},
 							VVVG<:Vector{<:Vector{<:Vector{<:GLMθ}}},
-							VVF<:Vector{<:Vector{<:AbstractFloat}},
-							VF<:Vector{<:AbstractFloat}}
+							VVF<:Vector{<:Vector{<:AbstractFloat}}}
 	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
 	cvindices::VC
 	"θ₀native[k] specify the initial values of the parameters of the latent variables in the k-th resampling"
@@ -296,12 +297,8 @@ Results of cross-validation
 	θnative::VL
 	"glmθ[k][i][n] specify the optimized values of the parameters of the n-th neuron's GLM in the i-th trialset in the k-th resampling"
 	glmθ::VVVG
-	"losses[k][i] specify the value of the loss function in the i-th iteration of the optimization in the k-th resampling"
-	losses::VVF
-	"gradientnorms[k][i] specify the 2-norm of gradient the loss function in the i-th iteration of the optimization in the k-th resampling"
-	gradientnorms::VVF
-	"rll_choice[i] indicate the trial-averaged log-likelihood of the choices in the i-th trialset, relative to the baseline trial-average log-likelihood computed under a Bernoulli distribution parametrized by fraction of right responses"
-	rll_choice::VF
+	"rll_choice[i][m] indicate the log-likelihood of the choice in the m-th trial of the i-th trialset, relative to the baseline trial-average log-likelihood computed under a Bernoulli distribution parametrized by fraction of right responses"
+	rll_choice::VVF
 	"rll_spikes[i][n] indicate the time-averaged log-likelihood of the spike train of the n-th neuron in the -th trialset, relative to the baseline time-averaged log-likelihood computed under a Poisson distribution parametrized by mean spike train response"
 	rll_spikes::VVF
 end

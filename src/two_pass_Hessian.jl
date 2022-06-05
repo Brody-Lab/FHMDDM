@@ -148,7 +148,9 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[trialsetindex]
 	indexθ_trialset = sameacrosstrials.indexθ_trialset[trialsetindex]
 	nθ_trialset = sameacrosstrials.nθ_trialset[trialsetindex]
-	adaptedclicks = ∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = ∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	end
 	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])

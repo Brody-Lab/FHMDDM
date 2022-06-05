@@ -4,11 +4,8 @@
 Assess how well the factorial hidden Markov drift-diffusion model generalizes to independent datasets
 
 ARGUMENT
--`model`: a structure containing the settings, data, and parameters of a factorial hidden-Markov drift-diffusion model
-
-OPTIONAL ARGUMENT
 -`kfold`: number of cross-validation folds
--`iterations`: maximum number of iterations the solver goes through before stopping
+-`model`: a structure containing the settings, data, and parameters of a factorial hidden-Markov drift-diffusion model
 
 OUTPUT
 -an instance of `CVResults`
@@ -16,46 +13,27 @@ OUTPUT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_16_test/T176_2018_05_03_static/data.mat")
-julia> cvresults = crossvalidate(model;kfold=5, iterations=10)
-julia> save(cvresults, model.options)
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_16_test/T176_2018_05_03_stochastic/data.mat")
-julia> cvresults = crossvalidate(model;kfold=5, iterations=10)
-julia> save(cvresults, model.options)
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_16_test/T176_2018_05_03_deterministic/data.mat")
-julia> cvresults = crossvalidate(model;kfold=5, iterations=10)
-julia> save(cvresults, model.options)
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_16_test/T176_2018_05_03_both/data.mat")
-julia> cvresults = crossvalidate(model;kfold=5, iterations=10)
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
+julia> cvresults = crossvalidate(2, model)
 julia> save(cvresults, model.options)
 ```
 """
-function crossvalidate(model::Model;
-                       kfold::Integer=5,
-					   iterations=1000)
+function crossvalidate(kfold::Integer, model::Model)
     cvindices = CVIndices(model, kfold)
-	results = pmap(cvindices->maxmizeposterior(cvindices, model; iterations=iterations), cvindices)
-	trainingmodels = collect(result[1] for result in results)
-	losses = collect(result[2] for result in results)
-	gradientnorms = collect(result[3] for result in results)
-	glmθs = collect(collect(collect(mpGLM.θ for mpGLM in trialset.mpGLMs) for trialset in trainingmodel.trialsets) for trainingmodel in trainingmodels)
-	θ₀native = collect(trainingmodel.θ₀native for trainingmodel in trainingmodels)
-	θnative = collect(trainingmodel.θnative for trainingmodel in trainingmodels)
-    rll_choice, rll_spikes = relative_loglikelihood(cvindices, glmθs, model.options, θnative, model.trialsets)
+	trainingmodels = pmap(cvindices->train(cvindices, model), cvindices)
+    rll_choice, rll_spikes = test(cvindices, model, trainingmodels)
     CVResults(cvindices = cvindices,
-              θ₀native = θ₀native,
-              θnative = θnative,
-              glmθ = glmθs,
-              losses = losses,
-              gradientnorms = gradientnorms,
+              θ₀native = collect(trainingmodel.θ₀native for trainingmodel in trainingmodels),
+              θnative = collect(trainingmodel.θnative for trainingmodel in trainingmodels),
+              glmθ = collect(collect(collect(mpGLM.θ for mpGLM in trialset.mpGLMs) for trialset in trainingmodel.trialsets) for trainingmodel in trainingmodels),
               rll_choice = rll_choice,
               rll_spikes = rll_spikes)
 end
 
 """
-	maxmizeposterior(cvindices, model)
+	train(cvindices, model)
 
-Maximize the posterior log-likelihood of subsample of the data
+Fit training models
 
 ARGUMENT
 -`cvindices`: indices of the trials and timesteps used for training and testing in each fold
@@ -63,102 +41,132 @@ ARGUMENT
 
 RETURN
 -`trainingmodel`: structure containing the data in the training trials, parameters optimized for the data in the trainings, and hyperparameters
--`losses`: the value of the cost function in each iteration
--`gradientnorms`: the 2-norm of the gradient the cost function in each iteration
 """
-function maxmizeposterior(cvindices::CVIndices, model::Model; iterations::Integer)
+function train(cvindices::CVIndices, model::Model)
 	θ₀native = initializeparameters(model.options)
 	trainingmodel = Model(trialsets = trainingset(cvindices, model.trialsets),
 						  options = model.options,
+						  precisionmatrix = copy(model.precisionmatrix),
 						  θ₀native = θ₀native,
 						  θnative = Latentθ(([getfield(θ₀native, f)...] for f in fieldnames(Latentθ))...),
 						  θreal = native2real(model.options, θ₀native))
-	if (trainingmodel.options.K > 1) && (trainingmodel.options.basistype == "none")
-		initialize_for_stochastic_transition!(trainingmodel)
-	else
-		initializeparameters!(trainingmodel)
-	end
-	losses, gradientnorms = maximizeposterior!(trainingmodel; iterations=iterations)
-	return trainingmodel, losses, gradientnorms
+	learnparameters!(trainingmodel)
+	return trainingmodel
 end
 
 """
-	relative_loglikelihood(cvindices, glmθ, options, θnative, trialsets)
+	test(cvindices, model, trainingmodels)
 
 Relative log-likelihood of the choices and of the spike train responses
 
 ARGUMENT
 -`cvindices`: indices of the trials and timesteps used for training and testing in each fold
--`glmθ`: optimized parameters of the Poisson mixture GLM of each neuron in each fold
--`options`: model settings
--`θnative`: optimized parameters specifying the latent variables in each fold
--`trialsets`: the data
+-`model`: structure containing both the test and training data
+-`trainingmodel`: structure containing only the training data and the parameters learned for those data
 
 OUTPUT
--`rll_choice`: A vector of floating point numbers whose element `rll_choice[i]` represents the trial-averaged log-likelihood of the choices in the i-th trialset. Subtracted from this value is the baseline trial-averaged log-likelihood of the choices, computed under a Bernoulli distribution parametrized by the fraction of right responses.
--`rll_spikes`: A nested vector of floating point numbers element `rll_spikes[i][n]` represents the time-average log-likelihood of the n-th neuron's spike train in the i-th trialset. Subtracted from this value this is baseline time-average log-likelihood computed under a Poisson distribution parametrized by the average spike train response across time steps. The difference is further divided by the number of spikes observed for each neuron.
+-`rll_choice`: Relative log-likelihood of each choice. The element `rll_choice[i][m]` represents the log-likelihood(base 2) of the choice in the m-th trial in the i-th trialset. Subtracted from this value is the log-likelihood(base 2) of the choice predicted by a Bernoulli distribution parametrized by the fraction of right responses in the training data.
+-`rll_spikes`: Relative log-likelihood of the spike train response of each neuron, divided by the total number of spikes. The element `rll_spikes[i][n]` represents the time-average log-likelihood(base 2) of the n-th neuron's spike train in the i-th trialset. Subtracted from this value this is baseline time-average log-likelihood computed under a Poisson distribution parametrized by the average spike train response across time steps in the training data. This difference is divided by the total number of spikes.
 """
-function relative_loglikelihood(cvindices::Vector{<:CVIndices},
-								glmθ::Vector{<:Vector{<:Vector{<:GLMθ}}},
-                                options::Options,
-                                θnative::Vector{<:Latentθ},
-                                trialsets::Vector{<:Trialset})
-    rll_choice = zeros(length(trialsets))
-    rll_spikes = map(trialset->zeros(length(trialset.mpGLMs)), trialsets)
-    kfold = length(cvindices)
-    for k=1:kfold
-        testingmodel = Model(trialsets = testingset(cvindices[k], trialsets),
-                             options = options,
-                             θ₀native = θnative[k],
-                             θnative = θnative[k],
-                             θreal = native2real(options, θnative[k]))
-        for i in eachindex(testingmodel.trialsets)
-            for n in eachindex(testingmodel.trialsets[i].mpGLMs)
-                testingmodel.trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[k][i][n].𝐮
-				for k = 1:length(glmθ[k][i][n].𝐯)
-	                testingmodel.trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[k][i][n].𝐯[k]
-				end
-            end
-        end
-		𝛌₀Δt = map(trialsets, cvindices[k].trainingtimesteps) do trialset, trainingtimesteps
-					map(trialset.mpGLMs) do mpGLM
-						mean(mpGLM.𝐲[trainingtimesteps])
-					end
-				end
-		fractionright = map(trialsets, cvindices[k].trainingtrials) do trialset, trainingtrials
-							mean(map(trialset.trials[trainingtrials]) do trial
-									trial.choice
-								 end)
-						end
-		ℓ𝑑, ℓ𝑦 = relative_loglikelihood(testingmodel, 𝛌₀Δt, fractionright)
-		for i in eachindex(testingmodel.trialsets)
-			rll_choice[i] += ℓ𝑑[i]/kfold
-            for n in eachindex(testingmodel.trialsets[i].mpGLMs)
-				rll_spikes[i][n] += ℓ𝑦[i][n]/kfold
-        	end
+function test(cvindices::Vector{<:CVIndices}, model::Model, trainingmodels::Vector{<:Model})
+	rll_choice = map(trialset->fill(NaN, length(trialset.trials)), model.trialsets)
+	rll_spikes = map(trialset->fill(NaN, length(trialset.mpGLMs)), model.trialsets)
+	for (cvindices, trainingmodel) in zip(cvindices, trainingmodels)
+		test!(rll_choice, rll_spikes, cvindices, model, trainingmodel)
+	end
+	for i in eachindex(rll_spikes)
+		for n in eachindex(rll_spikes[i])
+			rll_spikes[i][n] /= sum(model.trialsets[i].mpGLMs[n].𝐲)
 		end
-    end
+	end
 	return rll_choice, rll_spikes
 end
 
 """
-	relative_loglikelihood(model, 𝛌₀, fractionright)
+	test(cvindices, model, trainingmodel)
+
+Out-of-sample relative log-likelihood of choices and spiking
+
+MODIFIED INPUT
+-`rll_choice`: Relative log-likelihood of each choice. The element `rll_choice[i][m]` represents the log-likelihood(base 2) of the choice in the m-th trial in the i-th trialset. Subtracted from this value is the log-likelihood(base 2) of the choice predicted by a Bernoulli distribution parametrized by the fraction of right responses in the training data.
+-`rll_spikes`: Relative log-likelihood of the spike train response of each neuron, divided by the total number of spikes. The element `rll_spikes[i][n]` represents the time-average log-likelihood(base 2) of the n-th neuron's spike train in the i-th trialset. Subtracted from this value this is baseline time-average log-likelihood computed under a Poisson distribution parametrized by the average spike train response across time steps in the training data. This differece has not yet been divided by the total number of spikes.
+
+UNMODIFIED INPUT
+-`cvindices`: indices of the trials and timesteps used for training and testing in each fold
+-`model`: structure containing the full dataset, parameters, and hyperparameters
+"""
+function test!(rll_choice::Vector{<:Vector{<:AbstractFloat}},
+				rll_spikes::Vector{<:Vector{<:AbstractFloat}},
+				cvindices::CVIndices,
+				model::Model,
+				trainingmodel::Model)
+	testmodel = test(cvindices, model, trainingmodel)
+	bernoullis = map(trainingmodel.trialsets) do trialset
+					p = mean(map(trial->trial.choice, trialset.trials))
+					Bernoulli(p)
+				end
+	poissons = map(trainingmodel.trialsets) do trialset
+				map(trialset.mpGLMs) do mpGLM
+					Poisson(mean(mpGLM.𝐲))
+				end
+			end
+	ℓ𝑑, ℓ𝑦 = test(testmodel, bernoullis, poissons)
+	for i in eachindex(model.trialsets)
+		rll_choice[i][cvindices.testingtrials[i]] .= ℓ𝑑[i]
+		for n in eachindex(model.trialsets[i].mpGLMs)
+			rll_spikes[i][n] += ℓ𝑦[i][n]
+		end
+	end
+	return nothing
+end
+
+"""
+	test(cvindices, model, trainingmodel)
+
+Construct a model with only the test data and the parameters learned from the training data
+
+ARGUMENT
+-`cvindices`: indices of the trials and timesteps used for training and testing in each fold
+-`model`: structure containing both the test and training data
+-`trainingmodel`: structure containing only the training data and the parameters learned for those data
+
+OUTPUT
+-`testmodel`: a structure containing only the test data and the parameters learned from the training data
+"""
+function test(cvindices::CVIndices, model::Model, trainingmodel::Model)
+	testmodel = Model(trialsets = testingset(cvindices, model.trialsets),
+					options = model.options,
+					precisionmatrix = trainingmodel.precisionmatrix,
+					θ₀native = trainingmodel.θ₀native,
+					θnative = trainingmodel.θnative,
+					θreal = native2real(model.options, trainingmodel.θnative))
+	for (test_trialset, training_trialset) in zip(testmodel.trialsets, trainingmodel.trialsets)
+		for (test_mpGLM, training_mpGLM) in zip(test_trialset.mpGLMs, training_trialset.mpGLMs)
+			test_mpGLM.θ.𝐮 .= training_mpGLM.θ.𝐮
+			for (test_𝐯, training_𝐯) in zip(test_mpGLM.θ.𝐯, training_mpGLM.θ.𝐯)
+				test_𝐯 .= training_𝐯
+			end
+		end
+	end
+	return testmodel
+end
+
+"""
+	test(testmodel, bernoullis, poissons)
 
 Compute the relative log-likelihood of the choices and spike train responses
 
 ARGUMENT
--`model`: a structure containing the settings, data, and parameters of a factorial hidden-Markov drift-diffusion model
--`𝛌₀Δt`: the mean number of spikes per timestep of each neuron
--`fractionright`: the fraction of responding right
+-`testmodel`: a structure containing only the test data and the parameters learned from the training data
+-`bernoullis`: Bernoulli models of choice probability. The i-th element corresponds a Bernoulli model of the probability of a right choice in the i-th trialset, with the parameter of the Bernoulli model inferred as the mean fraction of a right choice in the training trials of the i-th trialset.
+-`poissons`: Homogeneous Poisson model of spike response. The element `poissons[i][n]` corresponds a homogeneous Poisson model of the spiking response of the n-th neuron in the i-th trialset. The intensity of the Poisson with the parameter of the Bernoulli model inferred as the mean fraction of a right choice in the training trials of the i-th trialset.
 
 OUTPUT
--`ℓ𝑑`: ℓ𝑑[i] corresponds to the log-likelihood of the choices per trial in the i-th trialset, relative to the log-likelihood under a Bernoulli parametrized by `fractioncorrect`
--`ℓ𝑦`: ℓ𝑦[i][n] corresponds to the log-likelihood per spike of the n-th spike train in the i-th trialset, relative to the log-likelihood under a Poisson parametrized by `𝛌₀`
+-`ℓ𝑑`: ℓ𝑑[i][m] corresponds to the log-likelihood(base 2) of the choice in the m-th trial in the i-th trialset, relative to the log-likelihood predicted by a Bernoulli model whose parameter is inferred from the fraction of right choices in the training data
+-`ℓ𝑦`: ℓ𝑦[i][n] corresponds to the log-likelihood(base 2) of the spiking of the n-th neuron in the i-th trialset, relative to the log-likelihood predicted by a homogenous Poisson whose intensity is inferred from the mean response of the training data of the same neuron.
 """
-function relative_loglikelihood(model::Model,
-								𝛌₀Δt::Vector{<:Vector{<:AbstractFloat}},
-								fractionright::Vector{<:AbstractFloat})
-	@unpack options, θnative, trialsets = model
+function test(testmodel::Model, bernoullis::Vector{<:Bernoulli}, poissons::Vector{<:Vector{<:Poisson}})
+	@unpack options, θnative, trialsets = testmodel
 	@unpack Aᶜ₁₁, Aᶜ₂₂, πᶜ₁ = θnative
 	@unpack Δt, K, minpa, Ξ = options
 	Aᶜᵀ = [Aᶜ₁₁[1] 1-Aᶜ₁₁[1]; 1-Aᶜ₂₂[1] Aᶜ₂₂[1]]
@@ -170,15 +178,14 @@ function relative_loglikelihood(model::Model,
 	𝛏 = θnative.B[1].*d𝛏_dB
 	transitionmatrix!(Aᵃsilent, minpa, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
 	σᵢ = √θnative.σ²ᵢ[1]
-	ℓ𝑑 = zeros(length(model.trialsets))
-	ℓ𝑦 = map(trialset->zeros(length(trialset.mpGLMs)), model.trialsets)
+	ℓ𝑑 = map(trialset->fill(NaN, length(trialset.trials)), testmodel.trialsets)
+	ℓ𝑦 = map(trialset->fill(NaN, length(trialset.mpGLMs)), testmodel.trialsets)
 	p𝑦 = zeros(Ξ,K)
-	homogeneousPoissons = map(λΔt->map(λΔt->Poisson(λΔt),λΔt),𝛌₀Δt)
 	log2e = log2(exp(1))
-	for i in eachindex(model.trialsets)
+	for i in eachindex(testmodel.trialsets)
 		τ = 0
-		ntrials = length(model.trialsets[i].trials)
-		for m in eachindex(model.trialsets[i].trials)
+		ntrials = length(testmodel.trialsets[i].trials)
+		for m in eachindex(testmodel.trialsets[i].trials)
 			@unpack choice, clicks, ntimesteps, previousanswer = trialsets[i].trials[m]
 			μ = θnative.μ₀[1] + previousanswer*θnative.wₕ[1]
 			p𝐚 = probabilityvector(minpa, μ, σᵢ, 𝛏)
@@ -204,16 +211,11 @@ function relative_loglikelihood(model::Model,
 				end
 				for n in eachindex(trialsets[i].mpGLMs)
 					conditionallikelihood!(p𝑦, trialsets[i].mpGLMs[n], τ)
-					ℓ𝑦[i][n] += log2(sum(p𝑦.*p𝐚.*p𝐜ᵀ)) - log2e*Distributions.logpdf(homogeneousPoissons[i][n], trialsets[i].mpGLMs[n].𝐲[τ])
+					ℓ𝑦[i][n] += log2(sum(p𝑦.*p𝐚.*p𝐜ᵀ)) - log2e*Distributions.logpdf(poissons[i][n], trialsets[i].mpGLMs[n].𝐲[τ])
 				end
 			end
 			p𝑑 = conditionallikelihood(choice, θnative.ψ[1], Ξ)
-			ℓ𝑑[i] += log2(sum(p𝑑.*p𝐚)) - log2(choice ? fractionright[i] : 1-fractionright[i])
-		end
-  		ℓ𝑑[i] /= ntrials
-		for n in eachindex(trialsets[i].mpGLMs)
-			nspikes = sum(trialsets[i].mpGLMs[n].𝐲)
-			ℓ𝑦[i][n] /= nspikes
+			ℓ𝑑[i][m] = log2(sum(p𝑑.*p𝐚)) - log2e*Distributions.logpdf(bernoullis[i], choice)
 		end
 	end
 	return ℓ𝑑, ℓ𝑦

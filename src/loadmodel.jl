@@ -112,7 +112,7 @@ function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset
 	for field in (:B, :k, :λ, :μ₀, :ϕ, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
 		i = getfield(index_latentθ, field)[1]
 		if i != 0
-			𝛂[i] = options.initial_ddm_L2_coefficient
+			𝛂[i] = options.α₀
 		end
 	end
 	counter = n_latentθ_fitted
@@ -121,12 +121,12 @@ function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset
 			counter +=1
 			for q = 2:length(mpGLM.θ.𝐮) # the first coefficient is the baseline
 				counter +=1
-				𝛂[counter] = options.initial_glm_L2_coefficient
+				𝛂[counter] = options.α₀
 			end
 			for 𝐯ₖ in mpGLM.θ.𝐯
 				for v in 𝐯ₖ
 					counter +=1
-					𝛂[counter] = options.initial_glm_L2_coefficient
+					𝛂[counter] = options.α₀
 				end
 			end
 		end

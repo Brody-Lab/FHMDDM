@@ -16,7 +16,7 @@ OPTIONAL ARGUMET
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_04_test/T176_2018_05_03/data.mat")
 julia> maximizeevidence!(model)
 ```
 """
@@ -37,6 +37,7 @@ function maximizeevidence!(model::Model;
 	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 	best𝛉ₘₐₚ = concatenatedθ[index𝛂]
 	n_consecutive_failures = 0
+	posteriorconverged = false
 	for i = 1:outer_iterations
 		sortparameters!(model, concatenatedθ, indexθ)
 	    gradientnorms = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[2]
@@ -52,14 +53,16 @@ function maximizeevidence!(model::Model;
 			for j in eachindex(index𝛂)
 				𝛂₀[j] = model.precisionmatrix.diag[index𝛂[j]]
 			end
-		    𝐇 = Symmetric(FHMDDM.∇∇loglikelihood(model)[index𝛂, index𝛂])
+			stats = @timed Symmetric(FHMDDM.∇∇loglikelihood(model)[index𝛂, index𝛂])
+			𝐇 = stats.value
+			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
 			concatenatedθ = FHMDDM.concatenateparameters(model)[1]
 			𝛉ₘₐₚ = concatenatedθ[index𝛂]
 			𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
 			𝐸 = FHMDDM.logevidence!(concatenatedθ, memory, model, 𝛂₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
 			if 𝐸 > best𝐸
-				if verbose && (i > 1)
-					println("Outer iteration: ", i, ": the evidence improved by the new values of the precisions found in the previous outer iteration")
+				if verbose && posteriorconverged
+					println("Outer iteration: ", i, ": the evidence (best: ", best𝐸, "; new:", 𝐸, ") is improved by the new values of the precisions found in the previous outer iteration")
 				end
 				best𝐸 = 𝐸
 				best𝛂 .= 𝛂₀
@@ -67,13 +70,14 @@ function maximizeevidence!(model::Model;
 				n_consecutive_failures = 0
 			else
 				n_consecutive_failures += 1
-				verbose && println("Outer iteration: ", i, ": because the evidence was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
+				verbose && println("Outer iteration: ", i, ": because the evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
 				for j in eachindex(index𝛂)
 					model.precisionmatrix.diag[index𝛂[j]] = (model.precisionmatrix.diag[index𝛂[j]] + best𝛂[j])/2
 				end
 			end
+			posteriorconverged = true
 			if n_consecutive_failures == max_consecutive_failures
-				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, "consecutive failures in improving evidence")
+				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
 		    normΔlog𝛂 = maximizeevidence!(memory, model, 𝐀₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂, 𝛉ₘₐₚ)
@@ -144,7 +148,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 	normΔlog𝛂 = 0.0
 	for i in eachindex(log𝛂̂)
 		normΔlog𝛂 += (log𝛂̂[i]/log(𝐀₀.diag[i]) - 1.0)^2
-		model.precisionmatrix.diag[i] = exp(log𝛂̂[i])
+		model.precisionmatrix.diag[index𝛂[i]] = exp(log𝛂̂[i])
 	end
 	return √normΔlog𝛂
 end

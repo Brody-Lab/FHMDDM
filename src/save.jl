@@ -32,6 +32,7 @@ function save(model::Model,
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
                 "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
+                "alphas"=>model.precisionmatrix.diag,
                 "fbz"=>fbz,
                 "gradientnorms"=>gradientnorms,
                 "losses"=>losses,
@@ -42,19 +43,63 @@ function save(model::Model,
 end
 
 """
+    save(model)
+
+Save the results of a model into file compatible with both MATLAB and Julia
 """
 function save(model::Model)
     dict = Dict("theta_native"=> dictionary(model.θnative),
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ)
+                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
+                "alphas"=>model.precisionmatrix.diag)
     matwrite(model.options.resultspath, dict)
     return nothing
 end
 
 """
-    save
+    save(model, fbz, λΔt, pchoice)
+
+Save the model parameters and the expectation of the emissions
+
+ARGUMENT
+-model: a structure containing the parameters, hyperparameters, and data
+
+RETURN
+-nothing
+
+EXAMPLE
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
+julia> maximizeevidence!(model)
+julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
+julia> fbz = posterior_first_state(model)
+julia> save(model, fbz, λΔt, pchoice)
+```
+"""
+function save(model::Model,
+              fbz::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
+              λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
+              pchoice::Vector{<:Vector{<:AbstractFloat}})
+    dict = Dict("theta_native"=> dictionary(model.θnative),
+                "theta_real"=> dictionary(model.θreal),
+                "theta0_native" => dictionary(model.θ₀native),
+                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
+                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
+                "alphas"=>model.precisionmatrix.diag,
+                "fbz"=>fbz,
+                "pchoice" => pchoice,
+                "lambdaDeltat" => λΔt)
+    matwrite(model.options.resultspath, dict)
+    return nothing
+end
+
+"""
+    save(cvresults,options)
 
 Save the results of crossvalidation
 

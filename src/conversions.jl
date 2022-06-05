@@ -302,8 +302,8 @@ function dictionary(options::Options)
 			"fit_sigma2_i"=>options.fit_σ²ᵢ,
 			"fit_sigma2_s"=>options.fit_σ²ₛ,
 			"fit_w_h"=>options.fit_wₕ,
-			"initial_glm_L2_coefficient"=>options.initial_glm_L2_coefficient,
-			"initial_ddm_L2_coefficient"=>options.initial_ddm_L2_coefficient,
+			"alpha0"=>options.α₀,
+			"alpha0_choices"=>options.α₀_choices,
 			"lqu_Ac11"=>options.lqu_Aᶜ₁₁,
 			"lqu_Ac22"=>options.lqu_Aᶜ₂₂,
 			"lqu_B"=>	options.lqu_B,
@@ -318,6 +318,7 @@ function dictionary(options::Options)
 			"lqu_σ²ₛ"=>	options.lqu_σ²ₛ,
 			"lqu_wₕ"=>	options.lqu_wₕ,
     		"minpa"=>	options.minpa,
+    		"objective"=> options.objective,
 			"resultspath"=>options.resultspath,
 			"Xi"=>options.Ξ)
 end
@@ -427,8 +428,6 @@ function dictionary(cvresults::CVResults)
 		 "theta0_native" => map(dictionary, cvresults.θ₀native),
 		 "theta_native" => map(dictionary, cvresults.θnative),
 		 "thetaglm" => map(glmθ->map(glmθ->map(glmθ->dictionary(glmθ), glmθ), glmθ), cvresults.glmθ),
-		 "losses"=>cvresults.losses,
-		 "gradientnorms"=>cvresults.gradientnorms,
 		 "rll_choice"=>cvresults.rll_choice,
 		 "rll_spikes"=>cvresults.rll_spikes)
 end
@@ -455,8 +454,8 @@ function Options(options::Dict)
 			fit_σ²ᵢ = options["fit_sigma2_i"],
 			fit_σ²ₛ = options["fit_sigma2_s"],
 			fit_wₕ = options["fit_w_h"],
-			initial_glm_L2_coefficient=options["initial_glm_L2_coefficient"],
-			initial_ddm_L2_coefficient=options["initial_ddm_L2_coefficient"],
+			α₀=options["alpha0"],
+			α₀_choices=options["alpha0_choices"],
 			lqu_Aᶜ₁₁= vec(options["lqu_Ac11"]),
 			lqu_Aᶜ₂₂= vec(options["lqu_Ac22"]),
 			lqu_B 	= vec(options["lqu_B"]),
@@ -471,6 +470,7 @@ function Options(options::Dict)
 			lqu_σ²ₛ	= vec(options["lqu_sigma2_s"]),
 			lqu_wₕ	= vec(options["lqu_w_h"]),
 			minpa = options["minpa"],
+			objective = options["objective"],
 			resultspath = options["resultspath"],
 			Ξ = convert(Int64, options["Xi"]))
 end
