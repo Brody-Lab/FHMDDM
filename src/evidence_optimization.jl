@@ -16,7 +16,8 @@ OPTIONAL ARGUMET
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_04_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
+julia> initializeparameters!(model)
 julia> maximizeevidence!(model)
 ```
 """
@@ -33,29 +34,27 @@ function maximizeevidence!(model::Model;
 	𝐀₀ = Diagonal(𝛂₀)
 	best𝐸 = -Inf
 	best𝛂 = copy(𝛂₀)
-	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-	best𝛉ₘₐₚ = concatenatedθ[index𝛂]
+	𝛟, indexθ = FHMDDM.concatenateparameters(model)
+	best𝛟 = copy(𝛟)
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-		sortparameters!(model, concatenatedθ, indexθ)
+		sortparameters!(model, 𝛟, indexθ)
 	    gradientnorms = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[2]
+		concatenatedθ = FHMDDM.concatenateparameters(model)[1]
+		𝛟 .= concatenatedθ
 		if gradientnorms[findlast(x->!isnan(x), gradientnorms)] > g_tol
-			minα = minimum(model.precisionmatrix.diag[index𝛂])
-			minα10 = minα*10
-			for j in eachindex(index𝛂)
-				model.precisionmatrix.diag[index𝛂[j]] = max(model.precisionmatrix.diag[index𝛂[j]], minα10)
-			end
-			concatenatedθ = FHMDDM.concatenateparameters(model)[1]
-			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions at least ten times the minimum value. New 𝛂 → ", model.precisionmatrix.diag[index𝛂])
+			two_times_geomean = 2geomean(model.precisionmatrix.diag[index𝛂])
+			model.precisionmatrix.diag[index𝛂] .= two_times_geomean
+			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂 → ", twogeomean)
 		else
+			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
 			for j in eachindex(index𝛂)
 				𝛂₀[j] = model.precisionmatrix.diag[index𝛂[j]]
 			end
 			stats = @timed ∇∇loglikelihood(model)[index𝛂, index𝛂]
 			𝐇 = stats.value
 			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
-			concatenatedθ = FHMDDM.concatenateparameters(model)[1]
 			𝛉ₘₐₚ = concatenatedθ[index𝛂]
 			𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
 			𝐸 = logevidence!(concatenatedθ, memory, model, 𝛂₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
@@ -69,7 +68,7 @@ function maximizeevidence!(model::Model;
 				end
 				best𝐸 = 𝐸
 				best𝛂 .= 𝛂₀
-				best𝛉ₘₐₚ .= 𝛉ₘₐₚ
+				best𝛟 .= 𝛟
 				n_consecutive_failures = 0
 			else
 				n_consecutive_failures += 1
@@ -95,16 +94,16 @@ function maximizeevidence!(model::Model;
 			end
 		end
 		if (i==outer_iterations) && verbose
-			println("Optimization halted after reaching the last of ", outer_iterations, " allowed outer iterations")
+			println("Optimization halted after reaching the last of ", outer_iterations, " allowed outer iterations.")
 		end
 	end
-	concatenatedθ, indexθ = concatenateparameters(model)
+	println("Best log-evidence: ", best𝐸)
+	println("Best hyperparameters: ", best𝛂)
+	println("Best parameters: ", best𝛟)
 	for j in eachindex(index𝛂)
 		model.precisionmatrix.diag[index𝛂[j]] = best𝛂[j]
-		concatenatedθ[index𝛂[j]] = best𝛉ₘₐₚ[j]
 	end
-	sortparameters!(model, concatenatedθ, indexθ)
-	verbose && println("Approximate log-evidence = ", best𝐸)
+	sortparameters!(model, best𝛟, indexθ)
 	return nothing
 end
 
@@ -130,7 +129,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 						𝐇::Matrix{<:Real},
 						index𝛂::Vector{<:Integer},
 						𝛉ₘₐₚ::Vector{<:Real};
-						αrange::Vector{<:Real}=[0.05, 1e6],
+						αrange::Vector{<:Real}=[1e-1, 1e2],
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
 	concatentatedθ = FHMDDM.concatenateparameters(model)[1]
@@ -256,7 +255,7 @@ function ∇negativelogevidence!(concatenatedθ::Vector{<:Real},
 	∇n𝐸 .= 𝐉'*(∇nℓ[index𝛂] .- 0.5.*𝐁₀𝛉ₘₐₚ .+ 𝐀*𝐰)
 	𝚲 = I - 𝐀^-1*𝐇
 	𝐐 = zeros(size(𝚲));
-	for i in eachindex(𝛂)
+	@inbounds for i in eachindex(𝛂)
 		if i > 1
 	    	𝐐[i-1,:] .= 0.0
 		end
@@ -286,7 +285,7 @@ EXAMPLE
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
 julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=true)
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
 julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=false)
 ```
 """
@@ -354,9 +353,22 @@ function logevidence(𝛂::Vector{type},
     𝐰 = 𝐁 \ 𝐁₀𝛉ₘₐₚ
 	concatenatedθ, indexθ = concatenateparameters(model)
 	concatenatedθ = concatenatedθ .- zero(type)
-	for i in eachindex(index𝛂)
+	@inbounds for i in eachindex(index𝛂)
 		concatenatedθ[index𝛂[i]] = 𝐰[i]
 	end
 	ℓ = FHMDDM.loglikelihood(concatenatedθ, indexθ, model)
 	logevidence(𝐀, 𝐇, ℓ, 𝐰)
+end
+
+"""
+    geomean(a)
+Return the geometric mean of a real-valued vector.
+"""
+function geomean(a::Vector{<:Real})
+    s = 0.0
+    n = length(a)
+    for i = 1 : n
+        @inbounds s += log(a[i])
+    end
+    return exp(s / n)
 end

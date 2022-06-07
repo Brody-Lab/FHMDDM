@@ -179,7 +179,7 @@ function test(testmodel::Model, bernoullis::Vector{<:Bernoulli}, poissons::Vecto
 	transitionmatrix!(Aᵃsilent, minpa, expλΔt.*𝛏, √(Δt*θnative.σ²ₐ[1]), 𝛏)
 	σᵢ = √θnative.σ²ᵢ[1]
 	ℓ𝑑 = map(trialset->fill(NaN, length(trialset.trials)), testmodel.trialsets)
-	ℓ𝑦 = map(trialset->fill(NaN, length(trialset.mpGLMs)), testmodel.trialsets)
+	ℓ𝑦 = map(trialset->zeros(length(trialset.mpGLMs)), testmodel.trialsets)
 	p𝑦 = zeros(Ξ,K)
 	log2e = log2(exp(1))
 	for i in eachindex(testmodel.trialsets)
@@ -211,7 +211,7 @@ function test(testmodel::Model, bernoullis::Vector{<:Bernoulli}, poissons::Vecto
 				end
 				for n in eachindex(trialsets[i].mpGLMs)
 					conditionallikelihood!(p𝑦, trialsets[i].mpGLMs[n], τ)
-					ℓ𝑦[i][n] = log2(sum(p𝑦.*p𝐚.*p𝐜ᵀ)) - log2e*Distributions.logpdf(poissons[i][n], trialsets[i].mpGLMs[n].𝐲[τ])
+					ℓ𝑦[i][n] += log2(sum(p𝑦.*p𝐚.*p𝐜ᵀ)) - log2e*Distributions.logpdf(poissons[i][n], trialsets[i].mpGLMs[n].𝐲[τ])
 				end
 			end
 			p𝑑 = conditionallikelihood(choice, θnative.ψ[1], Ξ)
