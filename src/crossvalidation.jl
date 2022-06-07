@@ -114,7 +114,7 @@ function test!(rll_choice::Vector{<:Vector{<:AbstractFloat}},
 	for i in eachindex(model.trialsets)
 		rll_choice[i][cvindices.testingtrials[i]] .= ℓ𝑑[i]
 		for n in eachindex(model.trialsets[i].mpGLMs)
-			rll_spikes[i][n] += ℓ𝑦[i][n]
+			rll_spikes[i][n] = ℓ𝑦[i][n]
 		end
 	end
 	return nothing
@@ -211,7 +211,7 @@ function test(testmodel::Model, bernoullis::Vector{<:Bernoulli}, poissons::Vecto
 				end
 				for n in eachindex(trialsets[i].mpGLMs)
 					conditionallikelihood!(p𝑦, trialsets[i].mpGLMs[n], τ)
-					ℓ𝑦[i][n] += log2(sum(p𝑦.*p𝐚.*p𝐜ᵀ)) - log2e*Distributions.logpdf(poissons[i][n], trialsets[i].mpGLMs[n].𝐲[τ])
+					ℓ𝑦[i][n] = log2(sum(p𝑦.*p𝐚.*p𝐜ᵀ)) - log2e*Distributions.logpdf(poissons[i][n], trialsets[i].mpGLMs[n].𝐲[τ])
 				end
 			end
 			p𝑑 = conditionallikelihood(choice, θnative.ψ[1], Ξ)

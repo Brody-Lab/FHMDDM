@@ -28,7 +28,6 @@ function maximizeevidence!(model::Model;
 						g_tol::Real=1e-3,
 						x_reltol::Real=1e-1)
 	memory = FHMDDM.Memoryforgradient(model)
-	initializeparameters!(memory, model)
 	index𝛂 = FHMDDM.indexprecisions(model)
 	𝛂₀ = model.precisionmatrix.diag[index𝛂]
 	𝐀₀ = Diagonal(𝛂₀)
@@ -53,16 +52,20 @@ function maximizeevidence!(model::Model;
 			for j in eachindex(index𝛂)
 				𝛂₀[j] = model.precisionmatrix.diag[index𝛂[j]]
 			end
-			stats = @timed Symmetric(FHMDDM.∇∇loglikelihood(model)[index𝛂, index𝛂])
+			stats = @timed ∇∇loglikelihood(model)[index𝛂, index𝛂]
 			𝐇 = stats.value
 			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
 			concatenatedθ = FHMDDM.concatenateparameters(model)[1]
 			𝛉ₘₐₚ = concatenatedθ[index𝛂]
 			𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
-			𝐸 = FHMDDM.logevidence!(concatenatedθ, memory, model, 𝛂₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
+			𝐸 = logevidence!(concatenatedθ, memory, model, 𝛂₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
 			if 𝐸 > best𝐸
-				if verbose && posteriorconverged
-					println("Outer iteration: ", i, ": the evidence (best: ", best𝐸, "; new:", 𝐸, ") is improved by the new values of the precisions found in the previous outer iteration")
+				if verbose
+					if posteriorconverged
+						println("Outer iteration: ", i, ": the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") is improved by the new values of the precisions found in the previous outer iteration")
+					else
+						println("Outer iteration: ", i, ": initial value of log-evidence: ", 𝐸, " is set as the best log-evidence")
+					end
 				end
 				best𝐸 = 𝐸
 				best𝛂 .= 𝛂₀
@@ -70,7 +73,7 @@ function maximizeevidence!(model::Model;
 				n_consecutive_failures = 0
 			else
 				n_consecutive_failures += 1
-				verbose && println("Outer iteration: ", i, ": because the evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
+				verbose && println("Outer iteration: ", i, ": because the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
 				for j in eachindex(index𝛂)
 					model.precisionmatrix.diag[index𝛂[j]] = (model.precisionmatrix.diag[index𝛂[j]] + best𝛂[j])/2
 				end
@@ -80,13 +83,13 @@ function maximizeevidence!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-		    normΔlog𝛂 = maximizeevidence!(memory, model, 𝐀₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂, 𝛉ₘₐₚ)
+		    normΔ = maximizeevidence!(memory, model, 𝐀₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂, 𝛉ₘₐₚ)
 			if verbose
 				println("Outer iteration ", i, ": new 𝛂 → ", model.precisionmatrix.diag[index𝛂])
 			end
-			if normΔlog𝛂 < x_reltol
+			if normΔ < x_reltol
 				if verbose
-					println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters decreased below ", x_reltol)
+					println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
 				end
 				break
 			end
@@ -124,33 +127,35 @@ function maximizeevidence!(memory::Memoryforgradient,
 						model::Model,
 						𝐀₀::Diagonal,
 						𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-						𝐇::Symmetric,
+						𝐇::Matrix{<:Real},
 						index𝛂::Vector{<:Integer},
 						𝛉ₘₐₚ::Vector{<:Real};
 						αrange::Vector{<:Real}=[0.05, 1e6],
-						optimizationoptions::Optim.Options=Optim.Options(iterations=15),
+						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
 	concatentatedθ = FHMDDM.concatenateparameters(model)[1]
-    f(log𝛂) = -FHMDDM.logevidence!(concatentatedθ, memory, model, exp.(log𝛂), 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
-	function g!(∇n𝐸, log𝛂)
-		𝛂 = exp.(log𝛂)
+	function f(𝐱)
+		𝛂 = real2native.(𝐱, αrange[1], αrange[2])
+		-FHMDDM.logevidence!(concatentatedθ, memory, model, 𝛂, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
+	end
+	function g!(∇n𝐸, 𝐱)
+		𝛂 = real2native.(𝐱, αrange[1], αrange[2])
 		FHMDDM.∇negativelogevidence!(concatentatedθ, memory, model, ∇n𝐸, 𝛂, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
-		∇n𝐸 .*= 𝛂
+		for i in eachindex(∇n𝐸)
+			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αrange[1], αrange[2])
+		end
 		return nothing
 	end
-	initial_log𝛂 = log.(model.precisionmatrix.diag[index𝛂]) # note that we do not want to start from 𝐀₀.diag
-	onesvector = ones(length(initial_log𝛂))
-	lower = log(minimum(αrange)).*onesvector
-	upper = log(maximum(αrange)).*onesvector
-	od = OnceDifferentiable(f, g!, initial_log𝛂)
-	optimizationresults = Optim.optimize(od, lower, upper, initial_log𝛂, Fminbox(optimizer), optimizationoptions)
-	log𝛂̂ = Optim.minimizer(optimizationresults)
-	normΔlog𝛂 = 0.0
-	for i in eachindex(log𝛂̂)
-		normΔlog𝛂 += (log𝛂̂[i]/log(𝐀₀.diag[i]) - 1.0)^2
-		model.precisionmatrix.diag[index𝛂[i]] = exp(log𝛂̂[i])
+	𝐱₀ = native2real.(model.precisionmatrix.diag[index𝛂], αrange[1], αrange[2])
+	optimizationresults = Optim.optimize(f, g!, 𝐱₀, optimizer, optimizationoptions)
+	𝐱̂ = Optim.minimizer(optimizationresults)
+	normΔ = 0.0
+	for i in eachindex(𝐱̂)
+		x₀ᵢ = native2real(𝐀₀.diag[i], αrange[1], αrange[2])
+		normΔ += (𝐱̂[i]/x₀ᵢ - 1.0)^2
+		model.precisionmatrix.diag[index𝛂[i]] = real2native(𝐱̂[i], αrange[1], αrange[2])
 	end
-	return √normΔlog𝛂
+	return √normΔ
 end
 
 """
@@ -177,7 +182,7 @@ function logevidence!(concatenatedθ::Vector{<:Real},
 					model::Model,
 					𝛂::Vector{<:Real},
 					𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-					𝐇::Symmetric,
+					𝐇::Matrix{<:Real},
 					index𝛂::Vector{<:Integer})
 	𝐀 = Diagonal(𝛂)
 	𝐁 = 𝐀-𝐇
@@ -203,13 +208,13 @@ ARGUMENT
 RETURN
 -log evidence
 """
-function logevidence(𝐀::Diagonal, 𝐇::Symmetric, ℓ::Real, 𝐰::Vector{<:Real})
+function logevidence(𝐀::Diagonal, 𝐇::Matrix{<:Real}, ℓ::Real, 𝐰::Vector{<:Real})
 	𝐌 = I - 𝐀^-1*𝐇
 	if det(𝐌) < 0
-		println("negative determinant")
+		println("negative determinant") # try/catch block is much slower than conditional branching
 		-Inf
 	else
-		ℓ - 0.5𝐰'*𝐀*𝐰 - 0.5logdet(I - 𝐀^-1*𝐇)
+		ℓ - 0.5dot(𝐰, 𝐀, 𝐰) - 0.5logdet(I - 𝐀^-1*𝐇)
 	end
 end
 
@@ -237,7 +242,7 @@ function ∇negativelogevidence!(concatenatedθ::Vector{<:Real},
 								∇n𝐸::Vector{<:Real},
 								𝛂::Vector{<:Real},
 								𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-								𝐇::Symmetric,
+								𝐇::Matrix{<:Real},
 								index𝛂::Vector{<:Integer})
 	𝐀 = Diagonal(𝛂)
 	𝐁 = 𝐀-𝐇
@@ -248,7 +253,7 @@ function ∇negativelogevidence!(concatenatedθ::Vector{<:Real},
 	∇nℓ = similar(concatenatedθ)
 	∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
 	𝐉 = -𝐁 \ Diagonal(𝐰) #Jacobian matrix of the posterior mode 𝐰 with respect to the precisions 𝛂
-	∇n𝐸 .= 𝐉'*(∇nℓ[index𝛂] - 0.5𝐁₀𝛉ₘₐₚ + 𝐀*𝐰)
+	∇n𝐸 .= 𝐉'*(∇nℓ[index𝛂] .- 0.5.*𝐁₀𝛉ₘₐₚ .+ 𝐀*𝐰)
 	𝚲 = I - 𝐀^-1*𝐇
 	𝐐 = zeros(size(𝚲));
 	for i in eachindex(𝛂)
@@ -279,7 +284,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
 julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=true)
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
 julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=false)
@@ -295,7 +300,7 @@ function check_∇logevidence(model::Model; simulate::Bool=true)
 	𝐀₀ = Diagonal(𝛂₀)
 	if simulate
 		𝐑 = 1 .- 2rand(D,D)
-		𝐇 = Symmetric(Diagonal(𝛂) - transpose(𝐑)*𝐑)
+		𝐇 = Diagonal(𝛂) - transpose(𝐑)*𝐑
 		𝐀 = Diagonal(𝛂)
 		𝐁 = 𝐀-𝐇
 		𝐰 = 1 .- 2rand(D)
@@ -310,7 +315,7 @@ function check_∇logevidence(model::Model; simulate::Bool=true)
 	else
 		FHMDDM.initializeparameters!(memory, model)
 		FHMDDM.maximizeposterior!(model)
-		𝐇 = Symmetric(∇∇loglikelihood(model)[index𝛂, index𝛂])
+		𝐇 = ∇∇loglikelihood(model)[index𝛂, index𝛂]
 		𝛉ₘₐₚ = concatenateparameters(model)[1][index𝛂]
 		𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
 	end
@@ -341,7 +346,7 @@ RETURN
 """
 function logevidence(𝛂::Vector{type},
 					𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-					𝐇::Symmetric,
+					𝐇::Matrix{<:Real},
 					index𝛂::Vector{<:Integer},
 					model::Model) where{type<:Real}
 	𝐀 = Diagonal(𝛂)
