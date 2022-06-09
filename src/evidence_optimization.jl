@@ -46,7 +46,7 @@ function maximizeevidence!(model::Model;
 		if gradientnorms[findlast(x->!isnan(x), gradientnorms)] > g_tol
 			two_times_geomean = 2geomean(model.precisionmatrix.diag[index𝛂])
 			model.precisionmatrix.diag[index𝛂] .= two_times_geomean
-			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂 → ", twogeomean)
+			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂 → ", two_times_geomean)
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
 			for j in eachindex(index𝛂)

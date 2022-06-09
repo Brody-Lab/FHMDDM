@@ -288,7 +288,8 @@ Results of cross-validation
 @with_kw struct CVResults{VC<:Vector{<:CVIndices},
 							VL<:Vector{<:Latentθ},
 							VVVG<:Vector{<:Vector{<:Vector{<:GLMθ}}},
-							VVF<:Vector{<:Vector{<:AbstractFloat}}}
+							VVF<:Vector{<:Vector{<:AbstractFloat}},
+							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}}
 	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
 	cvindices::VC
 	"θ₀native[k] specify the initial values of the parameters of the latent variables in the k-th resampling"
@@ -297,6 +298,10 @@ Results of cross-validation
 	θnative::VL
 	"glmθ[k][i][n] specify the optimized values of the parameters of the n-th neuron's GLM in the i-th trialset in the k-th resampling"
 	glmθ::VVVG
+	"out-of-sample expected spiking intensity in each time step of each trial. Element `λΔt[i][n][t]` corresponds to the t-timestep and the n-th neuron in the i-th trialset."
+	λΔt::VVVF
+	"out-of-sample expected probability of a right choice in each trial. Element `pchoice[i][m]` corresponds to the m-th trial in the i-th trialset"
+	pchoice::VVF
 	"rll_choice[i][m] indicate the log-likelihood of the choice in the m-th trial of the i-th trialset, relative to the baseline trial-average log-likelihood computed under a Bernoulli distribution parametrized by fraction of right responses"
 	rll_choice::VVF
 	"rll_spikes[i][n] indicate the time-averaged log-likelihood of the spike train of the n-th neuron in the -th trialset, relative to the baseline time-averaged log-likelihood computed under a Poisson distribution parametrized by mean spike train response"

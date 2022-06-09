@@ -13,7 +13,7 @@ OUTPUT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_07a_test/T176_2018_05_03/data.mat")
 julia> cvresults = crossvalidate(2, model)
 julia> save(cvresults, model.options)
 ```
@@ -21,13 +21,15 @@ julia> save(cvresults, model.options)
 function crossvalidate(kfold::Integer, model::Model)
     cvindices = CVIndices(model, kfold)
 	trainingmodels = pmap(cvindices->train(cvindices, model), cvindices)
-    rll_choice, rll_spikes = test(cvindices, model, trainingmodels)
+    λΔt, pchoice, rll_choice, rll_spikes = test(cvindices, model, trainingmodels)
     CVResults(cvindices = cvindices,
-              θ₀native = collect(trainingmodel.θ₀native for trainingmodel in trainingmodels),
-              θnative = collect(trainingmodel.θnative for trainingmodel in trainingmodels),
-              glmθ = collect(collect(collect(mpGLM.θ for mpGLM in trialset.mpGLMs) for trialset in trainingmodel.trialsets) for trainingmodel in trainingmodels),
-              rll_choice = rll_choice,
-              rll_spikes = rll_spikes)
+			θ₀native = collect(trainingmodel.θ₀native for trainingmodel in trainingmodels),
+			θnative = collect(trainingmodel.θnative for trainingmodel in trainingmodels),
+			glmθ = collect(collect(collect(mpGLM.θ for mpGLM in trialset.mpGLMs) for trialset in trainingmodel.trialsets) for trainingmodel in trainingmodels),
+			λΔt = λΔt,
+			pchoice = pchoice,
+			rll_choice = rll_choice,
+			rll_spikes = rll_spikes)
 end
 
 """
@@ -69,21 +71,27 @@ OUTPUT
 -`rll_spikes`: Relative log-likelihood of the spike train response of each neuron, divided by the total number of spikes. The element `rll_spikes[i][n]` represents the time-average log-likelihood(base 2) of the n-th neuron's spike train in the i-th trialset. Subtracted from this value this is baseline time-average log-likelihood computed under a Poisson distribution parametrized by the average spike train response across time steps in the training data. This difference is divided by the total number of spikes.
 """
 function test(cvindices::Vector{<:CVIndices}, model::Model, trainingmodels::Vector{<:Model})
+	λΔt = map(model.trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				zeros(trialset.ntimesteps)
+			end
+		  end
+	pchoice = map(trialset->zeros(trialset.ntrials), model.trialsets)
 	rll_choice = map(trialset->fill(NaN, length(trialset.trials)), model.trialsets)
 	rll_spikes = map(trialset->fill(NaN, length(trialset.mpGLMs)), model.trialsets)
 	for (cvindices, trainingmodel) in zip(cvindices, trainingmodels)
-		test!(rll_choice, rll_spikes, cvindices, model, trainingmodel)
+		test!(λΔt, pchoice, rll_choice, rll_spikes, cvindices, model, trainingmodel)
 	end
 	for i in eachindex(rll_spikes)
 		for n in eachindex(rll_spikes[i])
 			rll_spikes[i][n] /= sum(model.trialsets[i].mpGLMs[n].𝐲)
 		end
 	end
-	return rll_choice, rll_spikes
+	return λΔt, pchoice, rll_choice, rll_spikes
 end
 
 """
-	test(cvindices, model, trainingmodel)
+	test!(cvindices, model, trainingmodel)
 
 Out-of-sample relative log-likelihood of choices and spiking
 
@@ -95,7 +103,9 @@ UNMODIFIED INPUT
 -`cvindices`: indices of the trials and timesteps used for training and testing in each fold
 -`model`: structure containing the full dataset, parameters, and hyperparameters
 """
-function test!(rll_choice::Vector{<:Vector{<:AbstractFloat}},
+function test!(λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
+				pchoice::Vector{<:Vector{<:AbstractFloat}},
+				rll_choice::Vector{<:Vector{<:AbstractFloat}},
 				rll_spikes::Vector{<:Vector{<:AbstractFloat}},
 				cvindices::CVIndices,
 				model::Model,
@@ -115,6 +125,13 @@ function test!(rll_choice::Vector{<:Vector{<:AbstractFloat}},
 		rll_choice[i][cvindices.testingtrials[i]] .= ℓ𝑑[i]
 		for n in eachindex(model.trialsets[i].mpGLMs)
 			rll_spikes[i][n] = ℓ𝑦[i][n]
+		end
+	end
+	λΔt_test, pchoice_test = expectedemissions(testmodel)
+	for i in eachindex(model.trialsets)
+		pchoice[i][cvindices.testingtrials[i]] .= pchoice_test[i]
+		for n in eachindex(model.trialsets[i].mpGLMs)
+			λΔt[i][n][cvindices.testingtimesteps[i]] .= λΔt_test[i][n]
 		end
 	end
 	return nothing

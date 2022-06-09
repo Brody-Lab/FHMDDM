@@ -478,11 +478,13 @@ Convert an instance of `CVResults` to a dictionary
 """
 function dictionary(cvresults::CVResults)
 	Dict("cvindices" => map(dictionary, cvresults.cvindices),
-		 "theta0_native" => map(dictionary, cvresults.θ₀native),
-		 "theta_native" => map(dictionary, cvresults.θnative),
-		 "thetaglm" => map(glmθ->map(glmθ->map(glmθ->dictionary(glmθ), glmθ), glmθ), cvresults.glmθ),
-		 "rll_choice"=>cvresults.rll_choice,
-		 "rll_spikes"=>cvresults.rll_spikes)
+		"theta0_native" => map(dictionary, cvresults.θ₀native),
+		"theta_native" => map(dictionary, cvresults.θnative),
+		"thetaglm" => map(glmθ->map(glmθ->map(glmθ->dictionary(glmθ), glmθ), glmθ), cvresults.glmθ),
+		"lambdaDeltat" => cvresults.λΔt,
+		"pchoice" => cvresults.pchoice,
+		"rll_choice"=>cvresults.rll_choice,
+		"rll_spikes"=>cvresults.rll_spikes)
 end
 
 """
