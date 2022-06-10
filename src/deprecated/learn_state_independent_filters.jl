@@ -308,9 +308,6 @@ function expectation_∇loglikelihood!(∇Q::GLMθ,
 	𝐕ᵀ = transpose(𝐕)
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	∇Q.𝐮 .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
-	@inbounds for k = 1:K
-		∇Q.𝐯[k] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-	end
 	if K > 1
 		if pointer(𝐠[2]) == pointer(𝐠[1]) # gain is not state-dependent
 			∇Q.𝐠[1] .= sum(∑ᵢₖ_dQᵢₖ_dLᵢₖ) # equivalent to transpose(@view 𝐗[:,1])*∑ᵢₖ_dQᵢₖ_dLᵢₖ

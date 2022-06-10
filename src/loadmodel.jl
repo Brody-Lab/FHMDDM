@@ -210,9 +210,9 @@ function Trialset(options::Options, trialset::Dict)
 	@unpack K, Ξ = options
 	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	𝐕, Φ = temporal_bases_values(options, ntimesteps)
-	𝐔₀ = ones(size(trialset["Xtiming"],1))
+	𝐆 = ones(size(trialset["Xtiming"],1))
 	mpGLMs = map(units, 𝐘) do unit, 𝐲
-				𝐗=hcat(𝐔₀, unit["Xautoreg"], trialset["Xtiming"], 𝐕)
+				𝐗=hcat(𝐆, unit["Xautoreg"], trialset["Xtiming"], 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
   								d𝛏_dB=d𝛏_dB,
 								max_spikehistory_lag = size(unit["Xautoreg"],2),

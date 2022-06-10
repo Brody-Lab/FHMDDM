@@ -341,6 +341,8 @@ Convert an instance of `Options` to a dictionary
 function dictionary(options::Options)
 	Dict(	"a_basis_per_s"=>options.a_basis_per_s,
 			"a_latency_s"=>options.a_latency_s,
+			"alpha0"=>options.α₀,
+			"alpha0_choices"=>options.α₀_choices,
 			"basistype"=>options.basistype,
 			"datapath"=>options.datapath,
 			"dt"=>options.Δt,
@@ -355,8 +357,7 @@ function dictionary(options::Options)
 			"fit_sigma2_i"=>options.fit_σ²ᵢ,
 			"fit_sigma2_s"=>options.fit_σ²ₛ,
 			"fit_w_h"=>options.fit_wₕ,
-			"alpha0"=>options.α₀,
-			"alpha0_choices"=>options.α₀_choices,
+			"gain_state_dependent"=>options.gain_state_dependent,
 			"lqu_Ac11"=>options.lqu_Aᶜ₁₁,
 			"lqu_Ac22"=>options.lqu_Aᶜ₂₂,
 			"lqu_B"=>	options.lqu_B,
@@ -373,6 +374,7 @@ function dictionary(options::Options)
     		"minpa"=>	options.minpa,
     		"objective"=> options.objective,
 			"resultspath"=>options.resultspath,
+			"tuning_state_dependent"=>options.tuning_state_dependent,
 			"Xi"=>options.Ξ)
 end
 
@@ -434,8 +436,7 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(θ::GLMθ)
-    Dict("u"=>θ.𝐮,
-         "v"=>θ.𝐯)
+    Dict("g"=>θ.𝐠, "u"=>θ.𝐮, "v"=>θ.𝐯)
 end
 
 """
@@ -495,6 +496,8 @@ Create an instance of `Options` from a Dict
 function Options(options::Dict)
 	Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
 			a_latency_s = options["a_latency_s"],
+			α₀=options["alpha0"],
+			α₀_choices=options["alpha0_choices"],
 			basistype = options["basistype"],
 			datapath = options["datapath"],
 			Δt = options["dt"],
@@ -509,8 +512,7 @@ function Options(options::Dict)
 			fit_σ²ᵢ = options["fit_sigma2_i"],
 			fit_σ²ₛ = options["fit_sigma2_s"],
 			fit_wₕ = options["fit_w_h"],
-			α₀=options["alpha0"],
-			α₀_choices=options["alpha0_choices"],
+			gain_state_dependent = options["gain_state_dependent"],
 			lqu_Aᶜ₁₁= vec(options["lqu_Ac11"]),
 			lqu_Aᶜ₂₂= vec(options["lqu_Ac22"]),
 			lqu_B 	= vec(options["lqu_B"]),
@@ -527,6 +529,7 @@ function Options(options::Dict)
 			minpa = options["minpa"],
 			objective = options["objective"],
 			resultspath = options["resultspath"],
+			tuning_state_dependent = options["tuning_state_dependent"],
 			Ξ = convert(Int64, options["Xi"]))
 end
 
@@ -552,7 +555,8 @@ end
 Convert a dictionary into an instance of `GLMθ`
 """
 function GLMθ(θ::Dict)
-    GLMθ(𝐮=vec(mpGLM["u"]),
+    GLMθ(𝐠=vec(map(𝐠ₖ->vec(𝐠ₖ), mpGLM["g"])),
+		 𝐮=vec(mpGLM["u"]),
          𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])))
 end
 

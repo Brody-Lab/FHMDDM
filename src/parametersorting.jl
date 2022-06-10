@@ -28,6 +28,11 @@ function sortparameters!(model::Model,
 		for n in eachindex(indexθ.glmθ[i])
 			@unpack θ = trialsets[i].mpGLMs[n]
 			index = indexθ.glmθ[i][n]
+			for k in eachindex(θ.𝐠)
+				for q in eachindex(θ.𝐠[k])
+					θ.𝐠[k][q] = concatenatedθ[index.𝐠[k][q]]
+				end
+			end
 			for q in eachindex(θ.𝐮)
 				θ.𝐮[q] = concatenatedθ[index.𝐮[q]]
 			end
@@ -273,6 +278,13 @@ function concatenate_glm_parameters(model::Model, offset::Integer)
 	for i in eachindex(trialsets)
         for n in eachindex(trialsets[i].mpGLMs)
 			@unpack θ = trialsets[i].mpGLMs[n]
+			for k in eachindex(θ.𝐠)
+				for q in eachindex(θ.𝐠[k])
+					counter += 1
+					concatenatedθ[counter] = θ.𝐠[k][q]
+					indexθ[i][n].𝐠[k][q] = offset + counter
+				end
+			end
 			for q in eachindex(θ.𝐮)
 				counter += 1
 				concatenatedθ[counter] = θ.𝐮[q]
@@ -305,6 +317,12 @@ RETURN
 function concatenateparameters(θ::GLMθ)
 	concatenatedθ = zeros(eltype(θ.𝐮), countparameters(θ))
 	counter = 0
+	for k in eachindex(θ.𝐠)
+		for q in eachindex(θ.𝐠[k])
+			counter += 1
+			concatenatedθ[counter] = θ.𝐠[k][q]
+		end
+	end
 	for q in eachindex(θ.𝐮)
 		counter += 1
 		concatenatedθ[counter] = θ.𝐮[q]
@@ -509,6 +527,12 @@ function sortparameters!(θall::Vector{<:Real},
 						 index::GLMθ,
 						 θglm::Vector{<:Real})
 	counter = 0
+	for k in eachindex(θ.𝐠)
+		for q in eachindex(index.𝐠[k])
+			counter+=1
+			θall[index.𝐠[k][q]] = θglm[counter]
+		end
+	end
 	for q in eachindex(index.𝐮)
 		counter+=1
 		θall[index.𝐮[q]] = θglm[counter]
@@ -535,6 +559,12 @@ UNMODIFIED ARGUMENT
 """
 function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset=0)
 	counter = offset
+	for k in eachindex(θ.𝐠)
+		for q in eachindex(θ.𝐠[k])
+			counter+=1
+			θ.𝐠[k][q] = concatenatedθ[counter]
+		end
+	end
 	for q in eachindex(θ.𝐮)
 		counter+=1
 		θ.𝐮[q] = concatenatedθ[counter]
@@ -562,6 +592,9 @@ RETURN
 function countparameters(θ::GLMθ)
 	counter = 0
 	counter = length(θ.𝐮)
+	for 𝐠 in θ.𝐠
+		counter += length(𝐠)
+	end
 	for 𝐯 in θ.𝐯
 		counter += length(𝐯)
 	end
@@ -600,7 +633,7 @@ function indexprecisions(model::Model)
 	end
 	for glmθ in indexθ.glmθ
 		for glmθ in glmθ
-			index𝛂 = vcat(index𝛂, glmθ.𝐮[2]:glmθ.𝐯[end][end]) #𝐮[1] corresponds to a constant
+			index𝛂 = vcat(index𝛂, glmθ.𝐮[1]:glmθ.𝐯[end][end])
 		end
 	end
 	index𝛂

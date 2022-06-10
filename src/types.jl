@@ -116,7 +116,7 @@ Model settings
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"whether the tuning to the accumulator is state-dependent"
-	tuning_state_dependent::TB=true; @assert ((K==1) && !gain_state_dependent && !tuning_state_dependent) || ((K>1) && (gain_state_dependent || tuning_state_dependent))
+	tuning_state_dependent::TB=true; @assert K > 1 ? (gain_state_dependent || tuning_state_dependent) : !(gain_state_dependent || tuning_state_dependent)
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end

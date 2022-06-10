@@ -23,18 +23,12 @@ function GLMθ(options::Options, 𝐗::Matrix{<:AbstractFloat}, 𝐕::Matrix{<:A
 		if gain_state_dependent
 			𝐠 = collect(i*ones(1) for i = -1:2/(K-1):1)
 		else
-			𝐠 = collect(ones(1) for i = 1:K)
-			for k=2:K
-				𝐠[k] = 𝐠[1]
-			end
+			𝐠 = [ones(1)]
 		end
 		if tuning_state_dependent
 			𝐯 = collect(i*ones(n𝐯) for i = -1:2/(K-1):1)
 		else
-			𝐯 = collect(ones(1) for i = 1:K)
-			for k=2:K
-				𝐯[k] = 𝐯[1]
-			end
+			𝐯 = [ones(n𝐯)]
 		end
 	end
 	GLMθ(𝐠 = 𝐠, 𝐮 = 𝐮, 𝐯 = 𝐯)
@@ -55,24 +49,9 @@ RETURN
 -an instance of GLMθ
 """
 function GLMθ(glmθ::GLMθ, elementtype)
-	𝐠 = collect(zeros(elementtype, length(𝐠)) for 𝐠 in glmθ.𝐠)
-	𝐮 = zeros(elementtype, length(glmθ.𝐮)
-	𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯)
-	if length(glmθ.𝐠) > 1
-		if pointer(glmθ.𝐠[1]) == pointer(glmθ.𝐠[2])
-			for k = 2:length(glmθ.𝐠)
-				𝐠[k] = 𝐠[1]
-			end
-		end
-	end
-	if length(glmθ.𝐯) > 1
-		if pointer(glmθ.𝐯[1]) == pointer(glmθ.𝐯[2])
-			for k = 2:length(glmθ.𝐯)
-				𝐯[k] = 𝐯[1]
-			end
-		end
-	end
-	GLMθ(𝐠 = 𝐠, 𝐮 = 𝐮, 𝐯 = 𝐯)
+	GLMθ(𝐠 = collect(zeros(elementtype, length(𝐠)) for 𝐠 in glmθ.𝐠),
+		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
+		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯))
 end
 
 """
@@ -172,7 +151,9 @@ RETURN
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack 𝐗, d𝛏_dB = mpGLM
     @unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
-	𝐗*vcat(𝐠[k], 𝐮, 𝐯[k].*d𝛏_dB[j])
+	𝐠ₖ = 𝐠[min(length(𝐠), k)]
+	𝐯ₖ = 𝐯[min(length(𝐯), k)]
+	𝐗*vcat(𝐠ₖ, 𝐮, 𝐯ₖ.*d𝛏_dB[j])
 end
 
 """
@@ -431,6 +412,7 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 										γ::Matrix{<:Vector{<:Real}},
 										mpGLM::MixturePoissonGLM)
     @unpack Δt, 𝐕, 𝐗, d𝛏_dB, 𝐲 = mpGLM
+	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
 	d𝛏_dB² = d𝛏_dB.^2
 	Ξ,K = size(γ)
 	T = length(𝐲)
@@ -444,9 +426,9 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 	∇∇Q .= 0.0
 	@inbounds for i = 1:Ξ
 		for k = 1:K
-			𝐋 = linearpredictor(mpGLM,i,k)
+			𝐋 = FHMDDM.linearpredictor(mpGLM,i,k)
 			for t=1:T
-				d²ℓ_dL², dℓ_dL, ℓ = differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				d²ℓ_dL², dℓ_dL, ℓ = FHMDDM.differentiate_loglikelihood_twice_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
 				Q[1] += γ[i,k][t]*ℓ
 				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
@@ -458,24 +440,48 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 			end
 		end
 	end
-	n𝐮 = length(mpGLM.θ.𝐮)
-	n𝐯ₖ = length(mpGLM.θ.𝐯[1])
-	indices𝐮 = 1:n𝐮
-	𝐔 = @view 𝐗[:, indices𝐮]
+	K𝐠 = length(𝐠)
+	K𝐯 = length(𝐯)
+	n𝐠 = length(𝐠[1])
+	n𝐮 = length(𝐮)
+	n𝐯 = length(𝐯[1])
+	indices𝐠 = collect(((k-1)*n𝐠+1 : k*n𝐠) for k = 1:K𝐠)
+	indices𝐮 = indices𝐠[end][end] .+ (1:n𝐮)
+	indices𝐯 = collect(indices𝐮[end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K𝐯)
+	𝐔 = @view 𝐗[:, n𝐠+1:n𝐠+n𝐮]
 	𝐔ᵀ, 𝐕ᵀ = transpose(𝐔), transpose(𝐕)
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
-	∇Q[indices𝐮] = 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
-	∇∇Q[indices𝐮, indices𝐮] = 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
-	@inbounds for k=1:K
-		indices𝐯ₖ = n𝐮+(k-1)*n𝐯ₖ+1:n𝐮+k*n𝐯ₖ
-		∇Q[indices𝐯ₖ] = 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-		∇∇Q[indices𝐮, indices𝐯ₖ] = 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-		∇∇Q[indices𝐯ₖ, indices𝐯ₖ] = 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
-		for i in indices𝐮
-			for j in indices𝐯ₖ
-				∇∇Q[j,i] = ∇∇Q[i,j]
-			end
+	∇Q[indices𝐮] .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	∇∇Q[indices𝐮, indices𝐮] .= 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
+	if K𝐠 == K
+		@inbounds for k = 1:K
+			∇Q[indices𝐠[k]] .= sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
+			∇∇Q[indices𝐠[k], indices𝐠[k]] .= sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
+			∇∇Q[indices𝐠[k], indices𝐮] .= transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])*𝐔
+		end
+	else
+		∇Q[indices𝐠[1]] .= sum(∑ᵢₖ_dQᵢₖ_dLᵢₖ)
+		∇∇Q[indices𝐠[1], indices𝐠[1]] .= sum(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²)
+		∇∇Q[indices𝐠[1], indices𝐮] .= transpose(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²)*𝐔
+	end
+	if K𝐯 == K
+		@inbounds for k = 1:K
+			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+		end
+	else
+		∇Q[indices𝐯[1]] .= 𝐕ᵀ*sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB)
+		∇∇Q[indices𝐯[1], indices𝐯[1]] .= 𝐕ᵀ*(sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²).*𝐕)
+		∇∇Q[indices𝐮, indices𝐯[1]] .= 𝐔ᵀ*(sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB).*𝐕)
+	end
+	@inbounds for k = 1:K
+		∇∇Q[indices𝐠[min(length(𝐠), k)], indices𝐯[min(length(𝐯), k)]] .= transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])*𝐕
+	end
+	for i = 1:size(∇∇Q,1)
+		for j = i+1:size(∇∇Q,2)
+			∇∇Q[j,i] = ∇∇Q[i,j]
 		end
 	end
 	return nothing
