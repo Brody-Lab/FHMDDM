@@ -119,7 +119,7 @@ function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset
 	for trialset in trialsets
 		for mpGLM in trialset.mpGLMs
 			counter +=1
-			for q = 2:length(mpGLM.θ.𝐮) # the first coefficient is the baseline
+			for q = 1:length(mpGLM.θ.𝐮)
 				counter +=1
 				𝛂[counter] = options.α₀
 			end
@@ -217,7 +217,7 @@ function Trialset(options::Options, trialset::Dict)
   								d𝛏_dB=d𝛏_dB,
 								max_spikehistory_lag = size(unit["Xautoreg"],2),
 								Φ=Φ,
-								θ=GLMθ(K, 𝐗, 𝐕),
+								θ=GLMθ(options, 𝐗, 𝐕),
 								𝐕=𝐕,
 								𝐗=𝐗,
 								𝐲=𝐲)

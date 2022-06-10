@@ -48,6 +48,10 @@ Model settings
     a_basis_per_s::TI=10
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
+	"initial coefficient for L2 regularization for the non-constant parameters of each neuron's GLM"
+	α₀::TF=0.0
+	"initial coefficient for L2 regularization for the ddm parameters"
+	α₀_choices::TF=0.0
 	"type of temporal basis functions"
     basistype::TS="raised_cosine"
 	"full path of the data"
@@ -76,10 +80,8 @@ Model settings
 	fit_σ²ₛ::TB=true
 	"whether to fit the weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
 	fit_wₕ::TB=true
-	"initial coefficient for L2 regularization for the non-constant parameters of each neuron's GLM"
-	α₀::TF=0.0
-	"initial coefficient for L2 regularization for the ddm parameters"
-	α₀_choices::TF=0.0
+	"whether the gain is state-dependent"
+	gain_state_dependent::TB=true
 	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
 	"transition probability of the coupling variable to remain in the coupled state"
 	lqu_Aᶜ₁₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₁₁[1]) && (lqu_Aᶜ₁₁[1] <= lqu_Aᶜ₁₁[2]) && (lqu_Aᶜ₁₁[2] < lqu_Aᶜ₁₁[3]) && (lqu_Aᶜ₁₁[3] <= 1.0)
@@ -113,6 +115,8 @@ Model settings
 	objective::String; @assert any(objective .== ["evidence", "posterior", "likelihood"])
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
+	"whether the tuning to the accumulator is state-dependent"
+	tuning_state_dependent::TB=true; @assert ((K==1) && !gain_state_dependent && !tuning_state_dependent) || ((K>1) && (gain_state_dependent || tuning_state_dependent))
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end
@@ -173,6 +177,8 @@ end
 Parameters of a mixture of Poisson generalized linear model
 """
 @with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
+    "state-dependent gain"
+    𝐠::VVR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
     "state-dependent linear filters of the inputs from the accumulator "
