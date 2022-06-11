@@ -583,7 +583,7 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 			∇Q.𝐯[k] .= 𝐕' * ∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
 		end
 	else
-		∇Q.𝐤[1] .= 𝐕' * sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB)
+		∇Q.𝐯[1] .= 𝐕' * sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB)
 	end
 	return nothing
 end

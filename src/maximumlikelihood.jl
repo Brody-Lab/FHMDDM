@@ -320,18 +320,23 @@ ARGUMENT
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_19_test/T176_2018_05_03/data.mat");
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> ∇nℓ = similar(concatenatedθ)
-julia> memory = FHMDDM.Memoryforgradient(model)
-julia> FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
-julia> using ForwardDiff
-julia> f(x) = -FHMDDM.loglikelihood(x, indexθ, model)
-julia> ℓ_auto = f(concatenatedθ)
-julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
-julia> abs(ℓ_auto + memory.ℓ[1])
-julia> maximum(abs.(∇nℓ_auto .- ∇nℓ))
+using FHMDDM, ForwardDiff, Random
+subdirectories = filter(isdir, readdir("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_10a_test";join=true))
+for subdirectory in subdirectories
+    datapath = subdirectory*"/data.mat"
+    model = Model(datapath);
+    concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+    ∇nℓ = similar(concatenatedθ)
+    memory = FHMDDM.Memoryforgradient(model)
+    FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
+    f(x) = -FHMDDM.loglikelihood(x, indexθ, model)
+    ℓ_auto = f(concatenatedθ)
+    ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
+    println("")
+    println(datapath)
+    println("   max(|Δloss|): ", abs(ℓ_auto + memory.ℓ[1]))
+    println("   max(|Δgradient|): ", maximum(abs.(∇nℓ_auto .- ∇nℓ)))
+end
 ```
 """
 function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
@@ -356,6 +361,12 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 	native2real!(∇nℓ, memory.indexθ.latentθ, model)
 	for ∇ℓglms in memory.∇ℓglm
 		for ∇ℓglm in ∇ℓglms
+			for 𝐠ₖ in ∇ℓglm.𝐠
+				for g in 𝐠ₖ
+					indexfit+=1
+					∇nℓ[indexfit] = -g
+				end
+			end
 			for u in ∇ℓglm.𝐮
 				indexfit+=1
 				∇nℓ[indexfit] = -u

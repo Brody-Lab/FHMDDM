@@ -415,7 +415,7 @@ function Model(concatenatedθ::Vector{type},
 	real2native!(θnative, model.options, θreal)
 	trialsets = map(model.trialsets, indexθ.glmθ) do trialset, glmθindex
 					mpGLMs =map(trialset.mpGLMs, glmθindex) do mpGLM, glmθindex
-								MixturePoissonGLM(concatenatedθ, mpGLM; offset=glmθindex.𝐮[1]-1)
+								MixturePoissonGLM(concatenatedθ, mpGLM; offset=glmθindex.𝐠[1][1]-1)
 							end
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
