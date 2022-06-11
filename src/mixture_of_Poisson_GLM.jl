@@ -520,3 +520,70 @@ function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}},
     end
     return Q
 end
+
+"""
+	expectation_∇loglikelihood!(∇Q, γ, mpGLM)
+
+Expectation under the posterior probability of the gradient of the log-likelihood.
+
+This function is used for computing the gradient of the log-likelihood of the entire model
+
+MODIFIED ARGUMENT
+-`∇`: The gradient
+
+UNMODIFIED ARGUMENT
+-`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i,k][t] corresponds to the i-th accumulator state and the k-th coupling state in the t-th time bin in the trialset.
+-`mpGLM`: structure containing information for the mixture of Poisson GLM for one neuron
+
+EXAMPLE
+```julia-rep
+julia> using FHMDDM, Random
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
+julia> mpGLM = model.trialsets[1].mpGLMs[1]
+julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+julia> ∇Q = FHMDDM.GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
+julia> FHMDDM.expectation_∇loglikelihood!(∇Q, γ, mpGLM)
+julia> ghand = FHMDDM.concatenateparameters(∇Q)[1]
+julia> using ForwardDiff
+julia> concatenatedθ = FHMDDM.concatenateparameters(mpGLM.θ)[1]
+julia> f(x) = FHMDDM.expectation_loglikelihood(x, γ, mpGLM)
+julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
+julia> maximum(abs.(gauto .- ghand))
+```
+"""
+function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
+	@unpack Δt, d𝛏_dB, 𝐕, 𝐗, 𝐲 = mpGLM
+	Ξ, K = size(γ)
+	T = length(𝐲)
+	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
+	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(T) for k=1:K)
+	@inbounds for i = 1:Ξ
+		for k = 1:K
+			𝐋 = linearpredictor(mpGLM,i,k)
+			for t=1:T
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
+				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+			end
+		end
+	end
+	indices𝐮 = length(∇Q.𝐠[1]) .+ (1:length(∇Q.𝐮))
+	𝐔 = @view 𝐗[:, indices𝐮]
+	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
+	∇Q.𝐮 .= 𝐔' * ∑ᵢₖ_dQᵢₖ_dLᵢₖ
+	if length(∇Q.𝐠) == K
+		@inbounds for k = 1:K
+			∇Q.𝐠[k] .= sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
+		end
+	else
+		∇Q.𝐠[1] .= sum(∑ᵢₖ_dQᵢₖ_dLᵢₖ)
+	end
+	if length(∇Q.𝐯) == K
+		@inbounds for k = 1:K
+			∇Q.𝐯[k] .= 𝐕' * ∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+		end
+	else
+		∇Q.𝐤[1] .= 𝐕' * sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB)
+	end
+	return nothing
+end
