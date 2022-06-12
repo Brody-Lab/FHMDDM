@@ -160,6 +160,9 @@ function test(cvindices::CVIndices, model::Model, trainingmodel::Model)
 	for (test_trialset, training_trialset) in zip(testmodel.trialsets, trainingmodel.trialsets)
 		for (test_mpGLM, training_mpGLM) in zip(test_trialset.mpGLMs, training_trialset.mpGLMs)
 			test_mpGLM.θ.𝐮 .= training_mpGLM.θ.𝐮
+			for (test_𝐠, training_𝐠) in zip(test_mpGLM.θ.𝐠, training_mpGLM.θ.𝐠)
+				test_𝐠 .= training_𝐠
+			end
 			for (test_𝐯, training_𝐯) in zip(test_mpGLM.θ.𝐯, training_mpGLM.θ.𝐯)
 				test_𝐯 .= training_𝐯
 			end
@@ -283,19 +286,25 @@ UNMODIFIED ARGUMENT
 """
 function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, t::Integer)
 	@unpack Δt, d𝛏_dB, θ, 𝐕, 𝐗, 𝐲 = mpGLM
-	@unpack 𝐮, 𝐯 = θ
+	@unpack 𝐠, 𝐮, 𝐯 = θ
 	𝐔ₜ𝐮 = 0
+	offset𝐔 = length(𝐠[1])
 	for i in eachindex(𝐮)
-		𝐔ₜ𝐮 += 𝐗[t,i]*𝐮[i]
+		q = offset𝐔 + i
+		𝐔ₜ𝐮 += 𝐗[t,q]*𝐮[i]
 	end
 	Ξ, K = size(p)
+	K𝐠 = length(𝐠)
+	K𝐯 = length(𝐯)
 	for k=1:K
 		𝐕ₜ𝐯 = 0
-		for i in eachindex(𝐯[k])
-			𝐕ₜ𝐯 += 𝐕[t,i]*𝐯[k][i]
+		𝐯ₖ = 𝐯[min(k,K𝐯)]
+		for i in eachindex(𝐯ₖ)
+			𝐕ₜ𝐯 += 𝐕[t,i]*𝐯ₖ[i]
 		end
+		gₖ = 𝐠[min(k,K𝐠)][1]
 		for j=1:Ξ
-			L = 𝐔ₜ𝐮 + d𝛏_dB[j]*𝐕ₜ𝐯
+			L = gₖ + 𝐔ₜ𝐮 + d𝛏_dB[j]*𝐕ₜ𝐯
 			p[j,k] = poissonlikelihood(Δt, L, 𝐲[t])
 		end
 	end

@@ -204,7 +204,7 @@ Mixture of Poisson generalized linear model
 	max_spikehistory_lag::TI
 	"Temporal bases"
 	Φ::MF
-	"parameters (𝐡, 𝐰, 𝐮, 𝐯)"
+	"parameters"
 	θ::Tθ
     "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
     𝐕::MF

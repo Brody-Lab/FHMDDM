@@ -52,6 +52,9 @@ function Model(options::Options,
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
 			trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[i][n]["u"]
+        	for k in eachindex(glmθ[i][n]["g"])
+				trialsets[i].mpGLMs[n].θ.𝐠[k] .= glmθ[i][n]["g"][k]
+			end
 			for k in eachindex(glmθ[i][n]["v"])
 				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
 			end
@@ -118,7 +121,11 @@ function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset
 	counter = n_latentθ_fitted
 	for trialset in trialsets
 		for mpGLM in trialset.mpGLMs
-			counter +=1
+			for 𝐠ₖ in mpGLM.θ.𝐠
+				for g in 𝐠ₖ
+					counter +=1 # skipped
+				end
+			end
 			for q = 1:length(mpGLM.θ.𝐮)
 				counter +=1
 				𝛂[counter] = options.α₀

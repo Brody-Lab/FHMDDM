@@ -14,7 +14,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_07a_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_10a_test/T176_2018_05_03_b3K2K1/data.mat")
 julia> learnparameters!(model)
 julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
 julia> fbz = posterior_first_state(model)
@@ -22,14 +22,7 @@ julia> save(model, fbz, λΔt, pchoice)
 ```
 """
 function learnparameters!(model::Model)
-	@unpack options, θreal, θ₀native, θnative = model
-	@unpack basistype, K, objective = options
-	if (K > 1) && (basistype == "none")
-		θ₀native.πᶜ₁[1] = θnative.πᶜ₁[1] = 0.999
-		θ₀native.Aᶜ₁₁[1] = θnative.Aᶜ₁₁[1] = 0.95
-		θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.999
-		native2real!(θreal, options, θnative)
-	end
+	@unpack objective = model.options
 	initializeparameters!(model)
 	if objective == "evidence"
 		output = maximizeevidence!(model)

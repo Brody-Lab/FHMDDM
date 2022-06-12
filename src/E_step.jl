@@ -1,36 +1,4 @@
 """
-	likelihood(model)
-
-Compute the likelihood of the emissions at each timestep
-
-ARGUMENT
--`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion model
-
-RETURN
--`p𝐘𝑑`: Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat"; randomize=true);
-julia> p = likelihood(model)
-```
-"""
-function likelihood(model::Model)
-	@unpack K, Ξ = model.options
-	T = eltype(model.trialsets[1].mpGLMs[1].θ.𝐰)
-	p𝐘𝑑=map(model.trialsets) do trialset
-			map(trialset.trials) do trial
-				map(1:trial.ntimesteps) do t
-					ones(T,Ξ,K)
-				end
-			end
-		end
-	likelihood!(p𝐘𝑑, model.trialsets, model.θnative.ψ[1])
-	return p𝐘𝑑
-end
-
-"""
     likelihood!(p𝐘𝑑, trialset, ψ)
 
 Update the conditional likelihood of the emissions (spikes and/or behavioral choice)
@@ -489,7 +457,7 @@ RETURN
 function randomposterior(mpGLM::MixturePoissonGLM; rng::AbstractRNG=MersenneTwister())
 	T = length(mpGLM.𝐲)
 	Ξ = length(mpGLM.d𝛏_dB)
-	K = length(mpGLM.θ.𝐯)
+	K = max(length(mpGLM.θ.𝐠), length(mpGLM.θ.𝐯))
 	γ = map(index->zeros(T), CartesianIndices((Ξ,K)))
 	for t=1:T
 		randγₜ = rand(rng,Ξ,K)
