@@ -13,9 +13,18 @@ RETURN
 
 EXAMPLE
 ```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_19_test/T176_2018_05_03/data.mat")
-julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_twopasshessian(model)
+using FHMDDM, ForwardDiff, Random
+subdirectories = filter(isdir, readdir("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_10a_test";join=true))
+for subdirectory in subdirectories
+    datapath = subdirectory*"/data.mat"
+    model = Model(datapath);
+    absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_twopasshessian(model)
+    println("")
+    println(datapath)
+    println("   max(|Δloss|): ", absdiffℓ)
+    println("   max(|Δgradient|): ", maximum(absdiff∇))
+    println("   max(|Δhessian|): ", maximum(absdiff∇∇))
+end
 ```
 """
 function check_twopasshessian(model::Model)
@@ -475,7 +484,7 @@ RETURN
 function linearpredictor(mpGLMs::Vector{<:MixturePoissonGLM})
 	map(mpGLMs) do mpGLM
 		Ξ = length(mpGLM.d𝛏_dB)
-		K = length(mpGLM.θ.𝐯)
+		K = max(length(mpGLM.θ.𝐠), length(mpGLM.θ.𝐯))
 		map(CartesianIndices((Ξ,K))) do index
 			j = index[1]
 			k = index[2]
@@ -523,7 +532,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 	end
 	nneurons = length(mpGLMs)
 	Ξ = length(mpGLMs[1].d𝛏_dB)
-	K = length(mpGLMs[1].θ.𝐯)
+	K = max(length(mpGLMs[1].θ.𝐠), length(mpGLMs[1].θ.𝐯))
 	@inbounds for t = 1:ntimesteps
 		τ = t + offset
 		for ij in eachindex(pY[t])
@@ -619,9 +628,14 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										mpGLM::MixturePoissonGLM,
 										τ::Integer)
 	@unpack d𝛏_dB, 𝐗, 𝐕, 𝐲 = mpGLM
-	@unpack 𝐮, 𝐯 = mpGLM.θ
+	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	K𝐠 = length(𝐠)
+	K𝐯 = length(𝐯)
+	K = max(K𝐠, K𝐯)
+	n𝐠 = length(𝐠[1])
+	N𝐠 = K𝐠*n𝐠
 	n𝐮 = length(𝐮)
-	K = length(𝐯)
+	N𝐠𝐮 = N𝐠 + n𝐮
 	n𝐯 = length(𝐯[1])
 	Ξ = length(d𝛏_dB)
 	for i = 1:Ξ
@@ -630,27 +644,51 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 		end
 		for j = 1:K
 			dlogp_dL, d²logp_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
+			offset𝐠 = (K𝐠==K) ? (j-1)*n𝐠 : 0
+			offset𝐯 = N𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
+			for q=1:n𝐠
+				s = offset𝐠 + q
+				∇logpy[s][i,j] = dlogp_dL
+			end
 			for q=1:n𝐮
-				∇logpy[q][i,j] = dlogp_dL*𝐗[τ,q]
+				s = N𝐠 + q
+				∇logpy[s][i,j] = dlogp_dL*𝐗[τ,n𝐠+q]
 			end
 			for q=1:n𝐯
-				s = n𝐮+(j-1)*n𝐯+q
+				s = offset𝐯 + q
 				∇logpy[s][i,j] = dlogp_dL*dL_d𝐯[q]
 			end
-			for q=1:n𝐮
-				for r=q:n𝐮
-					∇∇logpy[q,r][i,j] = d²logp_dL*𝐗[τ,q]*𝐗[τ,r]
+			for q=1:n𝐠
+				s = offset𝐠 + q
+				for r=1:n𝐠
+					t = offset𝐠 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL
+				end
+				for r=1:n𝐮
+					t = N𝐠 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,n𝐠+r]
 				end
 				for r=1:n𝐯
-					s = n𝐮+(j-1)*n𝐯+r
-					∇∇logpy[q,s][i,j] = d²logp_dL*𝐗[τ,q]*dL_d𝐯[r]
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL*dL_d𝐯[r]
+				end
+			end
+			for q=1:n𝐮
+				s = N𝐠 + q
+				for r=q:n𝐮
+					t = N𝐠 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,n𝐠+q]*𝐗[τ,n𝐠+r]
+				end
+				for r=1:n𝐯
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,n𝐠+q]*dL_d𝐯[r]
 				end
 			end
 			for q=1:n𝐯
 				for r=q:n𝐯
-					s1 = n𝐮+(j-1)*n𝐯+q
-					s2 = n𝐮+(j-1)*n𝐯+r
-					∇∇logpy[s1,s2][i,j] = d²logp_dL * dL_d𝐯[q] * dL_d𝐯[r]
+					s = offset𝐯 + q
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL * dL_d𝐯[q] * dL_d𝐯[r]
 				end
 			end
 		end
@@ -987,7 +1025,7 @@ function Sameacrosstrials(model::Model)
 	counter = 13
 	indexθ_py = map(trialsets) do trialset
 					map(trialset.mpGLMs) do mpGLM
-						q = length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
+						q = sum(length.(mpGLM.θ.𝐠)) + length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
 						zeros(Int,q)
 					end
 				end
