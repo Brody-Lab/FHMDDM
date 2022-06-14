@@ -64,6 +64,13 @@ function initializeparameters!(model::Model)
 	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
 	    end
 	end
+	if model.options.gain_state_dependent
+		for i in eachindex(model.trialsets)
+		    for mpGLM in model.trialsets[i].mpGLMs
+		        mpGLM.θ.𝐠[2] = -mpGLM.θ.𝐠[1]
+		    end
+		end
+	end
 	return nothing
 end
 
