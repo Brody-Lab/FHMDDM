@@ -192,19 +192,8 @@ RETURN
 function index_latent_parameters(options::Options)
 	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
     counter = 0
-	tofit = true
 	for field in fieldnames(Latentθ)
-		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-			tofit = options.K == 2
-		else
-			options_field = Symbol("fit_"*String(field))
-			if hasfield(typeof(options), options_field)
-				tofit = getfield(options, options_field)
-			else
-				error("Unrecognized field: "*String(field))
-			end
-		end
-		if tofit
+		if is_parameter_fit(options, field)
 			counter += 1
 			getfield(indexθ, field)[1] = counter
 		else
@@ -212,6 +201,31 @@ function index_latent_parameters(options::Options)
 		end
 	end
 	return indexθ
+end
+
+"""
+	is_parameter_fit(options, parametername)
+
+Check whether a parameter is fit
+
+ARGUMENT
+-`options`: settings of the model
+-`parametername`: name of the parameter as a symbol
+
+RETURN
+-a Bool
+"""
+function is_parameter_fit(options::Options, parametername::Symbol)
+	options_field = Symbol("fit_"*String(parametername))
+	if hasfield(typeof(options), options_field)
+		tofit = getfield(options, options_field)
+	else
+		error("Unrecognized field: "*String(parametername))
+	end
+	if parametername == :Aᶜ₁₁ || parametername == :Aᶜ₂₂ || parametername == :πᶜ₁
+		tofit = tofit && (options.K == 2)
+	end
+	return tofit
 end
 
 """
@@ -227,22 +241,8 @@ RETURN
 """
 function count_latent_parameters_being_fitted(options::Options)
 	counter = 0
-	tofit = true
 	for field in fieldnames(Latentθ)
-		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-			tofit = options.K == 2
-		else
-			options_field = Symbol("fit_"*String(field))
-			if hasfield(typeof(options), options_field)
-				tofit = getfield(options, options_field)
-			else
-				error("Unrecognized field: "*String(field))
-			end
-		end
-		if tofit
-			counter += 1
-		else
-		end
+		counter += is_parameter_fit(options, field)
 	end
 	counter
 end
@@ -360,18 +360,8 @@ function concatenate_choice_related_parameters(model::Model)
 	concatenatedθ = zeros(0)
     counter = 0
 	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
-	tofit = true
 	for field in fieldnames(Latentθ)
-		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-			tofit = false
-		else
-			options_field = Symbol("fit_"*String(field))
-			if hasfield(typeof(options), options_field)
-				tofit = getfield(options, options_field)
-			else
-				error("Unrecognized field: "*String(field))
-			end
-		end
+		tofit = is_parameter_fit(options, field) && !any(field .== (:Aᶜ₁₁, :Aᶜ₂₂, :πᶜ₁))
 		if tofit
 			counter += 1
 			getfield(indexθ, field)[1] = counter
@@ -625,7 +615,7 @@ function indexprecisions(model::Model)
 	n_latentθ_fitted = 0
 	for field in fieldnames(Latentθ)
 		i = getfield(indexθ.latentθ, field)[1]
-		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂
 		else
 			index𝛂 = vcat(index𝛂, i)
 			n_latentθ_fitted = max(n_latentθ_fitted, i)

@@ -312,7 +312,7 @@ function check_∇logevidence(model::Model; simulate::Bool=true)
 		FHMDDM.sortparameters!(model, concatenatedθ, indexθ)
 		FHMDDM.real2native!(model.θnative, model.options, model.θreal)
 	else
-		FHMDDM.initializeparameters!(memory, model)
+		FHMDDM.initializeparameters!(model)
 		FHMDDM.maximizeposterior!(model)
 		𝐇 = ∇∇loglikelihood(model)[index𝛂, index𝛂]
 		𝛉ₘₐₚ = concatenateparameters(model)[1][index𝛂]

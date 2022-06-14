@@ -14,7 +14,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_10a_test/T176_2018_05_03_b3K2K1/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_14a_test/T176_2018_05_03_b2K2K2/data.mat")
 julia> learnparameters!(model)
 julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
 julia> fbz = posterior_first_state(model)
@@ -67,8 +67,19 @@ function initializeparameters!(model::Model)
 	if model.options.gain_state_dependent
 		for i in eachindex(model.trialsets)
 		    for mpGLM in model.trialsets[i].mpGLMs
-		        mpGLM.θ.𝐠[2] = -mpGLM.θ.𝐠[1]
+		        gmean = mean(mpGLM.θ.𝐠)
+				mpGLM.θ.𝐠[1] .= 3.0.*gmean
+				mpGLM.θ.𝐠[2] .= -gmean
 		    end
+		end
+	end
+	if model.options.tuning_state_dependent
+		for i in eachindex(model.trialsets)
+			for mpGLM in model.trialsets[i].mpGLMs
+				vmean = mean(mpGLM.θ.𝐯)
+				mpGLM.θ.𝐯[1] .= 3.0.*vmean
+				mpGLM.θ.𝐯[2] .= -vmean
+			end
 		end
 	end
 	return nothing

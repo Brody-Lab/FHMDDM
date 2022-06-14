@@ -58,8 +58,10 @@ Model settings
     datapath::TS=""
 	"duration of each timestep in seconds"
     Δt::TF=1e-2
-	"number of states of the coupling variable"
-    K::TI = 2; 			@assert K == 1 || K == 2
+	"whether the transition probability of remaining in the first state is fitted"
+	fit_Aᶜ₁₁::TB=true
+	"whether the transition probability of remaining in the second state is fitted"
+	fit_Aᶜ₂₂::TB=true
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
@@ -70,6 +72,8 @@ Model settings
 	fit_μ₀::TB=true
 	"whether to fit the strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
 	fit_ϕ::TB=true
+	"whether the prior probability of the first state is fitted"
+	fit_πᶜ₁::TB=true
 	"whether to fit the behavioral lapse rate"
 	fit_ψ::TB=true
 	"whether to fit the variance of the Gaussian noise added at each time step"
@@ -116,9 +120,11 @@ Model settings
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"whether the tuning to the accumulator is state-dependent"
-	tuning_state_dependent::TB=true; @assert K > 1 ? (gain_state_dependent || tuning_state_dependent) : !(gain_state_dependent || tuning_state_dependent)
+	tuning_state_dependent::TB=true
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
+	"number of states of the coupling variable"
+	K::TI = (gain_state_dependent || tuning_state_dependent) ? 2 : 1
 end
 
 """

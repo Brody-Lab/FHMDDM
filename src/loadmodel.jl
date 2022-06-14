@@ -112,7 +112,7 @@ function initial_precision_matrix(options::Options, trialsets::Vector{<:Trialset
 	end
 	𝛂 = zeros(n_allθ)
 	index_latentθ = index_latent_parameters(options)
-	for field in (:B, :k, :λ, :μ₀, :ϕ, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
+	for field in (:B, :k, :λ, :μ₀, :ϕ, :πᶜ₁, :ψ, :σ²ₐ, :σ²ᵢ, :σ²ₛ, :wₕ)
 		i = getfield(index_latentθ, field)[1]
 		if i != 0
 			𝛂[i] = options.α₀
@@ -262,11 +262,7 @@ RETURN
 function initializeparameters(options::Options)
 	θnative = Latentθ()
 	for field in fieldnames(Latentθ)
-		if any(field .== (:Aᶜ₁₁, :Aᶜ₂₂, :πᶜ₁))
-			fit = options.K == 2
-		else
-			fit = getfield(options, Symbol("fit_"*string(field)))
-		end
+		fit = is_parameter_fit(options, field)
 		lqu = getfield(options, Symbol("lqu_"*string(field)))
 		l = lqu[1]
 		q = lqu[2]
