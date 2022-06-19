@@ -128,7 +128,7 @@ function native2real(n::Real, q::Real, l::Real, u::Real)
 end
 
 """
-	real2native(r,q,l,u)
+	native2real(n,l,u)
 
 Convert hyperparameters from native space to real space
 

@@ -44,7 +44,7 @@ function maximizeevidence!(model::Model;
 		concatenatedθ = FHMDDM.concatenateparameters(model)[1]
 		𝛟 .= concatenatedθ
 		if gradientnorms[findlast(x->!isnan(x), gradientnorms)] > g_tol
-			two_times_geomean = 2geomean(model.precisionmatrix.diag[index𝛂])
+			two_times_geomean = min(100.0, 2geomean(model.precisionmatrix.diag[index𝛂]))
 			model.precisionmatrix.diag[index𝛂] .= two_times_geomean
 			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂 → ", two_times_geomean)
 		else
@@ -252,16 +252,7 @@ function ∇negativelogevidence!(concatenatedθ::Vector{<:Real},
 	∇nℓ = similar(concatenatedθ)
 	∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
 	𝐉 = -𝐁 \ Diagonal(𝐰) #Jacobian matrix of the posterior mode 𝐰 with respect to the precisions 𝛂
-	∇n𝐸 .= 𝐉'*(∇nℓ[index𝛂] .- 0.5.*𝐁₀𝛉ₘₐₚ .+ 𝐀*𝐰)
-	𝚲 = I - 𝐀^-1*𝐇
-	𝐐 = zeros(size(𝚲));
-	@inbounds for i in eachindex(𝛂)
-		if i > 1
-	    	𝐐[i-1,:] .= 0.0
-		end
-	    𝐐[i,:] = 𝛂[i]^-2 .* 𝐇[i,:]
-	    ∇n𝐸[i] += 0.5tr(𝚲 \ 𝐐)
-	end
+	∇n𝐸 .= 𝐉'*(∇nℓ[index𝛂] .+ 𝐀*𝐰) .+ 0.5.*𝐰.*𝐰 .+ 0.5.*diag(𝐇*inv(I - (𝐀 \ 𝐇)))./𝐀.diag.^2.0
 	return nothing
 end
 
@@ -283,9 +274,9 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_14a_test/T176_2018_05_03_b2K2K2/data.mat")
 julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=true)
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_05b_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_14a_test/T176_2018_05_03_b2K2K2/data.mat")
 julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=false)
 ```
 """
