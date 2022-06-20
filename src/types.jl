@@ -43,6 +43,7 @@ Model settings
 						TS<:String,
 						TF<:AbstractFloat,
 						TI<:Integer,
+						TVI<:Vector{<:Integer},
 						TVF<:Vector{<:AbstractFloat}}
 	"number of temporal basis functions for the accumulator per s"
     a_basis_per_s::TI=10
@@ -115,10 +116,14 @@ Model settings
 	lqu_wₕ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_wₕ[1]) && (lqu_wₕ[1] <= lqu_wₕ[2]) && (lqu_wₕ[2] < lqu_wₕ[3]) && (lqu_wₕ[3] < Inf)
 	"minimum value of the prior and transition probabilities of the accumulator"
 	minpa::TF=1e-8
+	"number of temporal basis functions in the kernel corresponding to each trial event"
+	nbases_each_event::TVI
 	"value to maximized to learn the parameters"
 	objective::String; @assert any(objective .== ["evidence", "posterior", "likelihood"])
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
+	"initial coefficient for the L2 smoothing penalty"
+	s₀::TF=0.0
 	"whether the tuning to the accumulator is state-dependent"
 	tuning_state_dependent::TB=true
     "number of states of the discrete accumulator variable"
@@ -239,20 +244,44 @@ A group of trials in which a population of neurons were recorded simultaneously
 end
 
 """
+	GaussianPrior
+
+Information on the zero-meaned Gaussian prior distribution on the values of the parameters in real space
+"""
+@with_kw struct GaussianPrior{MF<:Matrix{<:AbstractFloat},
+								VI<:Vector{<:Integer},
+								VVI<:Vector{<:Vector{<:Integer}},
+								VMI<:Vector{<:Matrix{<:Integer}},
+								VF<:Vector{<:AbstractFloat}}
+	"coefficients of the L2 shrinkage penalties"
+	𝛂::VF
+	"indices of the parameters being shrunk"
+	index𝛂::VI
+	"indices of the parameters being smoothed"
+	index𝐒::VVI
+	"the precision matrix, i.e., inverse of the covariance matrix"
+	𝚲::MF
+	"vector of the squared difference matrices for implementing L2 smoothing penalties"
+	𝐒::VMI
+	"coefficients of the L2 smoothing penalties"
+	𝐬::VF
+end
+
+"""
 	Model
 
 A factorial hidden Markov drift-diffusion model
 """
 @with_kw struct Model{Toptions<:Options,
-					D<:Diagonal{<:Real, <:Vector{<:Real}},
+					GP<:GaussianPrior,
 					Tθ1<:Latentθ,
 					Tθ2<:Latentθ,
 					Tθ3<:Latentθ,
 					VT<:Vector{<:Trialset}}
 	"settings of the model"
 	options::Toptions
-	"precision matrix of the Gaussian prior on the parameters"
-	precisionmatrix::D
+	"Gaussian prior on the parameters"
+	gaussianprior::GP
 	"model parameters in their native space (the term 'space' is not meant to be mathematically rigorous. Except for the sticky bound `B`, the native space of all parameters are positive real numbers, which is a vector space. The native space of `B` is upper bounded because I am concerned a large value of `B` would result in a loss of precision in the discretization of the accumulator variable.)"
 	θnative::Tθ1
 	"model parameters in real vector space ℝ"

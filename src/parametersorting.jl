@@ -155,6 +155,24 @@ function concatenateparameters(model::Model)
 end
 
 """
+	indexparameters(options, trialsets)
+
+Index of each parameter if all parameters were concatenated into a vector
+
+ARGUMENT
+-`options`: settings of the model
+-`trialsets`: data for the model
+
+RETURN
+-a structure indicating the index of each model parameter in the vector of concatenated values
+"""
+function indexparameters(options::Options, trialsets::Vector{<:Trialset})
+	indexθlatent = index_latent_parameters(options)
+	indexθglm = concatenate_glm_parameters(count_latent_parameters_being_fitted(options), trialsets)[2]
+    return Indexθ(latentθ=indexθlatent, glmθ=indexθglm)
+end
+
+"""
 	    concatenate_latent_parameters(model)
 
 Concatenate values of latent parameters being fitted into a vector of floating point numbers
@@ -261,8 +279,24 @@ RETURN
 -`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
 """
 function concatenate_glm_parameters(model::Model, offset::Integer)
-    @unpack options, trialsets = model
-	indexθ = map(model.trialsets) do trialset
+	concatenate_glm_parameters(offset, model.trialsets)	
+end
+
+"""
+	concatenate_glm_parameters(offset, trialsets)
+
+Concatenate values of parameters of all glms into a vector of floating point numbers
+
+ARGUMENT
+-`offset`: number of latent parameters being fitted
+-`trialsets`: data in the model
+
+RETURN
+-`concatenatedθ`: a vector of the concatenated values of the parameters from all glms
+-`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
+"""
+function concatenate_glm_parameters(offset::Integer, trialsets::Vector{<:Trialset})
+	indexθ = map(trialsets) do trialset
 				map(trialset.mpGLMs) do mpGLM
 					GLMθ(mpGLM.θ, Int)
 				end
@@ -473,35 +507,6 @@ function Latentθ(concatenatedθ::Vector{T},
 end
 
 """
-	MixturePoissonGLM(concatenatedθ, glmθindex, mpGLM)
-
-Create a structure for a mixture of Poisson GLM with updated parameters
-
-ARGUMENT
--`concatenatedθ`: a vector of new parameter values
--`glmθindex`: index of each parameter in the vector of values
--`mpGLM`: a structure containing information on the mixture of Poisson GLM for one neuron
-
-OUTPUT
--a new structure for the mixture of Poisson GLM of a neuron with new parameter values
-"""
-function MixturePoissonGLM(concatenatedθ::Vector{T},
-						   mpGLM::MixturePoissonGLM;
-						   offset=0) where {T<:Real}
-	mpGLM = MixturePoissonGLM(Δt=mpGLM.Δt,
-							d𝛏_dB=mpGLM.d𝛏_dB,
-							max_spikehistory_lag=mpGLM.max_spikehistory_lag,
-							Φ=mpGLM.Φ,
-							θ=GLMθ(mpGLM.θ, T),
-							𝐕=mpGLM.𝐕,
-							𝐗=mpGLM.𝐗,
-							𝐲=mpGLM.𝐲)
-	sortparameters!(mpGLM.θ, concatenatedθ; offset=offset)
-	return mpGLM
-end
-
-
-"""
 	sortparameters!(∇all, index, ∇glm)
 
 Sort the concatenated parameters from a GLM and use them update the values of a vector concatenating all parameters of the model
@@ -589,42 +594,4 @@ function countparameters(θ::GLMθ)
 		counter += length(𝐯)
 	end
 	return counter
-end
-
-"""
-	indexprecisions(model)
-
-Create a structure indexing the precisions
-
-ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters
-
-RETURN
--a vector of integers
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_01_test/T176_2018_05_03/data.mat")
-julia> index𝛂 = FHMDDM.indexprecisions(model)
-```
-"""
-function indexprecisions(model::Model)
-	index𝛂 = Int[]
-	indexθ = concatenateparameters(model)[2]
-	n_latentθ_fitted = 0
-	for field in fieldnames(Latentθ)
-		i = getfield(indexθ.latentθ, field)[1]
-		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂
-		else
-			index𝛂 = vcat(index𝛂, i)
-			n_latentθ_fitted = max(n_latentθ_fitted, i)
-		end
-	end
-	for glmθ in indexθ.glmθ
-		for glmθ in glmθ
-			index𝛂 = vcat(index𝛂, glmθ.𝐮[1]:glmθ.𝐯[end][end])
-		end
-	end
-	index𝛂
 end

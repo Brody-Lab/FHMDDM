@@ -374,8 +374,10 @@ function dictionary(options::Options)
 			"lqu_σ²ₛ"=>	options.lqu_σ²ₛ,
 			"lqu_wₕ"=>	options.lqu_wₕ,
     		"minpa"=>	options.minpa,
+            "nbases_each_event"=>options.nbases_each_event,
     		"objective"=> options.objective,
 			"resultspath"=>options.resultspath,
+			"s0"=>options.s₀,
 			"tuning_state_dependent"=>options.tuning_state_dependent,
 			"Xi"=>options.Ξ)
 end
@@ -407,13 +409,27 @@ end
 """
     dictionary(clicks)
 
-Convert an instance of `clicks` into a `Dict`
+Convert an instance of `Clicks` into a `Dict`
 """
 function dictionary(clicks::Clicks)
     Dict("time" => 		clicks.time,
 		 "source" => 	clicks.source,
          "left" => 		clicks.left,
          "right" =>		clicks.right)
+end
+
+"""
+	dictionary(gaussianprior)
+
+Convert an instance of `GaussianPrior` into a `Dict`
+"""
+function dictionary(gaussianprior::GaussianPrior)
+	Dict("alpha" => gaussianprior.𝛂,
+		"index_alpha" => gaussianprior.index𝛂,
+		"index_S" => gaussianprior.index𝐒,
+		"Lambda" => gaussianprior.𝚲,
+		"S"=>gaussianprior.𝐒,
+		"s"=>gaussianprior.𝐬)
 end
 
 """
@@ -491,12 +507,73 @@ function dictionary(cvresults::CVResults)
 end
 
 """
+	GaussianPrior(dict)
+
+Convert a dictionary into an instance of `GaussianPrior`
+"""
+function GaussianPrior(gp::Dict)
+	GaussianPrior(𝛂=vec(gp["alpha"]),
+				index𝛂=vec(gp["index_alpha"]),
+				index𝐒=vec.(gp["index_S"]),
+				𝐒 = gp["S"],
+				𝐬 = vec(gp["s"]))
+end
+
+"""
+    GLMθ(dict)
+
+Convert a dictionary into an instance of `GLMθ`
+"""
+function GLMθ(θ::Dict)
+    GLMθ(𝐠=vec(map(𝐠ₖ->vec(𝐠ₖ), mpGLM["g"])),
+		 𝐮=vec(mpGLM["u"]),
+         𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])))
+end
+
+"""
+    Latentθ(θ)
+
+Create an instance of `Latentθ` from a Dict
+"""
+function Latentθ(θ::Dict)
+	Latentθ(Aᶜ₁₁=[θ["Ac11"]],
+			Aᶜ₂₂=[θ["Ac22"]],
+			B=[θ["B"]],
+			k=[θ["k"]],
+			λ=[θ["lambda"]],
+			μ₀=[θ["mu0"]],
+			ϕ=[θ["phi"]],
+			πᶜ₁=[θ["pic1"]],
+			ψ=[θ["psi"]],
+			σ²ₐ=[θ["sigma2_a"]],
+			σ²ᵢ=[θ["sigma2_i"]],
+			σ²ₛ=[θ["sigma2_s"]],
+			wₕ=[θ["w_h"]])
+end
+
+"""
+    MixturePoissonGLM(dict)
+
+Convert a dictionary into an instance of `MixturePoissonGLM`
+"""
+function MixturePoissonGLM(mpGLM::Dict)
+    MixturePoissonGLM(Δt=mpGLM["dt"],
+					d𝛏_dB=vec(mpGLM["dxi_dB"]),
+					max_spikehistory_lag=mpGLM["max_spikehistory_lag"],
+					Φ=mpGLM["Phi"],
+                    θ=GLMθ(mpGLM["theta"]),
+					𝐕=mpGLM["𝐕"],
+					𝐗=mpGLM["𝐗"],
+                    𝐲=vec(mpGLM["y"]))
+end
+
+"""
     Options(options::Dict)
 
 Create an instance of `Options` from a Dict
 """
 function Options(options::Dict)
-	Options(a_basis_per_s = convert(Int64, options["a_basis_per_s"]),
+	Options(a_basis_per_s = convert(Int, options["a_basis_per_s"]),
 			a_latency_s = options["a_latency_s"],
 			α₀=options["alpha0"],
 			α₀_choices=options["alpha0_choices"],
@@ -531,58 +608,12 @@ function Options(options::Dict)
 			lqu_σ²ₛ	= vec(options["lqu_sigma2_s"]),
 			lqu_wₕ	= vec(options["lqu_w_h"]),
 			minpa = options["minpa"],
+			nbases_each_event = convert.(Int, vec(options["nbases_each_event"])),
 			objective = options["objective"],
 			resultspath = options["resultspath"],
+			s₀ = options["s0"],
 			tuning_state_dependent = options["tuning_state_dependent"],
-			Ξ = convert(Int64, options["Xi"]))
-end
-
-"""
-    MixturePoissonGLM(dict)
-
-Convert a dictionary into an instance of `MixturePoissonGLM`
-"""
-function MixturePoissonGLM(mpGLM::Dict)
-    MixturePoissonGLM(Δt=mpGLM["dt"],
-					d𝛏_dB=vec(mpGLM["dxi_dB"]),
-					max_spikehistory_lag=mpGLM["max_spikehistory_lag"],
-					Φ=mpGLM["Phi"],
-                    θ=GLMθ(mpGLM["theta"]),
-					𝐕=mpGLM["𝐕"],
-					𝐗=mpGLM["𝐗"],
-                    𝐲=vec(mpGLM["y"]))
-end
-
-"""
-    GLMθ(dict)
-
-Convert a dictionary into an instance of `GLMθ`
-"""
-function GLMθ(θ::Dict)
-    GLMθ(𝐠=vec(map(𝐠ₖ->vec(𝐠ₖ), mpGLM["g"])),
-		 𝐮=vec(mpGLM["u"]),
-         𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])))
-end
-
-"""
-    Latentθ(θ)
-
-Create an instance of `Latentθ` from a Dict
-"""
-function Latentθ(θ::Dict)
-	Latentθ(Aᶜ₁₁=[θ["Ac11"]],
-			Aᶜ₂₂=[θ["Ac22"]],
-			B=[θ["B"]],
-			k=[θ["k"]],
-			λ=[θ["lambda"]],
-			μ₀=[θ["mu0"]],
-			ϕ=[θ["phi"]],
-			πᶜ₁=[θ["pic1"]],
-			ψ=[θ["psi"]],
-			σ²ₐ=[θ["sigma2_a"]],
-			σ²ᵢ=[θ["sigma2_i"]],
-			σ²ₛ=[θ["sigma2_s"]],
-			wₕ=[θ["w_h"]])
+			Ξ = convert(Int, options["Xi"]))
 end
 
 """

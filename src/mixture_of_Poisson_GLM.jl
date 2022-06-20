@@ -55,6 +55,34 @@ function GLMθ(glmθ::GLMθ, elementtype)
 end
 
 """
+	MixturePoissonGLM(concatenatedθ, glmθindex, mpGLM)
+
+Create a structure for a mixture of Poisson GLM with updated parameters
+
+ARGUMENT
+-`concatenatedθ`: a vector of new parameter values
+-`glmθindex`: index of each parameter in the vector of values
+-`mpGLM`: a structure containing information on the mixture of Poisson GLM for one neuron
+
+OUTPUT
+-a new structure for the mixture of Poisson GLM of a neuron with new parameter values
+"""
+function MixturePoissonGLM(concatenatedθ::Vector{T},
+						   mpGLM::MixturePoissonGLM;
+						   offset=0) where {T<:Real}
+	mpGLM = MixturePoissonGLM(Δt=mpGLM.Δt,
+							d𝛏_dB=mpGLM.d𝛏_dB,
+							max_spikehistory_lag=mpGLM.max_spikehistory_lag,
+							Φ=mpGLM.Φ,
+							θ=GLMθ(mpGLM.θ, T),
+							𝐕=mpGLM.𝐕,
+							𝐗=mpGLM.𝐗,
+							𝐲=mpGLM.𝐲)
+	sortparameters!(mpGLM.θ, concatenatedθ; offset=offset)
+	return mpGLM
+end
+
+"""
     likelihood(mpGLM, j, k)
 
 Conditional likelihood of the spike train, given the index of the state of the accumulator `j` and the state of the coupling `k`, and also by the prior likelihood of the regression weights
