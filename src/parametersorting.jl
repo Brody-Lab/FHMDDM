@@ -279,7 +279,7 @@ RETURN
 -`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
 """
 function concatenate_glm_parameters(model::Model, offset::Integer)
-	concatenate_glm_parameters(offset, model.trialsets)	
+	concatenate_glm_parameters(offset, model.trialsets)
 end
 
 """

@@ -28,36 +28,29 @@ function maximizeevidence!(model::Model;
 						verbose::Bool=true,
 						g_tol::Real=1e-3,
 						x_reltol::Real=1e-1)
-	memory = FHMDDM.Memoryforgradient(model)
-	index𝛂 = FHMDDM.indexprecisions(model)
-	𝛂₀ = model.precisionmatrix.diag[index𝛂]
-	𝐀₀ = Diagonal(𝛂₀)
+	@unpack index𝚽 = model.gaussianprior
+	memory = Memoryforgradient(model)
+	best𝛉, index𝛉 = concatenateparameters(model)
 	best𝐸 = -Inf
-	best𝛂 = copy(𝛂₀)
-	𝛟, indexθ = FHMDDM.concatenateparameters(model)
-	best𝛟 = copy(𝛟)
+	best𝛂 = copy(model.gaussianprior.𝛂)
+ 	best𝐬 = copy(model.gaussianprior.𝐬)
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-		sortparameters!(model, 𝛟, indexθ)
 	    gradientnorms = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[2]
-		concatenatedθ = FHMDDM.concatenateparameters(model)[1]
-		𝛟 .= concatenatedθ
 		if gradientnorms[findlast(x->!isnan(x), gradientnorms)] > g_tol
-			two_times_geomean = min(100.0, 2geomean(model.precisionmatrix.diag[index𝛂]))
-			model.precisionmatrix.diag[index𝛂] .= two_times_geomean
-			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂 → ", two_times_geomean)
+			new_α = min(100.0, 2geomean(model.gaussianprior.𝛂))
+			model.gaussianprior.𝛂 .= new_α
+			new_s = min(100.0, 2geomean(model.gaussianprior.𝐬))
+			model.gaussianprior.𝐬 .= new_s
+			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New (𝛂, 𝐬) → (", new_α, ", ", new_s, ")")
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
-			for j in eachindex(index𝛂)
-				𝛂₀[j] = model.precisionmatrix.diag[index𝛂[j]]
-			end
-			stats = @timed ∇∇loglikelihood(model)[index𝛂, index𝛂]
+			𝛉₀ = concatenateparameters(model)[1] # exact posterior mode
+			stats = @timed ∇∇loglikelihood(model)[index𝚽, index𝚽]
 			𝐇 = stats.value
 			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
-			𝛉ₘₐₚ = concatenatedθ[index𝛂]
-			𝐁₀𝛉ₘₐₚ = (𝐀₀-𝐇)*𝛉ₘₐₚ
-			𝐸 = logevidence!(concatenatedθ, memory, model, 𝛂₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
+			𝐸 = logevidence!(memory, model, 𝛉₀)
 			if 𝐸 > best𝐸
 				if verbose
 					if posteriorconverged
@@ -67,14 +60,18 @@ function maximizeevidence!(model::Model;
 					end
 				end
 				best𝐸 = 𝐸
-				best𝛂 .= 𝛂₀
-				best𝛟 .= 𝛟
+				best𝛂 .= model.gaussianprior.𝛂
+			 	best𝐬 .= model.gaussianprior.𝐬
+				best𝛉 .= 𝛉₀
 				n_consecutive_failures = 0
 			else
 				n_consecutive_failures += 1
 				verbose && println("Outer iteration: ", i, ": because the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
-				for j in eachindex(index𝛂)
-					model.precisionmatrix.diag[index𝛂[j]] = (model.precisionmatrix.diag[index𝛂[j]] + best𝛂[j])/2
+				for j in eachindex(model.gaussianprior.𝛂)
+					model.gaussianprior.𝛂[j] = (model.gaussianprior.𝛂[j] + best𝛂[j])/2
+				end
+				for j in eachindex(model.gaussianprior.𝐬)
+					model.gaussianprior.𝐬[j] = (model.gaussianprior.𝐬[j] + best𝐬[j])/2
 				end
 			end
 			posteriorconverged = true
@@ -82,15 +79,16 @@ function maximizeevidence!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-		    normΔ = maximizeevidence!(memory, model, 𝐀₀, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂, 𝛉ₘₐₚ)
+			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀)
 			if verbose
-				println("Outer iteration ", i, ": new 𝛂 → ", model.precisionmatrix.diag[index𝛂])
+				println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
+				println("Outer iteration ", i, ": new 𝐬 → ", model.gaussianprior.𝐬)
 			end
 			if normΔ < x_reltol
-				if verbose
-					println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
-				end
+				verbose && println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
 				break
+			else
+				sortparameters!(model, 𝛉₀, index𝛉)
 			end
 		end
 		if (i==outer_iterations) && verbose
@@ -98,13 +96,55 @@ function maximizeevidence!(model::Model;
 		end
 	end
 	println("Best log-evidence: ", best𝐸)
-	println("Best hyperparameters: ", best𝛂)
-	println("Best parameters: ", best𝛟)
-	for j in eachindex(index𝛂)
-		model.precisionmatrix.diag[index𝛂[j]] = best𝛂[j]
-	end
-	sortparameters!(model, best𝛟, indexθ)
+	println("Best shrinkage coefficients: ", best𝛂)
+	println("Best smoothing coefficients: ", best𝐬)
+	println("Best parameters: ", best𝛉)
+	precisionmatrix!(model.gaussianprior, vcat(best𝛂,best𝐬))
+	sortparameters!(model, best𝛉, index𝛉)
 	return nothing
+end
+
+"""
+	logevidence!(memory, model, 𝛉)
+
+Log of the approximate marginal likelihood
+
+MODIFIED ARGUMENT
+-`memory`: a structure containing memory for in-place computation
+-`model`: structure containing the parameters, hyperparameters, and data
+
+UNMODIFIED ARGUMENT
+-`𝛉`: posterior mode
+"""
+function logevidence!(memory::Memoryforgradient, model::Model, 𝛉::Vector{<:Real})
+	loglikelihood!(model, memory, 𝛉)
+	𝐰 = 𝛉[model.gaussianprior.index𝚽]
+	logevidence(𝐇, memory.ℓ[1], model.gaussianprior.𝚽, 𝐰)
+end
+
+"""
+	logevidence(𝐇, ℓ, 𝚽, 𝐰)
+
+Evaluate the log-evidence
+
+ARGUMENT
+-`𝚽`: subset of the precision matrix corresponding to only the parametes with finite covariance
+-`𝐇`: subset of the Hessian of the log-likelihood evaluated at the MAP values of the parameters, containing only the elements with finite variance
+-`ℓ`: log-likelihood evaluated at the approximate posterior mode 𝐰
+-`𝐰`: subset of parameters corresponding to dimensions with finite covariance
+
+RETURN
+-log evidence
+"""
+function logevidence(𝐇::Matrix{<:Real}, ℓ::Real, 𝚽::Matrix{<:Real}, 𝐰::Vector{<:Real})
+	𝐌 = I - (𝚽 \ 𝐇)
+	logdet𝐌, signdet𝐌 = logabsdet(𝐌)
+	if signdet𝐌 < 0
+		println("negative determinant")
+		-Inf
+	else
+		ℓ - 0.5dot(𝐰, 𝚽, 𝐰) - 0.5logdet𝐌
+	end
 end
 
 """
@@ -124,36 +164,42 @@ RETURN
 """
 function maximizeevidence!(memory::Memoryforgradient,
 						model::Model,
-						𝐀₀::Diagonal,
-						𝐁₀𝛉ₘₐₚ::Vector{<:Real},
 						𝐇::Matrix{<:Real},
-						index𝛂::Vector{<:Integer},
-						𝛉ₘₐₚ::Vector{<:Real};
+						𝛉₀::Vector{<:Real};
 						αrange::Vector{<:Real}=[1e-1, 1e2],
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
-	concatentatedθ = FHMDDM.concatenateparameters(model)[1]
+	𝐰₀ = 𝛉₀[model.gaussianprior.index𝚽]
+	𝐁₀𝐰₀ = (model.gaussianprior.𝚽-𝐇)*𝐰₀
+	𝛂₀𝐬₀ = vcat(model.gaussianprior.𝛂, model.gaussianprior.𝐬)
+	𝐱₀ = 𝛂₀𝐬₀
+	for i in eachindex(𝛂₀𝐬₀)
+		𝐱₀[i] = native2real(𝛂₀𝐬₀[i], αrange[1], αrange[2])
+	end
+	𝛉 = concatenateparameters(model)[1]
 	function f(𝐱)
-		𝛂 = real2native.(𝐱, αrange[1], αrange[2])
-		-FHMDDM.logevidence!(concatentatedθ, memory, model, 𝛂, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
+		𝛂𝐬 = real2native.(𝐱, αrange[1], αrange[2])
+		-logevidence!(memory, model, 𝛉, 𝛂𝐬, 𝐁₀𝐰₀, 𝐇)
 	end
 	function g!(∇n𝐸, 𝐱)
-		𝛂 = real2native.(𝐱, αrange[1], αrange[2])
-		FHMDDM.∇negativelogevidence!(concatentatedθ, memory, model, ∇n𝐸, 𝛂, 𝐁₀𝛉ₘₐₚ, 𝐇, index𝛂)
+		𝛂𝐬 = real2native.(𝐱, αrange[1], αrange[2])
+		∇negativelogevidence!(memory, model, ∇n𝐸, 𝛉, 𝛂𝐬, 𝐁₀𝐰₀, 𝐇)
 		for i in eachindex(∇n𝐸)
 			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αrange[1], αrange[2])
 		end
 		return nothing
 	end
-	𝐱₀ = native2real.(model.precisionmatrix.diag[index𝛂], αrange[1], αrange[2])
 	optimizationresults = Optim.optimize(f, g!, 𝐱₀, optimizer, optimizationoptions)
 	𝐱̂ = Optim.minimizer(optimizationresults)
 	normΔ = 0.0
 	for i in eachindex(𝐱̂)
-		x₀ᵢ = native2real(𝐀₀.diag[i], αrange[1], αrange[2])
-		normΔ += (𝐱̂[i]/x₀ᵢ - 1.0)^2
-		model.precisionmatrix.diag[index𝛂[i]] = real2native(𝐱̂[i], αrange[1], αrange[2])
+		normΔ += (𝐱̂[i]/𝐱₀[i] - 1.0)^2
 	end
+	𝛂̂𝐬̂ = 𝐱̂
+	for i in eachindex(𝐱̂)
+		𝛂̂𝐬̂[i] = real2native(𝐱̂[i], αrange[1], αrange[2])
+	end
+	precisionmatrix!(model.gaussianprior, 𝛂̂𝐬̂)
 	return √normΔ
 end
 
@@ -163,12 +209,14 @@ end
 Log of the marginal likelihood
 
 MODIFIED ARGUMENT
+-`𝐁₁`: approximate hessian matrix of the posterior probability, as a function of the hyperparameters. This contains only the subset of parameters with finite variance.
+-`𝛉₁`: approximate posterior mode as a function, as a function of the hyperparameters.
 -`memory`: a structure containing memory for in-place computation
 -`model`: structure containing the parameters, hyperparameters, and data
 
 UNMODIFIED ARGUMENT
 -`𝐀₀`: precision matrix that was fixed and used to find the MAP values of the parameters
--`𝛂`: precisions being learned
+-`𝛂𝐬`: precisions being learned
 -`𝐇`: Hessian of the log-likelihood evaluated at the MAP values of the parameters
 -`index𝛂`: index of the precisions being fit within the full vector of concatenated precisions
 -`𝐁₀𝛉ₘₐₚ`: Hessian of the log-posterior evalued at the MAP values of the parameters multiplied by the MAP value of the parameters
@@ -176,45 +224,18 @@ UNMODIFIED ARGUMENT
 RETURN
 -log of the evidence
 """
-function logevidence!(concatenatedθ::Vector{<:Real},
-					memory::Memoryforgradient,
+function logevidence!(memory::Memoryforgradient,
 					model::Model,
-					𝛂::Vector{<:Real},
-					𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-					𝐇::Matrix{<:Real},
-					index𝛂::Vector{<:Integer})
-	𝐀 = Diagonal(𝛂)
-	𝐁 = 𝐀-𝐇
-    𝐰 = 𝐁 \ 𝐁₀𝛉ₘₐₚ
-	for i in eachindex(index𝛂)
-		concatenatedθ[index𝛂[i]] = 𝐰[i]
-	end
-	loglikelihood!(model, memory, concatenatedθ)
-	logevidence(𝐀, 𝐇, memory.ℓ[1], 𝐰)
-end
-
-"""
-	logevidence(𝐀, 𝐇, ℓ, 𝐰)
-
-Evaluate the log-evidence
-
-ARGUMENT
--`𝐀`: precision matrix, containing only the precisions being optimized
--`𝐇`: Hessian of the log-likelihood evaluated at the MAP values of the parameters
--`ℓ`: log-likelihood evaluated at the approximate posterior mode 𝐰
--`𝐰`: approximate posterior mode as a function of 𝐀ₒₚₜ for the precisions being optimized
-
-RETURN
--log evidence
-"""
-function logevidence(𝐀::Diagonal, 𝐇::Matrix{<:Real}, ℓ::Real, 𝐰::Vector{<:Real})
-	𝐌 = I - 𝐀^-1*𝐇
-	if det(𝐌) < 0
-		println("negative determinant") # try/catch block is much slower than conditional branching
-		-Inf
-	else
-		ℓ - 0.5dot(𝐰, 𝐀, 𝐰) - 0.5logdet(I - 𝐀^-1*𝐇)
-	end
+					𝛉::Vector{<:Real},
+					𝛂𝐬::Vector{<:Real},
+					𝐁₀𝐰₀::Vector{<:Real},
+					𝐇::Matrix{<:Real})
+	precisionmatrix!(model.gaussianprior, 𝛂𝐬)
+	@unpack index𝚽, 𝚽 = model.gaussianprior
+    𝐰 = (𝚽-𝐇) \ 𝐁₀𝐰₀
+	𝛉[index𝚽] .= 𝐰
+	loglikelihood!(model, memory, 𝛉)
+	logevidence(𝚽, 𝐇, memory.ℓ[1], 𝐰)
 end
 
 """
@@ -235,24 +256,35 @@ UNMODIFIED ARGUMENT
 -`index𝛂`: index of the precisions being fit within the full vector of concatenated precisions
 -`𝐁₀𝛉ₘₐₚ`: Hessian of the log-posterior evalued at the MAP values of the parameters multiplied by the MAP value of the parameters
 """
-function ∇negativelogevidence!(concatenatedθ::Vector{<:Real},
-								memory::Memoryforgradient,
+function ∇negativelogevidence!(memory::Memoryforgradient,
 								model::Model,
 								∇n𝐸::Vector{<:Real},
-								𝛂::Vector{<:Real},
-								𝐁₀𝛉ₘₐₚ::Vector{<:Real},
-								𝐇::Matrix{<:Real},
-								index𝛂::Vector{<:Integer})
-	𝐀 = Diagonal(𝛂)
-	𝐁 = 𝐀-𝐇
-    𝐰 = 𝐁 \ 𝐁₀𝛉ₘₐₚ
-	for i in eachindex(index𝛂)
-		concatenatedθ[index𝛂[i]] = 𝐰[i]
+								𝛉::Vector{<:Real},
+								𝛂𝐬::Vector{<:Real},
+								𝐁₀𝐰₀::Vector{<:Real},
+								𝐇::Matrix{<:Real})
+	precisionmatrix!(model.gaussianprior, 𝛂𝐬)
+	@unpack index𝚽, 𝚽, 𝐒, index𝛂_in_index𝚽, index𝐒_in_index𝚽 = model.gaussianprior
+	𝐁 = 𝚽-𝐇
+    𝐰 = 𝐁 \ 𝐁₀𝐰₀
+	𝛉[index𝚽] .= 𝐰
+	∇nℓ = similar(𝛉)
+	∇negativeloglikelihood!(∇nℓ, memory, model, 𝛉)
+	𝐦 = 𝐁 \ (𝚽*𝐰 + ∇nℓ[index𝚽]) # there might be a way to avoid the repeat inversions of B
+	𝛀 = (𝐁 \ (𝚽 \ 𝐇)')'
+	N_𝛂 = length(model.gaussianprior.𝛂)
+	for i=1:N_𝛂
+		k = index𝛂_in_index𝚽[i]
+		∇n𝐸[i] = 0.5*(𝐰[k]^2 + 𝛀[k,k]) - 𝐰[k]*𝐦[k]
 	end
-	∇nℓ = similar(concatenatedθ)
-	∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
-	𝐉 = -𝐁 \ Diagonal(𝐰) #Jacobian matrix of the posterior mode 𝐰 with respect to the precisions 𝛂
-	∇n𝐸 .= 𝐉'*(∇nℓ[index𝛂] .+ 𝐀*𝐰) .+ 0.5.*𝐰.*𝐰 .+ 0.5.*diag(𝐇*inv(I - (𝐀 \ 𝐇)))./𝐀.diag.^2.0
+	for j = 1:length(model.gaussianprior.𝐬)
+		𝐰ⱼ = 𝐰[index𝐒_in_index𝚽[j]]
+		𝐦ⱼ = 𝐦[index𝐒_in_index𝚽[j]]
+		𝛀ⱼ = 𝛀[index𝐒_in_index𝚽[j],index𝐒_in_index𝚽[j]]
+		𝐒ⱼ = 𝐒[j]
+		𝐰ⱼᵀ𝐒ⱼ = transpose(𝐰ⱼ)*𝐒ⱼ
+		∇n𝐸[N_𝛂+j] = 0.5*(𝐰ⱼᵀ𝐒ⱼ*𝐰ⱼ + tr(𝐒ⱼ*𝛀ⱼ)) - 𝐰ⱼᵀ𝐒ⱼ*𝐦ⱼ
+	end
 	return nothing
 end
 

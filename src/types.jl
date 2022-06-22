@@ -265,6 +265,14 @@ Information on the zero-meaned Gaussian prior distribution on the values of the 
 	𝐒::VMI
 	"coefficients of the L2 smoothing penalties"
 	𝐬::VF
+	"indices of the dimensions with finite variance"
+	index𝚽::VI = sort(union(index𝛂, index𝐒...))
+	"precision matrix of the dimensions with finite variance"
+	𝚽::MF= 𝚲[index𝚽,index𝚽]
+	"indices of 𝛂 within `index𝚽`"
+	index𝛂_in_index𝚽::VI = map(i->findfirst(index𝚽.==i), index𝛂)
+	"indices of 𝐒 within `index𝚽`"
+	index𝐒_in_index𝚽::VVI = map(indices->map(i->findfirst(index𝚽.==i), indices), index𝐒)
 end
 
 """

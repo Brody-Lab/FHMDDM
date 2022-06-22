@@ -109,29 +109,6 @@ function initialize_for_stochastic_transition!(model::Model; EMiterations::Integ
 	θ₀native.Aᶜ₂₂[1] = θnative.Aᶜ₂₂[1] = 0.999
 	native2real!(θreal, options, θnative)
 	initializeparameters!(model)
-	# posteriors!(memory, model)
-	# for i in eachindex(model.trialsets)
-	#     for mpGLM in model.trialsets[i].mpGLMs
-	#         maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
-	#     end
-	# end
-	# ℓs = fill(NaN, EMiterations)
-	# ∑γ = fill(NaN, model.options.K)
-	# ∑χ = fill(NaN, model.options.K, model.options.K)
-	# for i = 1:EMiterations
-	# 	joint_posteriors_of_coupling!(memory, model, ∑χ, ∑γ)
-	# 	ℓs[i] = memory.ℓ[1]
-	# 	if (i > 1) && (ℓs[i]-ℓs[i-1] >= 0.0) && ((ℓs[i]-ℓs[i-1])/abs(ℓs[i-1]) < relativeΔℓ)
-	# 		break
-	# 	end
-	# 	for s in eachindex(model.trialsets)
-	# 	    for mpGLM in model.trialsets[s].mpGLMs
-	# 	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[s])
-	# 	    end
-	# 	end
-	# 	maximizeECDLL!(model, ∑χ, ∑γ)
-	# end
-	# return ℓs
 end
 
 """
@@ -196,11 +173,11 @@ function maximizeposterior!(model::Model;
 							x_tol::AbstractFloat=0.0)
 	optimizer = LBFGS(linesearch = LineSearches.BackTracking())
 	memory = Memoryforgradient(model)
-	𝐀 = model.precisionmatrix
-    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + 0.5dot(concatenatedθ, 𝐀, concatenatedθ)
+	@unpack 𝚲 = model.gaussianprior
+    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + 0.5dot(concatenatedθ, 𝚲, concatenatedθ)
     function g!(∇, concatenatedθ)
 		∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
-		∇ .+= 𝐀.diag.*concatenatedθ
+		mul!(∇, 𝚲, concatenatedθ, 1, 1) # same as `∇ .+= 𝚲*concatenatedθ` but allocates no memory; not much faster though
 		return nothing
 	end
     Optim_options = Optim.Options(extended_trace=extended_trace,

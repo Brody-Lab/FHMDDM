@@ -16,6 +16,7 @@ julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_20a_test/T176_2018_05_03_b3K2K2/data.mat")
 julia> model.gaussianprior
 julia>
+julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_20a_test/no_smoothing/data.mat")
 julia> model.gaussianprior
 julia>
@@ -196,7 +197,7 @@ MODIFIED ARGUMENT
 -`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the shrinkage coefficients 𝛂 and smoothing coefficients 𝐬
 """
 function precisionmatrix!(gaussianprior::GaussianPrior)
-    @unpack 𝛂, index𝛂, index𝐒, 𝚲, 𝐒, 𝐬 = gaussianprior
+    @unpack 𝛂, index𝛂, index𝐒, 𝚲, 𝐒, 𝐬, 𝚽, index𝚽  = gaussianprior
     𝚲 .= 0
     for i in eachindex(index𝛂)
         j = index𝛂[i]
@@ -205,5 +206,30 @@ function precisionmatrix!(gaussianprior::GaussianPrior)
     for i in eachindex(index𝐒)
         𝚲[index𝐒[i],index𝐒[i]] .+= 𝐬[i].*𝐒[i]
     end
+	𝚽 .= 𝚲[index𝚽, index𝚽]
     return nothing
+end
+
+"""
+	precisionmatrix!(gaussianprior, 𝛂𝐬)
+
+Update the precision matrix with new L2 coefficients
+
+MODIFIED ARGUMENT
+-`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the shrinkage coefficients 𝛂 and smoothing coefficients 𝐬
+
+UNMODFIED ARGUMENT
+-`𝛂𝐬`: vector concatenating the values of the L2 shrinkage coefficients and the L2 smoothing coefficcients
+"""
+function precisionmatrix!(gaussianprior::GaussianPrior, 𝛂𝐬::Vector{<:AbstractFloat})
+	length𝛂 = length(model.gaussianprior.𝛂)
+	for i = 1:length𝛂
+		model.gaussianprior.𝛂[i] = 𝛂𝐬[i]
+	end
+	length𝐬 = length(model.gaussianprior.𝐬)
+	for i = 1:length𝐬
+		j = i + length𝛂
+		model.gaussianprior.𝐬[i] = 𝛂𝐬[j]
+	end
+	precisionmatrix!(gaussianprior)
 end
