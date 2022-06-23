@@ -248,31 +248,38 @@ end
 
 Information on the zero-meaned Gaussian prior distribution on the values of the parameters in real space
 """
-@with_kw struct GaussianPrior{MF<:Matrix{<:AbstractFloat},
+@with_kw struct GaussianPrior{MR<:Matrix{<:Real},
 								VI<:Vector{<:Integer},
 								VVI<:Vector{<:Vector{<:Integer}},
 								VMI<:Vector{<:Matrix{<:Integer}},
-								VF<:Vector{<:AbstractFloat}}
+								VR<:Vector{<:Real}}
 	"coefficients of the L2 shrinkage penalties"
-	𝛂::VF
+	𝛂::VR
 	"indices of the parameters being shrunk"
 	index𝛂::VI
 	"indices of the parameters being smoothed"
 	index𝐒::VVI
 	"the precision matrix, i.e., inverse of the covariance matrix"
-	𝚲::MF
+	𝚲::MR
 	"vector of the squared difference matrices for implementing L2 smoothing penalties"
 	𝐒::VMI
 	"coefficients of the L2 smoothing penalties"
-	𝐬::VF
+	𝐬::VR
 	"indices of the dimensions with finite variance"
 	index𝚽::VI = sort(union(index𝛂, index𝐒...))
 	"precision matrix of the dimensions with finite variance"
-	𝚽::MF= 𝚲[index𝚽,index𝚽]
+	𝚽::MR= 𝚲[index𝚽,index𝚽]
 	"indices of 𝛂 within `index𝚽`"
 	index𝛂_in_index𝚽::VI = map(i->findfirst(index𝚽.==i), index𝛂)
 	"indices of 𝐒 within `index𝚽`"
-	index𝐒_in_index𝚽::VVI = map(indices->map(i->findfirst(index𝚽.==i), indices), index𝐒)
+	index𝐒_in_index𝚽::VVI =
+		let
+			if isempty(index𝐒)
+				copy(index𝐒)
+			else
+				map(indices->map(i->findfirst(index𝚽.==i), indices), index𝐒)
+ 			end
+		end
 end
 
 """
@@ -355,6 +362,10 @@ Results of cross-validation
 	rll_choice::VVF
 	"rll_spikes[i][n] indicate the time-averaged log-likelihood of the spike train of the n-th neuron in the -th trialset, relative to the baseline time-averaged log-likelihood computed under a Poisson distribution parametrized by mean spike train response"
 	rll_spikes::VVF
+	"L2 shrinkage coefficients"
+	𝛂::VVF
+	"L2 smoothing coefficients"
+	𝐬::VVF
 end
 
 """

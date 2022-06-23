@@ -419,20 +419,6 @@ function dictionary(clicks::Clicks)
 end
 
 """
-	dictionary(gaussianprior)
-
-Convert an instance of `GaussianPrior` into a `Dict`
-"""
-function dictionary(gaussianprior::GaussianPrior)
-	Dict("alpha" => gaussianprior.𝛂,
-		"index_alpha" => gaussianprior.index𝛂,
-		"index_S" => gaussianprior.index𝐒,
-		"Lambda" => gaussianprior.𝚲,
-		"S"=>gaussianprior.𝐒,
-		"s"=>gaussianprior.𝐬)
-end
-
-"""
     dictionary(mpGLM::MixturePoissonGLM)
 
 Convert into a dictionary a mixture of Poisson generalized linear model
@@ -503,20 +489,9 @@ function dictionary(cvresults::CVResults)
 		"lambdaDeltat" => cvresults.λΔt,
 		"pchoice" => cvresults.pchoice,
 		"rll_choice"=>cvresults.rll_choice,
-		"rll_spikes"=>cvresults.rll_spikes)
-end
-
-"""
-	GaussianPrior(dict)
-
-Convert a dictionary into an instance of `GaussianPrior`
-"""
-function GaussianPrior(gp::Dict)
-	GaussianPrior(𝛂=vec(gp["alpha"]),
-				index𝛂=vec(gp["index_alpha"]),
-				index𝐒=vec.(gp["index_S"]),
-				𝐒 = gp["S"],
-				𝐬 = vec(gp["s"]))
+		"rll_spikes"=>cvresults.rll_spikes,
+		"shrinkagecoefficients"=>cvresults.𝛂,
+		"smoothingcoefficients"=>cvresults.𝐬)
 end
 
 """

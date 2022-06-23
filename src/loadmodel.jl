@@ -60,8 +60,11 @@ function Model(options::Options,
 			end
 		end
 	end
+	𝛂 = vec(read(resultsMAT, "shrinkagecoefficients"))
+	𝐬 = vec(read(resultsMAT, "smoothingcoefficients"))
+	gaussianprior = GaussianPrior(options, trialsets, vcat(𝛂,𝐬))
 	Model(options=options,
-		   gaussianprior=GaussianPrior(read(resultsMAT, "gaussianprior")),
+		   gaussianprior=gaussianprior,
 		   θnative=Latentθ(read(resultsMAT, "theta_native")),
 		   θreal=Latentθ(read(resultsMAT, "theta_real")),
 		   θ₀native=Latentθ(read(resultsMAT, "theta0_native")),

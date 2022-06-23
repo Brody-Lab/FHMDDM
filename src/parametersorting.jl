@@ -444,7 +444,7 @@ function Model(concatenatedθ::Vector{type},
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
 	Model(	options = model.options,
-			precisionmatrix = copy(model.precisionmatrix),
+			gaussianprior = model.gaussianprior,
 			θnative = θnative,
 			θ₀native=model.θ₀native,
 			θreal = θreal,
@@ -454,11 +454,11 @@ end
 """
 	Model(concatenatedθ, indexθ, model)
 
-Create a new model using the concatenated parameter values
+Create a new model using the concatenated values of the parameters controlling the latent variable
 
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector of concatenated parameter values
--`indexθ`: struct indexing of each parameter in the vector of concatenated values
+-`indexθ`: struct indexing of each parameter in the vector of concatenated values of the parameters controlling the latnet variables
 -`model`: the model with old parameter values
 
 RETURN
@@ -472,7 +472,7 @@ function Model(concatenatedθ::Vector{type},
 	θnative = Latentθ((zeros(type,1) for field in fieldnames(Latentθ))...)
 	real2native!(θnative, model.options, θreal)
 	Model(	options = model.options,
-			precisionmatrix = copy(model.precisionmatrix),
+			gaussianprior = model.gaussianprior,
 			θnative = θnative,
 			θ₀native=model.θ₀native,
 			θreal = θreal,

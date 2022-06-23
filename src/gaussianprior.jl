@@ -43,6 +43,40 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 end
 
 """
+	GaussianPrior(options, trialsets, 𝛂𝐬)
+
+Construct a structure containing information on the Gaussian prior on the model's parameters
+
+ARGUMENT
+-`options`: settings of the model
+-`trialsets`: data for the model
+-`𝛂𝐬`: a vector concatenating the L2 shrinkrage and smoothing coefficients
+
+OUTPUT
+-an instance of `GaussianPrior`
+
+"""
+function GaussianPrior(options::Options, trialsets::Vector{<:Trialset}, 𝛂𝐬::Vector{type}) where {type<:Real}
+    indexθ = indexparameters(options, trialsets)
+    N = indexθ.glmθ[end][end].𝐯[end][end]
+    𝚲 = zeros(type,N,N)
+	index𝛂 = index_shrinkage_coefficients(indexθ)
+	𝛂 = 𝛂𝐬[1:length(index𝛂)]
+	if isnan(options.s₀)
+		𝐒 = Matrix{eltype(options.nbases_each_event)}[]
+		index𝐒 = Vector{eltype(options.nbases_each_event)}[]
+		𝐬 = type[]
+	else
+		index𝐒 = index_smoothing_coefficients(indexθ.glmθ, trialsets[1].mpGLMs[1].max_spikehistory_lag, options.nbases_each_event)
+		𝐒 = squared_difference_matrices(indexθ.glmθ, options.nbases_each_event)
+		𝐬 = 𝛂𝐬[length(index𝛂)+1:length(index𝛂)+length(index𝐒)]
+	end
+    gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬)
+    precisionmatrix!(gaussianprior)
+    return gaussianprior
+end
+
+"""
     squared_difference_matrices(model)
 
 Return the square of the difference matrix of each gorup of parameters being smoothed
@@ -222,14 +256,38 @@ UNMODFIED ARGUMENT
 -`𝛂𝐬`: vector concatenating the values of the L2 shrinkage coefficients and the L2 smoothing coefficcients
 """
 function precisionmatrix!(gaussianprior::GaussianPrior, 𝛂𝐬::Vector{<:AbstractFloat})
-	length𝛂 = length(model.gaussianprior.𝛂)
+	length𝛂 = length(gaussianprior.𝛂)
 	for i = 1:length𝛂
-		model.gaussianprior.𝛂[i] = 𝛂𝐬[i]
+		gaussianprior.𝛂[i] = 𝛂𝐬[i]
 	end
-	length𝐬 = length(model.gaussianprior.𝐬)
+	length𝐬 = length(gaussianprior.𝐬)
 	for i = 1:length𝐬
 		j = i + length𝛂
-		model.gaussianprior.𝐬[i] = 𝛂𝐬[j]
+		gaussianprior.𝐬[i] = 𝛂𝐬[j]
+	end
+	precisionmatrix!(gaussianprior)
+end
+
+"""
+	precisionmatrix!(gaussianprior, 𝛂, 𝐬)
+
+Update the precision matrix with new L2 coefficients
+
+MODIFIED ARGUMENT
+-`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the shrinkage coefficients 𝛂 and smoothing coefficients 𝐬
+
+UNMODFIED ARGUMENT
+-`𝛂`: L2 shrinkage coefficients
+-`𝐬`: L2 smoothing coefficcients
+"""
+function precisionmatrix!(gaussianprior::GaussianPrior, 𝛂::Vector{<:AbstractFloat}, 𝐬::Vector{<:AbstractFloat})
+	length𝛂 = length(gaussianprior.𝛂)
+	for i = 1:length𝛂
+		gaussianprior.𝛂[i] = 𝛂[i]
+	end
+	length𝐬 = length(gaussianprior.𝐬)
+	for i = 1:length𝐬
+		gaussianprior.𝐬[i] = 𝐬[i]
 	end
 	precisionmatrix!(gaussianprior)
 end

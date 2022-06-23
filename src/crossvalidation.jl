@@ -29,7 +29,9 @@ function crossvalidate(kfold::Integer, model::Model)
 			λΔt = λΔt,
 			pchoice = pchoice,
 			rll_choice = rll_choice,
-			rll_spikes = rll_spikes)
+			rll_spikes = rll_spikes,
+        	𝛂 = collect(trainingmodel.gaussianprior.𝛂 for trainingmodel in trainingmodels),
+			𝐬 = collect(trainingmodel.gaussianprior.𝐬 for trainingmodel in trainingmodels))
 end
 
 """
@@ -46,9 +48,11 @@ RETURN
 """
 function train(cvindices::CVIndices, model::Model)
 	θ₀native = initializeparameters(model.options)
-	trainingmodel = Model(trialsets = trainingset(cvindices, model.trialsets),
+	training_trialsets = trainingset(cvindices, model.trialsets)
+	gaussianprior = GaussianPrior(model.options, training_trialsets)
+	trainingmodel = Model(trialsets = training_trialsets,
 						  options = model.options,
-						  precisionmatrix = copy(model.precisionmatrix),
+						  gaussianprior = gaussianprior,
 						  θ₀native = θ₀native,
 						  θnative = Latentθ(([getfield(θ₀native, f)...] for f in fieldnames(Latentθ))...),
 						  θreal = native2real(model.options, θ₀native))
@@ -153,7 +157,7 @@ OUTPUT
 function test(cvindices::CVIndices, model::Model, trainingmodel::Model)
 	testmodel = Model(trialsets = testingset(cvindices, model.trialsets),
 					options = model.options,
-					precisionmatrix = trainingmodel.precisionmatrix,
+					gaussianprior = trainingmodel.gaussianprior,
 					θ₀native = trainingmodel.θ₀native,
 					θnative = trainingmodel.θnative,
 					θreal = native2real(model.options, trainingmodel.θnative))
