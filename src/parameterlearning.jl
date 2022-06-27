@@ -153,13 +153,14 @@ OPTIONAL ARGUMENT
 RETURN
 `losses`: value of the loss function (negative of the un-normalized posterior probability of the parameters) across iterations. If `store_trace` were set to false, then these are NaN's
 `gradientnorms`: 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
+`optimizationresults`: structure containing the results of the optimization
 
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat")
 julia> FHMDDM.initializeparameters!(model)
-julia> losses, gradientnorms = maximizeposterior!(model)
+julia> losses, gradientnorms, optimizationresults = maximizeposterior!(model)
 ```
 """
 function maximizeposterior!(model::Model;
@@ -202,5 +203,5 @@ function maximizeposterior!(model::Model;
 			losses[i] = traces[i].value
 		end
 	end
-    return losses, gradientnorms
+    return losses, gradientnorms, optimizationresults
 end

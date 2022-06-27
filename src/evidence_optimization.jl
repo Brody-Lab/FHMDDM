@@ -37,13 +37,20 @@ function maximizeevidence!(model::Model;
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-	    gradientnorms = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[2]
-		if gradientnorms[findlast(x->!isnan(x), gradientnorms)] > g_tol
-			new_α = min(100.0, 2geomean(model.gaussianprior.𝛂))
-			model.gaussianprior.𝛂 .= new_α
-			new_s = min(100.0, 2geomean(model.gaussianprior.𝐬))
-			model.gaussianprior.𝐬 .= new_s
-			verbose && println("Outer iteration: ", i, ": because a critical point could not be found, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New (𝛂, 𝐬) → (", new_α, ", ", new_s, ")")
+	    results = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[3]
+		if !Optim.converged(results)
+			if Optim.iteration_limit_reached(results)
+				new_α = min(100.0, 2geomean(model.gaussianprior.𝛂))
+				model.gaussianprior.𝛂 .= new_α
+				new_s = min(100.0, 2geomean(model.gaussianprior.𝐬))
+				model.gaussianprior.𝐬 .= new_s
+				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New (𝛂, 𝐬) → (", new_α, ", ", new_s, ")")
+			else
+				verbose && println("Outer iteration: ", i, ": because of a line search failure, Gaussian noise is added to the parameter values")
+				𝛉 = concatenateparameters(model)[1]
+				𝛉 .+= randn(length(𝛉))
+				sortparameters!(model, 𝛉, index𝛉)
+			end
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
 			𝛉₀ = concatenateparameters(model)[1] # exact posterior mode
@@ -166,26 +173,47 @@ function maximizeevidence!(memory::Memoryforgradient,
 						𝐇::Matrix{<:Real},
 						𝛉₀::Vector{<:Real};
 						αrange::Vector{<:Real}=[1e-1, 1e2],
+						srange::Vector{<:Real}=[1e-8, 1e2],
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
 	𝐰₀ = 𝛉₀[model.gaussianprior.index𝚽]
 	𝐁₀𝐰₀ = (model.gaussianprior.𝚽-𝐇)*𝐰₀
 	𝛂₀𝐬₀ = vcat(model.gaussianprior.𝛂, model.gaussianprior.𝐬)
 	𝐱₀ = 𝛂₀𝐬₀
-	for i in eachindex(𝛂₀𝐬₀)
+	N𝛂 = length(model.gaussianprior.𝛂)
+	N𝐬 = length(model.gaussianprior.𝐬)
+	for i = 1:N𝛂
 		𝐱₀[i] = native2real(𝛂₀𝐬₀[i], αrange[1], αrange[2])
+	end
+	for i = N𝛂+1:N𝛂+N𝐬
+		𝐱₀[i] = native2real(𝛂₀𝐬₀[i], srange[1], srange[2])
 	end
 	𝛉 = concatenateparameters(model)[1]
 	∇nℓ = similar(𝛉)
 	function f(𝐱)
-		𝛂𝐬 = real2native.(𝐱, αrange[1], αrange[2])
+		𝛂𝐬 = copy(𝐱)
+		for i = 1:N𝛂
+			𝛂𝐬[i] = real2native(𝐱[i], αrange[1], αrange[2])
+		end
+		for i = N𝛂+1:N𝛂+N𝐬
+			𝛂𝐬[i] = real2native(𝐱[i], srange[1], srange[2])
+		end
 		-logevidence!(memory, model, 𝛉, 𝛂𝐬, 𝐁₀𝐰₀, 𝐇)
 	end
 	function g!(∇n𝐸, 𝐱)
-		𝛂𝐬 = real2native.(𝐱, αrange[1], αrange[2])
+		𝛂𝐬 = copy(𝐱)
+		for i = 1:N𝛂
+			𝛂𝐬[i] = real2native(𝐱[i], αrange[1], αrange[2])
+		end
+		for i = N𝛂+1:N𝛂+N𝐬
+			𝛂𝐬[i] = real2native(𝐱[i], srange[1], srange[2])
+		end
 		∇negativelogevidence!(memory, model, ∇n𝐸, ∇nℓ, 𝛉, 𝛂𝐬, 𝐁₀𝐰₀, 𝐇)
-		for i in eachindex(∇n𝐸)
+		for i = 1:N𝛂
 			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αrange[1], αrange[2])
+		end
+		for i = N𝛂+1:N𝛂+N𝐬
+			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], srange[1], srange[2])
 		end
 		return nothing
 	end
@@ -196,8 +224,11 @@ function maximizeevidence!(memory::Memoryforgradient,
 		normΔ += (𝐱̂[i]/𝐱₀[i] - 1.0)^2
 	end
 	𝛂̂𝐬̂ = 𝐱̂
-	for i in eachindex(𝐱̂)
+	for i = 1:N𝛂
 		𝛂̂𝐬̂[i] = real2native(𝐱̂[i], αrange[1], αrange[2])
+	end
+	for i = N𝛂+1:N𝛂+N𝐬
+		𝛂̂𝐬̂[i] = real2native(𝐱̂[i], srange[1], srange[2])
 	end
 	precisionmatrix!(model.gaussianprior, 𝛂̂𝐬̂)
 	return √normΔ
