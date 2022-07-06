@@ -226,7 +226,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 				∇f[t][q] = ∇pY[t][i_y] .* Aᵃ⨉f⨉Aᶜᵀ .+ pY[t] .* (Aᵃ * ∇f[t-1][q] * Aᶜᵀ)
 			elseif i_ψ > 0
 				if t==trial.ntimesteps
-					∇f[t][q] = ∂pY𝑑_∂ψ .* Aᵃ⨉f⨉Aᶜᵀ
+					∇f[t][q] = ∂pY𝑑_∂ψ .* Aᵃ⨉f⨉Aᶜᵀ # questionable that it does not have the `pY[t] .* (Aᵃ * ∇f[t-1][q] * Aᶜᵀ)` term
 				else
 					∇f[t][q] .= 0.0
 				end

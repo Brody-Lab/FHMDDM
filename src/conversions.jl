@@ -353,7 +353,7 @@ function dictionary(options::Options)
 			"fit_lambda"=>options.fit_λ,
 			"fit_mu0"=>options.fit_μ₀,
 			"fit_phi"=>options.fit_ϕ,
-			"fit_πᶜ₁"=>	options.fit_πᶜ₁,
+			"fit_pic1"=>options.fit_πᶜ₁,
 			"fit_psi"=>options.fit_ψ,
 			"fit_sigma2_a"=>options.fit_σ²ₐ,
 			"fit_sigma2_i"=>options.fit_σ²ᵢ,
@@ -364,21 +364,22 @@ function dictionary(options::Options)
 			"lqu_Ac22"=>options.lqu_Aᶜ₂₂,
 			"lqu_B"=>	options.lqu_B,
 			"lqu_k"=>	options.lqu_k,
-			"lqu_λ"=>	options.lqu_λ,
-			"lqu_μ₀"=>	options.lqu_μ₀,
-			"lqu_ϕ"=>	options.lqu_ϕ,
-			"lqu_πᶜ₁"=>	options.lqu_πᶜ₁,
-			"lqu_ψ"=>	options.lqu_ψ,
-			"lqu_σ²ₐ"=>	options.lqu_σ²ₐ,
-			"lqu_σ²ᵢ"=>	options.lqu_σ²ᵢ,
-			"lqu_σ²ₛ"=>	options.lqu_σ²ₛ,
-			"lqu_wₕ"=>	options.lqu_wₕ,
+			"lqu_lambda"=>	options.lqu_λ,
+			"lqu_mu0"=>	options.lqu_μ₀,
+			"lqu_phi"=>	options.lqu_ϕ,
+			"lqu_pic1"=>	options.lqu_πᶜ₁,
+			"lqu_psi"=>	options.lqu_ψ,
+			"lqu_sigma2_a"=>	options.lqu_σ²ₐ,
+			"lqu_sigma2_i"=>	options.lqu_σ²ᵢ,
+			"lqu_sigma2_s"=>	options.lqu_σ²ₛ,
+			"lqu_w_h"=>	options.lqu_wₕ,
     		"minpa"=>	options.minpa,
             "nbases_each_event"=>options.nbases_each_event,
     		"objective"=> options.objective,
 			"resultspath"=>options.resultspath,
 			"s0"=>options.s₀,
 			"tuning_state_dependent"=>options.tuning_state_dependent,
+			"updateDDtransformation"=>options.updateDDtransformation,
 			"Xi"=>options.Ξ)
 end
 
@@ -491,7 +492,8 @@ function dictionary(cvresults::CVResults)
 		"rll_choice"=>cvresults.rll_choice,
 		"rll_spikes"=>cvresults.rll_spikes,
 		"shrinkagecoefficients"=>cvresults.𝛂,
-		"smoothingcoefficients"=>cvresults.𝐬)
+		"smoothingcoefficients"=>cvresults.𝐬,
+		"Phi"=>cvresults.Φ)
 end
 
 """
@@ -588,6 +590,7 @@ function Options(options::Dict)
 			resultspath = options["resultspath"],
 			s₀ = options["s0"],
 			tuning_state_dependent = options["tuning_state_dependent"],
+			updateDDtransformation=options["updateDDtransformation"],
 			Ξ = convert(Int, options["Xi"]))
 end
 

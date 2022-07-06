@@ -54,7 +54,8 @@ function save(model::Model)
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
                 "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "alphas"=>model.precisionmatrix.diag)
+                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
+                "smoothingcoefficients"=>model.gaussianprior.𝐬)
     matwrite(model.options.resultspath, dict)
     return nothing
 end

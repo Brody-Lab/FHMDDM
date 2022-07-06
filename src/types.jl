@@ -126,6 +126,8 @@ Model settings
 	s₀::TF=0.0
 	"whether the tuning to the accumulator is state-dependent"
 	tuning_state_dependent::TB=true
+	"whether to update the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space, to be the value learned from maximizing the evidence of only the choices"
+	updateDDtransformation::TB=true
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 	"number of states of the coupling variable"
@@ -345,6 +347,7 @@ Results of cross-validation
 							VL<:Vector{<:Latentθ},
 							VVVG<:Vector{<:Vector{<:Vector{<:GLMθ}}},
 							VVF<:Vector{<:Vector{<:AbstractFloat}},
+							VMF<:Vector{<:Matrix{<:AbstractFloat}},
 							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}}
 	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
 	cvindices::VC
@@ -366,6 +369,8 @@ Results of cross-validation
 	𝛂::VVF
 	"L2 smoothing coefficients"
 	𝐬::VVF
+	"temporal basis functions for the tuning of the accumulated evidence"
+	Φ::VMF
 end
 
 """
@@ -889,4 +894,83 @@ Container of variables used by both the log-likelihood and gradient computation
 	p𝐘𝑑::VVVMR
 	"number of accumulator states"
 	Ξ::TI
+end
+
+
+"""
+	Memory and pre-computed quantities for obtaining the hessian of the log-likelihood of the choices
+"""
+@with_kw struct Memory_for_hessian_choiceLL{TI<:Integer,
+											VI<:Vector{<:Integer},
+											VR<:Vector{<:Real},
+											MR<:Matrix{<:Real},
+											VVR<:Vector{<:Vector{<:Real}},
+											VMR<:Vector{<:Matrix{<:Real}},
+											MVR<:Matrix{<:Vector{<:Real}},
+											MMR<:Matrix{<:Matrix{<:Real}},
+											VVVR<:Vector{<:Vector{<:Vector{<:Real}}},
+											VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
+											VMMR<:Vector{<:Matrix{<:Matrix{<:Real}}},
+											PT<:Probabilityvector,
+											VS<:Vector{<:Symbol}}
+	"names of variables involved in specifying the hessian"
+	parameternames::VS
+	"number of accumulator states"
+	Ξ::TI
+	"total number of parameters used to compute the log-likelihood of choices"
+	nθ::TI=length(parameternames)
+	"indices of the parameters that influence the prior probabilities of the accumulator"
+	indexθ_pa₁::VI
+	"indices of the parameters that influence the transition probabilities of the accumulator"
+	indexθ_paₜaₜ₋₁::VI
+	"indices of the parameters that influence the lapse rate"
+	indexθ_ψ::VI
+	"number of parameters that influence the prior probabilities of the accumulator"
+	nθ_pa₁::TI = length(indexθ_pa₁)
+	"number of parameters that influence the transition probabilities of the accumulator"
+	nθ_paₜaₜ₋₁::TI = length(indexθ_paₜaₜ₋₁)
+	"number of the parameters that influence the lapse rate"
+	nθ_ψ::TI = length(indexθ_ψ)
+	"whether a parameter influences the prior probability of the accumulator, and if so, the index of that parameter"
+	index_pa₁_in_θ::VI = let x = zeros(Int, nθ); x[indexθ_pa₁] .= 1:nθ_pa₁; x end
+	"whether a parameter influences the transition probability of the accumulator, and if so, the index of that parameter"
+	index_paₜaₜ₋₁_in_θ::VI = let x = zeros(Int, nθ); x[indexθ_paₜaₜ₋₁] .= 1:nθ_paₜaₜ₋₁; x end
+	"whether a parameter influences the prior probability of the lapse, and if so, the index of that parameter"
+	index_ψ_in_θ::VI = let x = zeros(Int, nθ); x[indexθ_ψ] .= 1:nθ_ψ; x end
+	"`Probabilityvector`: a structure containing memory for computing the probability vector of the accumulator and the first- and second-order partial derivatives of the elements of the probability vector"
+	P::PT
+	"log-likelihood"
+	ℓ::VR = zeros(1)
+	"gradient of the log-likelihood"
+	∇ℓ::VR=zeros(nθ)
+	"hessian of the log-likelihood"
+	∇∇ℓ::MR=zeros(nθ,nθ)
+	"forward term. Element 'f[t][i]' corresponds to the t-th time step in a trial and i-th accumulator state"
+	f::VVR
+	"gradient of the forward term. Element '∇f[t][q][i]' corresponds to the t-th time step in a trial, q-th parameter, and i-th accumulator state"
+	∇f::VVVR
+	"gradient of the past-conditioned likelihood. Element `∇D[q]` corresponds to q-th parameter among all parameters"
+	∇D::VR=zeros(nθ)
+	"gradient of the backward term. Element '∇b[q][i]' corresponds to the q-th parameter and i-th accumulator state"
+	∇b::VVR=collect(zeros(Ξ) for q=1:nθ)
+	"transition matrix of the accumulator at a time step without auditory input. Element `Aᵃsilent[q][i,j]` corresponds to the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)}"
+	Aᵃsilent::MR
+	"first-order partial derivatives of the transition matrix of the accumulator at a time step without auditory input. Element `∇Aᵃsilent[q][i,j]` corresponds to the derivative of the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)} with respect to the q-th parameter that influence the accumulator transitions."
+	∇Aᵃsilent::VMR
+	"second-order partial derivatives of the transition matrix of the accumulator at a time step without auditory input. Element `∇∇Aᵃsilent[q,r][i,j]` corresponds to the derivative of the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)} with respect to the q-th parameter and r-th parameter that influence the accumulator transitions."
+	∇∇Aᵃsilent::MMR
+	"transition matrix of the accumulator at a time-step when there is input. Element `Aᵃinput[t][i,j]` corresponds to the t-th time step in a trial with input, i-th accumulator step in the current time step, and j-th accumulator state in the previous time step "
+	Aᵃinput::VMR
+	"partial derivatives of the transition matrix of the accumulator at a time-step when there is input. Element `∇Aᵃinput[q][t][i,j]` corresponds to the q-th drift-diffusion parameter, t-th time step in a trial with input, i-th accumulator step in the current time step, and j-th accumulator state in the previous time step "
+	∇Aᵃinput::VVMR
+	"second order partial derivatives of the transition matrix of the accumulator at a time-step when there is input. Element `∇∇Aᵃinput[q,r][t][i,j]` corresponds to the q-th and r-th drift-diffusion parameter, t-th time step in a trial with input, i-th accumulator step in the current time step, and j-th accumulator state in the previous time step "
+	∇∇Aᵃinput::VMMR
+	"first-order partial derivatives of the prior probability of the accumulator. Element `∇pa₁[q][i]` corresponds to the q-th parameter among the parameters that govern prior probability and i-th accumulator state"
+	∇pa₁::VVR
+	"second-order partial derivatives of the prior probability of the accumulator. Element `∇∇pa₁[q,r][i]` corresponds to the q-th and r-th parameter among the parameters that govern prior probability and i-th accumulator state"
+	∇∇pa₁::MVR
+	"conditional likelihood of a choice. Element `p𝑑[i]` corresponds to the i-th accumulator state"
+	p𝑑::VR=zeros(Ξ)
+	"derivative of the conditional likelihood of a choice with respect to the lapse parameter ψ. Element `∂p𝑑_∂ψ[i]` corresponds to the i-th accumulator state"
+	∂p𝑑_∂ψ::VR=zeros(Ξ)
 end

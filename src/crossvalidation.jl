@@ -31,7 +31,8 @@ function crossvalidate(kfold::Integer, model::Model)
 			rll_choice = rll_choice,
 			rll_spikes = rll_spikes,
         	𝛂 = collect(trainingmodel.gaussianprior.𝛂 for trainingmodel in trainingmodels),
-			𝐬 = collect(trainingmodel.gaussianprior.𝐬 for trainingmodel in trainingmodels))
+			𝐬 = collect(trainingmodel.gaussianprior.𝐬 for trainingmodel in trainingmodels),
+			Φ = collect(trainingmodel.trialsets[1].mpGLMs[1].Φ for trainingmodel in trainingmodels))
 end
 
 """

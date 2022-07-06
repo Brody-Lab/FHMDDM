@@ -16,14 +16,18 @@ RETURN
 function adapt(clicks::Clicks, k::T1, ϕ::T2) where {T1<:Real, T2<:Real}
 	T = T1<:T2 ? T2 : T1
     nclicks = length(clicks.time)
-	@assert nclicks > 0
-    C = zeros(T, nclicks)
-	C[1] = 1.0 - (1.0-ϕ)*exp(-k*clicks.time[1])
-    for i = 2:nclicks
-        Δt = clicks.time[i] - clicks.time[i-1]
-        C[i] = 1.0 - (1.0-ϕ*C[i-1])*exp(-k*Δt)
-    end
-    Adaptedclicks(C=C)
+	if nclicks == 0
+		Adaptedclicks(C=zeros(T,0))
+	else
+		@assert nclicks > 0
+	    C = zeros(T, nclicks)
+		C[1] = 1.0 - (1.0-ϕ)*exp(-k*clicks.time[1])
+	    for i = 2:nclicks
+	        Δt = clicks.time[i] - clicks.time[i-1]
+	        C[i] = 1.0 - (1.0-ϕ*C[i-1])*exp(-k*Δt)
+	    end
+	    Adaptedclicks(C=C)
+	end
 end
 
 """
@@ -42,21 +46,24 @@ RETURN
 function ∇adapt(clicks::Clicks, k::T1, ϕ::T2) where {T1<:Real, T2<:Real}
 	T = T1<:T2 ? T2 : T1
 	nclicks = length(clicks.time)
-	@assert nclicks > 0
-    C, dC_dk, dC_dϕ = zeros(T, nclicks), zeros(T, nclicks), zeros(T, nclicks)
-	Δt = clicks.time[1]
-    e⁻ᵏᵈᵗ = exp(-k*Δt)
-    C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
-    dC_dϕ[1] = e⁻ᵏᵈᵗ
-    dC_dk[1] = e⁻ᵏᵈᵗ*(1.0-ϕ)*Δt
-    for i = 2:nclicks
-        Δt = clicks.time[i] - clicks.time[i-1]
-        e⁻ᵏᵈᵗ = exp(-k*Δt)
-        C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
-        dC_dϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dC_dϕ[i-1])
-        dC_dk[i] = e⁻ᵏᵈᵗ*(ϕ*dC_dk[i-1] + Δt*(1.0-ϕ*C[i-1]))
-    end
-    Adaptedclicks(C=C, dC_dk=dC_dk, dC_dϕ=dC_dϕ)
+	if nclicks == 0
+		Adaptedclicks(C=zeros(T,0))
+	else
+	    C, dC_dk, dC_dϕ = zeros(T, nclicks), zeros(T, nclicks), zeros(T, nclicks)
+		Δt = clicks.time[1]
+	    e⁻ᵏᵈᵗ = exp(-k*Δt)
+	    C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
+	    dC_dϕ[1] = e⁻ᵏᵈᵗ
+	    dC_dk[1] = e⁻ᵏᵈᵗ*(1.0-ϕ)*Δt
+	    for i = 2:nclicks
+	        Δt = clicks.time[i] - clicks.time[i-1]
+	        e⁻ᵏᵈᵗ = exp(-k*Δt)
+	        C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
+	        dC_dϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dC_dϕ[i-1])
+	        dC_dk[i] = e⁻ᵏᵈᵗ*(ϕ*dC_dk[i-1] + Δt*(1.0-ϕ*C[i-1]))
+	    end
+	    Adaptedclicks(C=C, dC_dk=dC_dk, dC_dϕ=dC_dϕ)
+	end
 end
 
 """
@@ -83,26 +90,29 @@ julia> adaptedclicks.d²C_dkdk[1]
 """
 function ∇∇adapt(clicks::Clicks, k::Real, ϕ::Real)
 	nclicks = length(clicks.time)
-	@assert nclicks > 0
-    C, dC_dk, dC_dϕ, d²C_dkdk, d²C_dkdϕ, d²C_dϕdϕ = zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks)
-	Δt = clicks.time[1]
-    e⁻ᵏᵈᵗ = exp(-k*Δt)
-    C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
-    dC_dϕ[1] = e⁻ᵏᵈᵗ
-    dC_dk[1] = e⁻ᵏᵈᵗ*(1.0-ϕ)*Δt
-    d²C_dkdk[1] = -Δt*dC_dk[1]
-	d²C_dkdϕ[1] = -Δt*dC_dϕ[1]
-    for i = 2:nclicks
-        Δt = clicks.time[i] - clicks.time[i-1]
-        e⁻ᵏᵈᵗ = exp(-k*Δt)
-        C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
-        dC_dϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dC_dϕ[i-1])
-        dC_dk[i] = e⁻ᵏᵈᵗ*(ϕ*dC_dk[i-1] + Δt*(1.0-ϕ*C[i-1]))
-		d²C_dkdk[i] = -Δt*dC_dk[i] + ϕ*e⁻ᵏᵈᵗ*(d²C_dkdk[i-1] - Δt*dC_dk[i-1])
-		d²C_dkdϕ[i] = -Δt*dC_dϕ[i] + e⁻ᵏᵈᵗ*(dC_dk[i-1] + ϕ*d²C_dkdϕ[i-1])
-		d²C_dϕdϕ[i] = e⁻ᵏᵈᵗ*(2*dC_dϕ[i-1] + ϕ*d²C_dϕdϕ[i-1])
-    end
-    Adaptedclicks(C=C, dC_dk=dC_dk, dC_dϕ=dC_dϕ, d²C_dkdk=d²C_dkdk, d²C_dkdϕ=d²C_dkdϕ, d²C_dϕdϕ=d²C_dϕdϕ)
+	if nclicks == 0
+		Adaptedclicks(C=zeros(typeof(k),0))
+	else
+	    C, dC_dk, dC_dϕ, d²C_dkdk, d²C_dkdϕ, d²C_dϕdϕ = zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks), zeros(nclicks)
+		Δt = clicks.time[1]
+	    e⁻ᵏᵈᵗ = exp(-k*Δt)
+	    C[1] = 1.0 - (1.0-ϕ)*e⁻ᵏᵈᵗ
+	    dC_dϕ[1] = e⁻ᵏᵈᵗ
+	    dC_dk[1] = e⁻ᵏᵈᵗ*(1.0-ϕ)*Δt
+	    d²C_dkdk[1] = -Δt*dC_dk[1]
+		d²C_dkdϕ[1] = -Δt*dC_dϕ[1]
+	    for i = 2:nclicks
+	        Δt = clicks.time[i] - clicks.time[i-1]
+	        e⁻ᵏᵈᵗ = exp(-k*Δt)
+	        C[i] = 1.0 - (1.0 - ϕ*C[i-1])*e⁻ᵏᵈᵗ
+	        dC_dϕ[i] = e⁻ᵏᵈᵗ*(C[i-1] + ϕ*dC_dϕ[i-1])
+	        dC_dk[i] = e⁻ᵏᵈᵗ*(ϕ*dC_dk[i-1] + Δt*(1.0-ϕ*C[i-1]))
+			d²C_dkdk[i] = -Δt*dC_dk[i] + ϕ*e⁻ᵏᵈᵗ*(d²C_dkdk[i-1] - Δt*dC_dk[i-1])
+			d²C_dkdϕ[i] = -Δt*dC_dϕ[i] + e⁻ᵏᵈᵗ*(dC_dk[i-1] + ϕ*d²C_dkdϕ[i-1])
+			d²C_dϕdϕ[i] = e⁻ᵏᵈᵗ*(2*dC_dϕ[i-1] + ϕ*d²C_dϕdϕ[i-1])
+	    end
+	    Adaptedclicks(C=C, dC_dk=dC_dk, dC_dϕ=dC_dϕ, d²C_dkdk=d²C_dkdk, d²C_dkdϕ=d²C_dkdϕ, d²C_dϕdϕ=d²C_dϕdϕ)
+	end
 end
 
 """
