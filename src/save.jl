@@ -102,6 +102,27 @@ function save(model::Model,
 end
 
 """
+    save(model, λΔt, pchoice)
+
+Save the model parameters and the expectation of the emissions
+"""
+function save(model::Model,
+              λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
+              pchoice::Vector{<:Vector{<:AbstractFloat}})
+    dict = Dict("theta_native"=> dictionary(model.θnative),
+                "theta_real"=> dictionary(model.θreal),
+                "theta0_native" => dictionary(model.θ₀native),
+                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
+                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
+                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
+                "smoothingcoefficients"=>model.gaussianprior.𝐬,
+                "pchoice" => pchoice,
+                "lambdaDeltat" => λΔt)
+    matwrite(model.options.resultspath, dict)
+    return nothing
+end
+
+"""
     save(cvresults,options)
 
 Save the results of crossvalidation

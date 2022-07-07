@@ -1,24 +1,40 @@
 """
+	maximize_evidence_choices!(model)
+
+Learn the parameters that govern the likelihood of the behavioral choices and the precisions of the priors on these parameters
+
+MODIFIED ARGUMENT
+-`model`: structure containing the parameters, hyperparameters, and data of a factorial hidden Markov drift-diffusion model. The parameters are updated.
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
+julia> FHMDDM.maximize_evidence_choices!(model)
+julia> λΔt, pchoice = expectedemissions(model;nsamples=2)
+julia> save(model, λΔt, pchoice)
+julia>
+```
 """
-function maximize_choice_evidence!(model;
+function maximize_evidence_choices!(model::Model;
 								iterations::Int = 500,
 								max_consecutive_failures::Int=2,
 								outer_iterations::Int=10,
 								verbose::Bool=true,
-								g_tol::Real=1e-6,
+								g_tol::Real=1e-8,
 								x_reltol::Real=1e-1)
-	memory = Memoryforgradient(model)
-	best𝛉, index𝛉 = concatenate_choice_related_parameters(model)
+	memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
+	best𝛉, index𝛉 = FHMDDM.concatenate_choice_related_parameters(model)
 	best𝐸 = -Inf
-	𝛂 = drift_diffusion_precisions(model)
+	𝛂, index𝛂 = FHMDDM.choice_related_precisions(model)
 	best𝛂 = copy(𝛂)
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-	    results = maximize_choice_posterior!(model; iterations=iterations, g_tol=g_tol)[3]
+	    results = FHMDDM.maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, g_tol=g_tol)
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
-				new_α = min(100.0, 2geomean(model.gaussianprior.𝛂))
+				new_α = min(100.0, 2geomean(𝛂))
 				𝛂 .= new_α
 				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
 			else
@@ -29,11 +45,12 @@ function maximize_choice_evidence!(model;
 			end
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
-			𝛉₀ = concatenate_choice_related_parameters(model)[1] # exact posterior mode
-			stats = @timed ∇∇choiceLL(model)[index𝚽, index𝚽] # not sure how to replace `index𝚽` yet; I think it will depend on how I compute the Hessian
-			𝐇 = stats.value
+			𝛉₀ = FHMDDM.concatenate_choice_related_parameters(model)[1] # exact posterior mode
+			stats = @timed FHMDDM.∇∇choiceLL(model)
+			𝐇 = stats.value[3][index𝛂, index𝛂]
 			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
-			𝐸 = logevidence!(memory, model, 𝐇, 𝛉₀)
+			FHMDDM.choiceLL!(memory, model, 𝛉₀)
+			𝐸 = FHMDDM.logevidence(𝐇, memory.ℓ[1], Diagonal(𝛂), 𝛉₀)
 			if 𝐸 > best𝐸
 				if verbose
 					if posteriorconverged
@@ -43,18 +60,14 @@ function maximize_choice_evidence!(model;
 					end
 				end
 				best𝐸 = 𝐸
-				best𝛂 .= model.gaussianprior.𝛂
-			 	best𝐬 .= model.gaussianprior.𝐬
+				best𝛂 .= 𝛂
 				best𝛉 .= 𝛉₀
 				n_consecutive_failures = 0
 			else
 				n_consecutive_failures += 1
 				verbose && println("Outer iteration: ", i, ": because the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
-				for j in eachindex(model.gaussianprior.𝛂)
-					model.gaussianprior.𝛂[j] = (model.gaussianprior.𝛂[j] + best𝛂[j])/2
-				end
-				for j in eachindex(model.gaussianprior.𝐬)
-					model.gaussianprior.𝐬[j] = (model.gaussianprior.𝐬[j] + best𝐬[j])/2
+				for j in eachindex(𝛂)
+					𝛂[j] = (𝛂[j] + best𝛂[j])/2
 				end
 			end
 			posteriorconverged = true
@@ -62,16 +75,15 @@ function maximize_choice_evidence!(model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀)
+			𝛂, normΔ = maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀)
 			if verbose
-				println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
-				println("Outer iteration ", i, ": new 𝐬 → ", model.gaussianprior.𝐬)
+				println("Outer iteration ", i, ": new 𝛂 → ", 𝛂)
 			end
 			if normΔ < x_reltol
 				verbose && println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
 				break
 			else
-				sortparameters!(model, 𝛉₀, index𝛉)
+				sortparameters!(model, 𝛉₀, index𝛉.latentθ)
 			end
 		end
 		if (i==outer_iterations) && verbose
@@ -80,15 +92,14 @@ function maximize_choice_evidence!(model;
 	end
 	println("Best log-evidence: ", best𝐸)
 	println("Best shrinkage coefficients: ", best𝛂)
-	println("Best smoothing coefficients: ", best𝐬)
 	println("Best parameters: ", best𝛉)
-	precisionmatrix!(model.gaussianprior, best𝛂, best𝐬)
 	sortparameters!(model, best𝛉, index𝛉.latentθ)
+	real2native!(model.θnative, model.options, model.θreal)
 	return nothing
 end
 
 """
-	drift_diffusion_precisions(model)
+	choice_related_precisions(model)
 
 Concatenate the precisions of the priors on each drift-diffusion parameter that is being fit
 
@@ -97,19 +108,226 @@ ARGUMENT
 
 RETURN
 -a vector concatenating the precisions of the priors on the drift-diffusion parameters that are being fit
+-a 10-element BitVector indicating which of the precisions are being learned
 """
-function drift_diffusion_precisions(model::Model)
-	concatenated_drift_diffusion_θ, indexθ = concatenate_choice_related_parameters(model)
-	𝛂 = similar(concatenated_drift_diffusion_θ)
+function choice_related_precisions(model::Model)
+	concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
+	𝛂 = similar(concatenatedθ)
+	index𝛂 = falses(10)
+	j = 0
 	k = 0
 	for parametername in fieldnames(Latentθ)
 		if parametername == :Aᶜ₁₁ || parametername == :Aᶜ₂₂ || parametername == :πᶜ₁
- 		elseif getfield(indexθ.latentθ, parametername)[1] > 0
-			k = k + 1
-			𝛂[k] = model.gaussianprior.𝛂[k]
+ 		else
+			j = j + 1
+			if getfield(indexθ.latentθ, parametername)[1] > 0
+				k = k + 1
+				𝛂[k] = model.options.α₀_choices
+				index𝛂[j] = true
+			end
 		end
 	end
-	return 𝛂
+	return 𝛂, index𝛂
+end
+
+"""
+	maximize_evidence_choices!(memory, model, 𝐇, 𝛉₀)
+
+Learn hyperparameters by fixing the parameters of the model and maximizing the evidence of only the choices
+
+MODIFIED ARGUMENT
+-`𝛂`: precision of the priors on the drift-diffusion parameters
+-`memory`: structure containing variables to be modified during computations
+-`model`: structure containing the parameters, hyperparameters, and data. The parameter values are modified, but the hyperparameters are not modified
+-`𝐇`: Hessian of the log-likelihood evaluated at the MAP solution `𝛉₀`, containing only the parameters associated with hyperparameters that are being optimized
+-`𝛉₀`: exact MAP solution
+
+RETURN
+-Euclidean of the normalized difference in the log of the hyperparameters being optimized
+"""
+function maximize_evidence_choices!(memory::Memoryforgradient,
+						model::Model,
+						𝛂₀::Vector{<:Real},
+						𝐇::Matrix{<:Real},
+						𝐰₀::Vector{<:Real};
+						αrange::Vector{<:Real}=[1e-2, 1e2],
+						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
+						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
+	𝚽 = Diagonal(𝛂₀)
+	𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
+	𝐱₀ = similar(𝛂₀)
+	for i in eachindex(𝛂₀)
+		𝐱₀[i] = FHMDDM.native2real(𝛂₀[i], αrange[1], αrange[2])
+	end
+	function f(𝐱)
+		𝛂 = similar(𝐱)
+		for i in eachindex(𝐱)
+			𝛂[i] = real2native(𝐱[i], αrange[1], αrange[2])
+		end
+		𝚽 = Diagonal(𝛂)
+	    𝐰 = (𝚽-𝐇) \ 𝐁₀𝐰₀ # LAPACK.sysv! uses less memory but is slower
+		choiceLL!(memory, model, 𝐰)
+		return -logevidence(𝐇, memory.ℓ[1], 𝚽, 𝐰)
+	end
+	∇nℓ = similar(𝐰₀)
+	function g!(∇n𝐸, 𝐱)
+		𝛂 = similar(𝐱)
+		for i in eachindex(𝐱)
+			𝛂[i] = real2native(𝐱[i], αrange[1], αrange[2])
+		end
+		∇negativelogevidence_choices!(memory, model, ∇n𝐸, ∇nℓ, 𝛂, 𝐁₀𝐰₀, 𝐇)
+		for i in eachindex(𝐱)
+			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αrange[1], αrange[2])
+		end
+		return nothing
+	end
+	optimizationresults = Optim.optimize(f, g!, 𝐱₀, optimizer, optimizationoptions)
+	# function f(𝐱)
+	# 	𝛂 = similar(𝐱)
+	# 	for i in eachindex(𝐱)
+	# 		𝛂[i] = real2native(𝐱[i], αrange[1], αrange[2])
+	# 	end
+	# 	-log_evidence_choices(𝛂, 𝐁₀𝐰₀, 𝐇, model)
+	# end
+	# optimizationresults = Optim.optimize(f, 𝐱₀, optimizer, optimizationoptions; autodiff = :forward)
+	𝐱̂ = Optim.minimizer(optimizationresults)
+	normΔ = 0.0
+	for i in eachindex(𝐱̂)
+		normΔ += (𝐱̂[i]/𝐱₀[i] - 1.0)^2
+	end
+	𝛂̂ = similar(𝐱̂)
+	for i in eachindex(𝐱̂)
+		𝛂̂[i] = real2native(𝐱̂[i], αrange[1], αrange[2])
+	end
+	return 𝛂̂, √normΔ
+end
+
+"""
+	∇negativelogevidence_choices!(memory, model, ∇n𝐸, 𝛂, 𝐇, 𝐁₀𝛉ₘₐₚ)
+
+gradient of the negative log of the marginal likelihood
+
+MODIFIED ARGUMENT
+-`memory`: a structure containing memory for in-place computation
+-`model`: structure containing the parameters, hyperparameters, and data
+-`∇n𝐸`: memory for in-place computation of the gradient of the negative of the log-evidence
+-`∇nℓ`: memory for in-place computation of the gradient of the negative of the log-evidence
+-`𝛉`: memory for in-place computation of the approximate posterior mode as a function of the hyperparameters
+
+UNMODIFIED ARGUMENT
+-`𝛂𝐬`: concatenated values of the L2 penalties coefficients
+-`𝐁₀𝐰₀`: Hessian of the log-posterior evalued at the MAP values of the parameters multiplied by the MAP value of the parameters, containing only the parameters associated with the hyperparameters being optimized
+-`𝐇`: Hessian of the log-likelihood evaluated at the MAP values of the parameters, containing only the parameters associated with the hyperparameters being optimized
+"""
+function ∇negativelogevidence_choices!(memory::Memoryforgradient,
+								model::Model,
+								∇n𝐸::Vector{<:Real},
+								∇nℓ::Vector{<:Real},
+								𝛂::Vector{<:Real},
+								𝐁₀𝐰₀::Vector{<:Real},
+								𝐇::Matrix{<:Real})
+	𝚽 = Diagonal(𝛂)
+	𝐁 = 𝚽-𝐇
+	C = factorize(𝐁)
+	𝐰 = C \ 𝐁₀𝐰₀
+	∇negativechoiceLL!(∇nℓ, memory, model, 𝐰)
+	𝐦 = C \ (𝚽*𝐰 + ∇nℓ)
+	𝛀 = (C \ (𝚽 \ 𝐇)')'
+	@inbounds for i in eachindex(𝐰)
+		∇n𝐸[i] = 0.5*(𝐰[i]^2 + 𝛀[i,i]) - 𝐰[i]*𝐦[i]
+	end
+	return nothing
+end
+
+"""
+	check_∇logevidence(model)
+
+Check whether the hand-coded gradient of the log-evidence matches the automatic gradient
+
+ARGUMENT
+-`model`: structure containing the parameters and hyperparameters
+
+OPTIONAL ARGUMENT
+-`simulate`: whether to simulate Hessian and MAP solution. If not, the model is first fitted before a Hessian is computed
+
+RETURN
+-maximum absolute normalized difference between the gradients
+-absolute normalized difference between the log-evidence functions
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
+julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence_choices(model; simulate=true)
+julia>
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
+julia> max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence_choices(model; simulate=false)
+julia>
+```
+"""
+function check_∇logevidence_choices(model::Model; simulate::Bool=true)
+	𝛉, index𝛉 = FHMDDM.concatenate_choice_related_parameters(model)
+	𝛂, index𝛂 = FHMDDM.choice_related_precisions(model)
+	𝚽 = Diagonal(𝛂)
+	N = length(𝛂)
+	if simulate
+		𝐑 = 1 .- 2rand(N,N)
+		𝐁₀ = transpose(𝐑)*𝐑 # simulate a positive-definite Hessian of the posterior
+		𝐇 = 𝚽 - 𝐁₀
+		𝐰₀ = 1 .- 2rand(N)
+		𝐰₀ ./= norm(𝐰₀)
+		𝐁₀𝐰₀ = 𝐁₀*𝐰₀
+		𝛉 .= 𝐰₀
+		FHMDDM.sortparameters!(model, 𝛉, index𝛉.latentθ)
+		FHMDDM.real2native!(model.θnative, model.options, model.θreal)
+	else
+		FHMDDM.maximize_choice_posterior!(model)
+		𝐇 = FHMDDM.∇∇choiceLL(model)[3][index𝛂, index𝛂]
+		𝐰₀ = FHMDDM.concatenate_choice_related_parameters(model)[1]
+		𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
+	end
+	𝛂 .= rand(N)
+	∇nℓ = similar(𝛉)
+	memory = FHMDDM.Memoryforgradient(model;choicemodel=true)
+	𝚽 = Diagonal(𝛂)
+	𝛉 = (𝚽-𝐇) \ 𝐁₀𝐰₀
+	FHMDDM.choiceLL!(memory, model, 𝛉)
+	handcoded_evidence = FHMDDM.logevidence(𝐇, memory.ℓ[1], 𝚽, 𝛉)
+	handcoded_gradient = fill(NaN,N)
+	FHMDDM.∇negativelogevidence_choices!(memory, model, handcoded_gradient, ∇nℓ, 𝛂, 𝐁₀𝐰₀, 𝐇)
+    f(x) = FHMDDM.log_evidence_choices(x, 𝐁₀𝐰₀, 𝐇, model)
+	automatic_evidence = f(𝛂)
+	automatic_gradient = ForwardDiff.gradient(f, 𝛂)
+	return maximum(abs.((automatic_gradient .+ handcoded_gradient)./automatic_gradient)), abs((automatic_evidence-handcoded_evidence)/automatic_evidence)
+end
+
+"""
+	logevidence(𝛂, 𝐁₀𝛉ₘₐₚ, 𝐇, indexθ, model)
+
+ForwardDiff-computation evaluation of the log-evidence
+
+ARGUMENT
+-`𝛂`: precisions being learned
+-`𝐁₀𝛉ₘₐₚ`: Hessian of the log-posterior evalued at the MAP values of the parameters multiplied by the MAP value of the parameters
+-`𝐇`: Hessian of the log-likelihood evaluated at the MAP values of the parameters
+-`index𝛂`: index of the precisions being fit within the full vector of concatenated precisions
+-`indexθ`: index of the parameters
+-`model`: structure containing the parameters, hyperparameters, and data
+
+RETURN
+-log of the marginal likelihood
+"""
+function log_evidence_choices(𝛂::Vector{type},
+					𝐁₀𝐰₀::Vector{<:Real},
+					𝐇::Matrix{<:Real},
+					model::Model) where{type<:Real}
+	𝚽 = Diagonal(𝛂)
+	𝐁 = 𝚽-𝐇
+    𝐰 = 𝐁 \ 𝐁₀𝐰₀
+	index𝛉 = concatenate_choice_related_parameters(model)[2]
+	ℓ = choiceLL(𝐰, index𝛉.latentθ, model)
+	logevidence(𝐇, ℓ, 𝚽, 𝐰)
 end
 
 """
@@ -140,19 +358,19 @@ julia> FHMDDM.maximize_choice_posterior!(model)
 ```
 """
 function maximize_choice_posterior!(model::Model;
+						 𝛂::Vector{<:AbstractFloat}=[model.options.α₀_choices],
 		                 extended_trace::Bool=true,
-		                 f_tol::AbstractFloat=1e-8,
+		                 f_tol::AbstractFloat=0.0,
 		                 g_tol::AbstractFloat=1e-8,
 		                 iterations::Integer=1000,
 		                 show_every::Integer=10,
 		                 show_trace::Bool=true,
-		                 x_tol::AbstractFloat=1e-8)
-	@unpack α₀_choices = model.options
+		                 x_tol::AbstractFloat=0.0)
 	memory = Memoryforgradient(model; choicemodel=true)
-    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ) + α₀_choices*dot(concatenatedθ,concatenatedθ)
+    f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ) + 0.5*dot(𝛂.*concatenatedθ, concatenatedθ)
 	function g!(∇, concatenatedθ)
 		∇negativechoiceLL!(∇, memory, model, concatenatedθ)
-		∇ .+= α₀_choices.*concatenatedθ
+		∇ .+= 𝛂.*concatenatedθ
 		return nothing
 	end
     Optim_options = Optim.Options(extended_trace=extended_trace,
@@ -339,7 +557,6 @@ function choiceLL(concatenatedθ::Vector{T}, indexθ::Latentθ, model::Model) wh
 	end
 	ℓ
 end
-
 
 """
 	∇negativechoiceLL!(∇nℓ, memory, model, concatenatedθ)

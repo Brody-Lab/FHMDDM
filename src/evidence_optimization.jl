@@ -108,6 +108,7 @@ function maximizeevidence!(model::Model;
 	println("Best parameters: ", best𝛉)
 	precisionmatrix!(model.gaussianprior, best𝛂, best𝐬)
 	sortparameters!(model, best𝛉, index𝛉)
+	real2native!(model.θnative, model.options, model.θreal)
 	return nothing
 end
 
@@ -143,7 +144,7 @@ ARGUMENT
 RETURN
 -log evidence
 """
-function logevidence(𝐇::Matrix{<:Real}, ℓ::Real, 𝚽::Matrix{<:Real}, 𝐰::Vector{<:Real})
+function logevidence(𝐇::Matrix{<:Real}, ℓ::Real, 𝚽::AbstractMatrix{<:Real}, 𝐰::Vector{<:Real})
 	𝐌 = I - (𝚽 \ 𝐇)
 	logdet𝐌, signdet𝐌 = logabsdet(𝐌)
 	if signdet𝐌 < 0
