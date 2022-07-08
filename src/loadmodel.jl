@@ -225,3 +225,26 @@ function initializeparameters(options::Options)
 	end
 	return θnative
 end
+
+"""
+	randomize_latent_parameters!(model)
+
+Set the value of each latent-variable parameter as a sample from a Uniform distribution.
+
+Only parameters being fit are randomized
+
+MODIFIED ARGUMENT
+-`model`: a structure containing the parameters, hyperparameters, and data of the factorial hidden-Markov drift-diffusion model. Its fields `θnative` and `θreal` are modified.
+"""
+function randomize_latent_parameters!(model::Model)
+	@unpack options, θnative, θreal = model
+	for field in fieldnames(Latentθ)
+		fit = is_parameter_fit(options, field)
+		lqu = getfield(options, Symbol("lqu_"*string(field)))
+		l = lqu[1]
+		q = lqu[2]
+		u = lqu[3]
+		getfield(θnative, field)[1] = fit ? l + (u-l)*rand() : q
+	end
+	native2real!(θreal, options, θnative)
+end

@@ -35,13 +35,11 @@ function maximize_evidence_choices!(model::Model;
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
 				new_α = min(100.0, 2geomean(𝛂))
-				𝛂 .= new_α
 				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
+				𝛂 .= new_α
 			else
-				verbose && println("Outer iteration: ", i, ": because of a line search failure, Gaussian noise is added to the parameter values")
-				𝛉 = concatenate_choice_related_parameters(model)[1]
-				𝛉 .+= randn(length(𝛉))
-				sortparameters!(model, 𝛉, index𝛉.latentθ)
+				verbose && println("Outer iteration: ", i, ": because of a line search failure, the values of latent-variable parameters are randomized")
+				randomize_latent_parameters!(model)
 			end
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
@@ -83,7 +81,7 @@ function maximize_evidence_choices!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
 				break
 			else
-				sortparameters!(model, 𝛉₀, index𝛉.latentθ)
+				randomize_latent_parameters!(model)
 			end
 		end
 		if (i==outer_iterations) && verbose

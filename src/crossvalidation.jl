@@ -7,6 +7,9 @@ ARGUMENT
 -`kfold`: number of cross-validation folds
 -`model`: a structure containing the settings, data, and parameters of a factorial hidden-Markov drift-diffusion model
 
+OPTIONAL ARGUMENT
+-`choicesonly`: whether to train on only the behavioral choices and ignore the spike trains
+
 OUTPUT
 -an instance of `CVResults`
 
@@ -18,9 +21,9 @@ julia> cvresults = crossvalidate(2, model)
 julia> save(cvresults, model.options)
 ```
 """
-function crossvalidate(kfold::Integer, model::Model)
+function crossvalidate(kfold::Integer, model::Model; choicesonly::Bool=false)
     cvindices = CVIndices(model, kfold)
-	trainingmodels = pmap(cvindices->train(cvindices, model), cvindices)
+	trainingmodels = pmap(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
     λΔt, pchoice, rll_choice, rll_spikes = test(cvindices, model, trainingmodels)
     CVResults(cvindices = cvindices,
 			θ₀native = collect(trainingmodel.θ₀native for trainingmodel in trainingmodels),
@@ -44,10 +47,13 @@ ARGUMENT
 -`cvindices`: indices of the trials and timesteps used for training and testing in each fold
 -`model`: structure containing the full dataset, parameters, and hyperparameters
 
+OPTIONAL ARGUMENT
+-`choicesonly`: whether to train on only the behavioral choices and ignore the spike trains
+
 RETURN
 -`trainingmodel`: structure containing the data in the training trials, parameters optimized for the data in the trainings, and hyperparameters
 """
-function train(cvindices::CVIndices, model::Model)
+function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false)
 	θ₀native = initializeparameters(model.options)
 	training_trialsets = trainingset(cvindices, model.trialsets)
 	gaussianprior = GaussianPrior(model.options, training_trialsets)
@@ -57,7 +63,11 @@ function train(cvindices::CVIndices, model::Model)
 						  θ₀native = θ₀native,
 						  θnative = Latentθ(([getfield(θ₀native, f)...] for f in fieldnames(Latentθ))...),
 						  θreal = native2real(model.options, θ₀native))
-	learnparameters!(trainingmodel)
+	if choicesonly
+		maximize_evidence_choices!(trainingmodel)
+	else
+		learnparameters!(trainingmodel)
+	end
 	return trainingmodel
 end
 
