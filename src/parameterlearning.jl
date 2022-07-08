@@ -57,7 +57,7 @@ julia> FHMDDM.initializeparameters!(model)
 """
 function initializeparameters!(model::Model)
 	memory = FHMDDM.Memoryforgradient(model)
-	maximize_choice_posterior!(model)
+	fitonlychoices!(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
 	    for mpGLM in model.trialsets[i].mpGLMs

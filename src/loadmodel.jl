@@ -21,9 +21,24 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_1
 ```
 """
 function Model(datapath::String)
-    dataMAT = matopen(datapath)
-    options = Options(read(dataMAT, "options"))
-    trialsets = map(trialset->Trialset(options, trialset), vec(read(dataMAT, "data")))
+    dataMAT = read(matopen(datapath))
+    options = Options(dataMAT["options"])
+	if haskey(dataMAT, "data")
+	    trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
+	else
+		trialsets = map(trialset->Trialset(trialset), vec(dataMAT["trialsets"]))
+		for trialset in trialsets
+			for mpGLM in trialset.mpGLMs
+				for 𝐠ₖ in mpGLM.θ.𝐠
+					𝐠ₖ .= 1.0 .- 2.0.*rand(length(𝐠ₖ))
+				end
+				mpGLM.θ.𝐮 .= 1.0 .- 2.0.*rand(length(mpGLM.θ.𝐮))
+				for 𝐯ₖ in mpGLM.θ.𝐯
+					𝐯ₖ .= 1.0 .- 2.0.*rand(length(𝐯ₖ))
+				end
+			end
+		end
+	end
     if isfile(options.resultspath)
         Model(options, options.resultspath, trialsets)
     else
@@ -201,14 +216,63 @@ function Trialset(options::Options, trialset::Dict)
                       ntimesteps=ntimesteps,
                       previousanswer=previousanswer)
              end
-
     Trialset(mpGLMs=mpGLMs, trials=trials)
+end
+
+"""
+	Trialset(trialset)
+
+Create an instance of `Trialset` from a saved file
+"""
+function Trialset(trialset::Dict)
+	trials = map(trialset["trials"]) do trial
+				inputindex =  map(trial["clicks"]["inputindex"]) do x
+						           typeof(x)<:Integer ? [x] : x
+						       end
+				left =  map(trial["clicks"]["left"]) do x
+				           typeof(x)<:Integer ? [x] : x
+				       end
+				right =  map(trial["clicks"]["right"]) do x
+				           typeof(x)<:Integer ? [x] : x
+				       	end
+				clicks = Clicks(time=trial["clicks"]["time"],
+								inputtimesteps=trial["clicks"]["inputtimesteps"],
+								inputindex=inputindex,
+								source=convert(BitArray{1}, trial["clicks"]["source"]),
+								left=left,
+								right=right)
+				Trial(clicks=clicks,
+                      choice=trial["choice"],
+                      ntimesteps=trial["ntimesteps"],
+                      previousanswer=trial["previousanswer"])
+			end
+	d𝛏_dB = trialset["mpGLMs"][1]["dxi_dB"]
+	Φ = trialset["mpGLMs"][1]["Phi"]
+	𝐕 = trialset["mpGLMs"][1]["V"]
+	mpGLMs = map(trialset["mpGLMs"]) do mpGLM
+				𝐠 = map(mpGLM["theta"]["g"]) do x
+			           	typeof(x)<:AbstractFloat ? [x] : x
+			        end
+				𝐯 = map(mpGLM["theta"]["v"]) do x
+			           	typeof(x)<:AbstractFloat ? [x] : x
+			        end
+				θ = GLMθ(𝐠=𝐠, 𝐮=mpGLM["theta"]["u"], 𝐯=𝐯)
+				MixturePoissonGLM(Δt=mpGLM["dt"],
+									d𝛏_dB=d𝛏_dB,
+									max_spikehistory_lag=mpGLM["max_spikehistory_lag"],
+									Φ=Φ,
+									θ=θ,
+									𝐕=𝐕,
+									𝐗=mpGLM["X"],
+									𝐲=mpGLM["y"])
+			end
+	Trialset(mpGLMs=mpGLMs, trials=trials)
 end
 
 """
 	initializeparameters(options)
 
-Initialize the value of each model parameters in native space by sampling from a Uniform random variable
+Initialize the value of each model parameters in native space by sampling from a Uniform random variable""
 
 RETURN
 -values of model parameter in native space

@@ -135,3 +135,13 @@ function save(cvresults::CVResults, options::Options)
     matwrite(path, dictionary(cvresults))
     return nothing
 end
+
+"""
+    save(options, trialsets)
+"""
+function save(options::Dict, trialsets::Vector{<:Trialset})
+    dict = Dict("options"=> options,
+                "trialsets"=> map(trialset->dictionary(trialset), trialsets))
+    matwrite(options["datapath"], dict)
+    return nothing
+end

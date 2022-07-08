@@ -1,4 +1,21 @@
 """
+	fitonlychoices!(model)
+
+Learn the parameters that specify the likelihood of the behavioral choices
+
+MODIFIED ARGUMENT
+-`model`: structure containing the parameters, hyperparameters, and data of a factorial hidden Markov drift-diffusion model. The fields 'θnative' and 'θreal' are updated
+"""
+function fitonlychoices!(model::Model)
+	if isnan(model.options.α₀_choices)
+		maximizechoiceLL!(model)
+	else
+		maximize_evidence_choices!(model)
+	end
+	return nothing
+end
+
+"""
 	maximize_evidence_choices!(model)
 
 Learn the parameters that govern the likelihood of the behavioral choices and the precisions of the priors on these parameters

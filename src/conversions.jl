@@ -389,8 +389,8 @@ end
 Convert an instance of `trialsetdata` into a `Dict`
 """
 function dictionary(trialset::Trialset)
-    Dict("mpGLMs" => map(mpGLM->Dict(mpGLM), trialset.mpGLMs),
-         "trials" => map(trial->Dict(trial), trialset.trials))
+    Dict("mpGLMs" => map(mpGLM->dictionary(mpGLM), trialset.mpGLMs),
+         "trials" => map(trial->dictionary(trial), trialset.trials))
 end
 
 """
@@ -400,11 +400,11 @@ Convert an instance of `trialdata` into a `Dict`
 """
 function dictionary(trial::Trial)
     Dict("choice" => trial.choice,
-         "clicks" => Dict(trial.clicks),
+         "clicks" => dictionary(trial.clicks),
 		 "ntimesteps"=> trial.ntimesteps,
 		 "previousanswer" => trial.previousanswer,
          "a"=>trial.a,
-         "z"=>trial.z)
+         "c"=>trial.c)
 end
 
 """
@@ -414,6 +414,8 @@ Convert an instance of `Clicks` into a `Dict`
 """
 function dictionary(clicks::Clicks)
     Dict("time" => 		clicks.time,
+		 "inputtimesteps" => clicks.inputtimesteps,
+		 "inputindex" => clicks.inputindex,
 		 "source" => 	clicks.source,
          "left" => 		clicks.left,
          "right" =>		clicks.right)

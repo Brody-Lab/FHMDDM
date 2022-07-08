@@ -64,7 +64,7 @@ function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false)
 						  θnative = Latentθ(([getfield(θ₀native, f)...] for f in fieldnames(Latentθ))...),
 						  θreal = native2real(model.options, θ₀native))
 	if choicesonly
-		maximize_evidence_choices!(trainingmodel)
+		fitonlychoices!(trainingmodel)
 	else
 		learnparameters!(trainingmodel)
 	end

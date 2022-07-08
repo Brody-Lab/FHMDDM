@@ -62,10 +62,7 @@ ARGUMENT
 RETURN
 -an instance of `Trial` containing the generated behavioral choice as well as the sequence of latent variables
 """
-function sample!(memory::Memoryforgradient,
-				P::Probabilityvector,
-				θnative::Latentθ,
-                trial::Trial)
+function sample!(memory::Memoryforgradient, P::Probabilityvector, θnative::Latentθ, trial::Trial)
     @unpack Aᵃinput, Aᵃsilent, Aᶜ, Δt, πᶜ, Ξ = memory
     @unpack clicks = trial
 	@unpack inputtimesteps, inputindex = clicks
@@ -165,28 +162,63 @@ ARGUMENT
 -`model`: an instance of the factorial-hidden Markov drift-diffusion model
 
 OUTPUT
--`model`: an instance of FHM-DDM with generated variables
+-`trialsets`: data sampled from the parameters of the model
 """
-function sample(model::Model;
-                datafilename::String="sample.mat",
-                resultsfilename::String="resultsofsample.mat")
-    optionsdict = dictionary(model.options)
-    optionsdict["datapath"] = dirname(optionsdict["datapath"])*"/"*datafilename
-    optionsdict["resultspath"] = dirname(optionsdict["resultspath"])*"/"*resultsfilename
-	options = Options(optionsdict)
+function sample(model::Model)
 	memory = Memoryforgradient(model)
-	P = update!(memory, model, concateateparameters(model)[1])
-    sampledtrialsets =
-		map(model.trialsets) do trialset
-			sampledtrials =	map(trialset.trials) do trial
-								sample!(memory, P, model.θnative, trial)
-							end
-			sampledmpGLMs =map(trialset.mpGLMs) do mpGLM
-						sample(mpGLM, sampledtrials)
-					end
-			return Trialset(mpGLMs=sampledmpGLMs, trials=sampledtrials)
+	P = update!(memory, model, concatenateparameters(model)[1])
+	map(model.trialsets) do trialset
+		sampledtrials =	map(trial->sample!(memory, P, model.θnative, trial), trialset.trials)
+		sampledmpGLMs =map(mpGLM->sample(mpGLM, sampledtrials), trialset.mpGLMs)
+		Trialset(mpGLMs=sampledmpGLMs, trials=sampledtrials)
+	end
+end
+
+"""
+	sample_and_save(model)
+
+Generate samples of a model and save
+
+ARGUMENT
+-`model`: an instance of the factorial-hidden Markov drift-diffusion model
+
+OPTIONAL ARGUMENT
+-`datafilename`: name of the file containing the generated data
+-`resultsfilename`: name of the file to which fitted results will be saved
+-`nsamples`: number of samples to generate
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat"
+julia> model = Model(datapath)
+julia> FHMDDM.sample_and_save(model;nsamples=2)
+julia> newmodel = Model(dirname(datapath)*"/sample1.mat")
+julia>
+```
+"""
+function sample_and_save(model::Model; datafilename::String="sample", nsamples::Integer=10, resultsfilename::String="results")
+	folderpath = dirname(model.options.datapath)
+	optionsdict = dictionary(model.options)
+	pad = length(string(nsamples))
+	samplepaths, resultpaths = fill("", nsamples), fill("", nsamples)
+	samplepaths = open(folderpath*"/samplepaths.txt", "w")
+	resultpaths = open(folderpath*"/resultpaths.txt", "w")
+	for i = 1:nsamples
+		sampleindex = string(i, pad=pad)
+	    optionsdict["datapath"] = folderpath*"/"*datafilename*sampleindex*".mat"
+	    optionsdict["resultspath"] = folderpath*"/"*datafilename*sampleindex*"_"*resultsfilename*".mat"
+		if i > 1
+			write(samplepaths, "\n")
+			write(resultpaths, "\n")
 		end
-	Model(options, trialsets)
+		write(samplepaths, optionsdict["datapath"])
+		write(resultpaths, optionsdict["resultspath"])
+		trialsets = sample(model)
+		save(optionsdict, trialsets)
+	end
+	close(samplepaths)
+	close(resultpaths)
 end
 
 """
@@ -201,8 +233,7 @@ ARGUMENT
 RETURN
 -`mpGLM`: a sample of the mixture of Poisson GLM
 """
-function sample(mpGLM::MixturePoissonGLM,
-                sampledtrials::Vector{<:Trial})
+function sample(mpGLM::MixturePoissonGLM, sampledtrials::Vector{<:Trial})
     𝐲̂ = sampleemissions(mpGLM, sampledtrials)
 	θ = GLMθ(𝐠 = map(𝐠ₖ->copy(𝐠ₖ), mpGLM.θ.𝐠),
 			𝐮 = copy(mpGLM.θ.𝐮),
@@ -216,7 +247,6 @@ function sample(mpGLM::MixturePoissonGLM,
                       𝐗=mpGLM.𝐗,
                       𝐲=𝐲̂)
 end
-
 
 """
 	sampleclicks(a_latency_s, clickrate_Hz, Δt, ntimesteps, right2left)
