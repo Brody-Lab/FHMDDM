@@ -195,6 +195,11 @@ julia> model = Model(datapath)
 julia> FHMDDM.sample_and_save(model;nsamples=2)
 julia> newmodel = Model(dirname(datapath)*"/sample1.mat")
 julia>
+
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_08e_pr/T274_2020_12_14/sample10.mat"
+julia> newmodel = Model(datapath)
+julia>
 ```
 """
 function sample_and_save(model::Model; datafilename::String="sample", nsamples::Integer=10, resultsfilename::String="results")

@@ -5,14 +5,47 @@ Learn the parameters that specify the likelihood of the behavioral choices
 
 MODIFIED ARGUMENT
 -`model`: structure containing the parameters, hyperparameters, and data of a factorial hidden Markov drift-diffusion model. The fields 'θnative' and 'θreal' are updated
+
+RETURN
+-`𝛂`: the precisions that maximize evidence
 """
 function fitonlychoices!(model::Model)
 	if isnan(model.options.α₀_choices)
 		maximizechoiceLL!(model)
+		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
 	else
-		maximize_evidence_choices!(model)
+		𝛂 = maximize_evidence_choices!(model)
 	end
-	return nothing
+	return 𝛂
+end
+
+"""
+	hessian_posterior_choices(𝛂, model)
+
+Hessian matrix of the posterior probability of the latent-variable parameters being fitted, conditioned on only the choices
+
+ARGUMENT
+-`𝛂`: precisions of the priors on the choice-related parameters being fitted
+-`model`: structure containing the parameters, hyperparameters, and data of a factorial hidden Markov drift-diffusion model.
+
+RETURN
+-hessian matrix of the posterior distribution conditioned on only the choices, evaluated at the mode given by `model.θnative`
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
+julia> 𝛂 = FHMDDM.maximize_evidence_choices!(model)
+julia> H = FHMDDM.hessian_posterior_choices(𝛂, model)
+julia> λΔt, pchoice = expectedemissions(model;nsamples=2)
+julia> save(model, H, λΔt, pchoice)
+julia>
+```
+"""
+function hessian_posterior_choices(𝛂::Vector{<:AbstractFloat}, model::Model)
+	index𝛂 = FHMDDM.choice_related_precisions(model)[2]
+	hessian_loglikelihood = FHMDDM.∇∇choiceLL(model)[3]
+	hessian_loglikelihood[index𝛂,index𝛂] - Diagonal(𝛂)
 end
 
 """
@@ -22,6 +55,9 @@ Learn the parameters that govern the likelihood of the behavioral choices and th
 
 MODIFIED ARGUMENT
 -`model`: structure containing the parameters, hyperparameters, and data of a factorial hidden Markov drift-diffusion model. The parameters are updated.
+
+RETURN
+-`best𝛂`: the precisions that maximize evidence
 
 EXAMPLE
 ```julia-repl
@@ -110,7 +146,7 @@ function maximize_evidence_choices!(model::Model;
 	println("Best parameters: ", best𝛉)
 	sortparameters!(model, best𝛉, index𝛉.latentθ)
 	real2native!(model.θnative, model.options, model.θreal)
-	return nothing
+	return best𝛂
 end
 
 """

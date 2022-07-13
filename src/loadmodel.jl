@@ -226,6 +226,8 @@ Create an instance of `Trialset` from a saved file
 """
 function Trialset(trialset::Dict)
 	trials = map(trialset["trials"]) do trial
+				time = typeof(trial["clicks"]["time"])<:AbstractFloat ? [trial["clicks"]["time"]] : trial["clicks"]["time"]
+				inputtimesteps = typeof(trial["clicks"]["inputtimesteps"])<:Integer ? [trial["clicks"]["inputtimesteps"]] : trial["clicks"]["inputtimesteps"]
 				inputindex =  map(trial["clicks"]["inputindex"]) do x
 						           typeof(x)<:Integer ? [x] : x
 						       end
@@ -235,10 +237,15 @@ function Trialset(trialset::Dict)
 				right =  map(trial["clicks"]["right"]) do x
 				           typeof(x)<:Integer ? [x] : x
 				       	end
-				clicks = Clicks(time=trial["clicks"]["time"],
-								inputtimesteps=trial["clicks"]["inputtimesteps"],
+				if typeof(trial["clicks"]["source"]) <: Bool
+					source = convert(BitArray{1}, [trial["clicks"]["source"]])
+				else
+					source = convert(BitArray{1}, trial["clicks"]["source"])
+				end
+				clicks = Clicks(time=time,
+								inputtimesteps=inputtimesteps,
 								inputindex=inputindex,
-								source=convert(BitArray{1}, trial["clicks"]["source"]),
+								source=source,
 								left=left,
 								right=right)
 				Trial(clicks=clicks,
