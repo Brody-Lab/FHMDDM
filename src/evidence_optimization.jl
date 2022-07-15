@@ -22,6 +22,8 @@ julia> maximizeevidence!(model)
 ```
 """
 function maximizeevidence!(model::Model;
+						αrange::Vector{<:Real}=[1e-1, 1e2],
+						srange::Vector{<:Real}=[1e-8, 1e2],
 						iterations::Int = 500,
 						max_consecutive_failures::Int=2,
 						outer_iterations::Int=10,
@@ -40,9 +42,9 @@ function maximizeevidence!(model::Model;
 	    results = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[3]
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
-				new_α = min(100.0, 2geomean(model.gaussianprior.𝛂))
+				new_α = min(maximum(αrange), 2geomean(model.gaussianprior.𝛂))
 				model.gaussianprior.𝛂 .= new_α
-				new_s = min(100.0, 2geomean(model.gaussianprior.𝐬))
+				new_s = min(maximum(srange), 2geomean(model.gaussianprior.𝐬))
 				model.gaussianprior.𝐬 .= new_s
 				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New (𝛂, 𝐬) → (", new_α, ", ", new_s, ")")
 			else
@@ -86,7 +88,7 @@ function maximizeevidence!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀)
+			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀; αrange=αrange, srange=srange)
 			if verbose
 				println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
 				println("Outer iteration ", i, ": new 𝐬 → ", model.gaussianprior.𝐬)

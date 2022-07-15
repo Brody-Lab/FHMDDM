@@ -14,7 +14,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_14a_test/T176_2018_05_03_b2K2K2/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_15b_test/T176_2018_05_03/data.mat")
 julia> learnparameters!(model)
 julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
 julia> fbz = posterior_first_state(model)
@@ -50,14 +50,17 @@ MODIFIED ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_15b_test/T176_2018_05_03/data.mat"
 julia> model = Model(datapath)
 julia> FHMDDM.initializeparameters!(model)
 ```
 """
 function initializeparameters!(model::Model)
-	memory = FHMDDM.Memoryforgradient(model)
 	fitonlychoices!(model)
+	if model.options.updateDDtransformation
+		model = update_drift_diffusion_transformation(model)
+	end
+	memory = FHMDDM.Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
 	    for mpGLM in model.trialsets[i].mpGLMs

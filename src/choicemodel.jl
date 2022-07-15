@@ -10,11 +10,17 @@ RETURN
 -`𝛂`: the precisions that maximize evidence
 """
 function fitonlychoices!(model::Model)
-	if isnan(model.options.α₀_choices)
-		maximizechoiceLL!(model)
+	@unpack objective = model.options
+	if objective == "evidence"
+		𝛂 = maximize_evidence_choices!(model)
+	elseif objective == "posterior"
+		maximize_choice_posterior!(model)
+		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
+	elseif objective == "likelihood"
+		output = maximizechoiceLL!(model)
 		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
 	else
-		𝛂 = maximize_evidence_choices!(model)
+		error(objective, " is not a recognized objective.")
 	end
 	return 𝛂
 end
@@ -70,11 +76,12 @@ julia>
 ```
 """
 function maximize_evidence_choices!(model::Model;
+								αrange::Vector{<:Real}=[1e-8, 1e1],
 								iterations::Int = 500,
 								max_consecutive_failures::Int=2,
 								outer_iterations::Int=10,
 								verbose::Bool=true,
-								g_tol::Real=1e-8,
+								g_tol::Real=1e-4,
 								x_reltol::Real=1e-1)
 	memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
 	best𝛉, index𝛉 = FHMDDM.concatenate_choice_related_parameters(model)
@@ -84,11 +91,11 @@ function maximize_evidence_choices!(model::Model;
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-	    results = FHMDDM.maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, g_tol=g_tol)
+	    results = maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, g_tol=g_tol)
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
-				new_α = min(100.0, 2geomean(𝛂))
-				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
+				new_α = min(maximum(αrange), 10geomean(𝛂))
+				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be ten times the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
 				𝛂 .= new_α
 			else
 				verbose && println("Outer iteration: ", i, ": because of a line search failure, the values of latent-variable parameters are randomized")
@@ -126,7 +133,7 @@ function maximize_evidence_choices!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-			𝛂, normΔ = maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀)
+			𝛂, normΔ = maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀; αrange=αrange)
 			if verbose
 				println("Outer iteration ", i, ": new 𝛂 → ", 𝛂)
 			end
@@ -201,7 +208,7 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 						𝛂₀::Vector{<:Real},
 						𝐇::Matrix{<:Real},
 						𝐰₀::Vector{<:Real};
-						αrange::Vector{<:Real}=[1e-2, 1e2],
+						αrange::Vector{<:Real}=[1e-8, 1e1],
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
 	𝚽 = Diagonal(𝛂₀)
@@ -233,14 +240,6 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 		return nothing
 	end
 	optimizationresults = Optim.optimize(f, g!, 𝐱₀, optimizer, optimizationoptions)
-	# function f(𝐱)
-	# 	𝛂 = similar(𝐱)
-	# 	for i in eachindex(𝐱)
-	# 		𝛂[i] = real2native(𝐱[i], αrange[1], αrange[2])
-	# 	end
-	# 	-log_evidence_choices(𝛂, 𝐁₀𝐰₀, 𝐇, model)
-	# end
-	# optimizationresults = Optim.optimize(f, 𝐱₀, optimizer, optimizationoptions; autodiff = :forward)
 	𝐱̂ = Optim.minimizer(optimizationresults)
 	normΔ = 0.0
 	for i in eachindex(𝐱̂)
@@ -411,12 +410,10 @@ julia> FHMDDM.maximize_choice_posterior!(model)
 function maximize_choice_posterior!(model::Model;
 						 𝛂::Vector{<:AbstractFloat}=[model.options.α₀_choices],
 		                 extended_trace::Bool=true,
-		                 f_tol::AbstractFloat=0.0,
-		                 g_tol::AbstractFloat=1e-8,
-		                 iterations::Integer=1000,
+		                 g_tol::AbstractFloat=1e-4,
+		                 iterations::Integer=500,
 		                 show_every::Integer=10,
-		                 show_trace::Bool=true,
-		                 x_tol::AbstractFloat=0.0)
+		                 show_trace::Bool=true)
 	memory = Memoryforgradient(model; choicemodel=true)
     f(concatenatedθ) = -choiceLL!(memory, model, concatenatedθ) + 0.5*dot(𝛂.*concatenatedθ, concatenatedθ)
 	function g!(∇, concatenatedθ)
@@ -425,12 +422,10 @@ function maximize_choice_posterior!(model::Model;
 		return nothing
 	end
     Optim_options = Optim.Options(extended_trace=extended_trace,
-								  f_tol=f_tol,
                                   g_tol=g_tol,
                                   iterations=iterations,
                                   show_every=show_every,
-                                  show_trace=show_trace,
-                                  x_tol=x_tol)
+                                  show_trace=show_trace)
 	algorithm = LBFGS(linesearch = LineSearches.BackTracking())
 	θ₀ = concatenate_choice_related_parameters(model)[1]
 	optimizationresults = Optim.optimize(f, g!, θ₀, algorithm, Optim_options)
@@ -886,33 +881,29 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_28b_test/T176_2018_05_03_b5K1K1/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat"
 julia> model = Model(datapath)
 julia> newmodel = FHMDDM.update_drift_diffusion_transformation(model)
 ```
 """
 function update_drift_diffusion_transformation(model::Model)
-	if model.options.updateDDtransformation
-		dict = dictionary(model.options)
-		dict["lqu_B"][2] = model.θnative.B[1]
-		dict["lqu_k"][2] = model.θnative.k[1]
-		dict["lqu_lambda"][2] = model.θnative.λ[1]
-		dict["lqu_mu0"][2] = model.θnative.μ₀[1]
-		dict["lqu_phi"][2] = model.θnative.ϕ[1]
-		dict["lqu_psi"][2] = model.θnative.ψ[1]
-		dict["lqu_sigma2_a"][2] = model.θnative.σ²ₐ[1]
-		dict["lqu_sigma2_i"][2] = model.θnative.σ²ᵢ[1]
-		dict["lqu_sigma2_s"][2] = model.θnative.σ²ₛ[1]
-		dict["lqu_w_h"][2] = model.θnative.wₕ[1]
-		Model(options=Options(dict),
-			gaussianprior=model.gaussianprior,
-			θnative = model.θnative,
-			θreal = model.θreal,
-			θ₀native = model.θ₀native,
-			trialsets = model.trialsets)
-	else
-		model
-	end
+	dict = dictionary(model.options)
+	dict["lqu_B"][2] = model.θnative.B[1]
+	dict["lqu_k"][2] = model.θnative.k[1]
+	dict["lqu_lambda"][2] = model.θnative.λ[1]
+	dict["lqu_mu0"][2] = model.θnative.μ₀[1]
+	dict["lqu_phi"][2] = model.θnative.ϕ[1]
+	dict["lqu_psi"][2] = model.θnative.ψ[1]
+	dict["lqu_sigma2_a"][2] = model.θnative.σ²ₐ[1]
+	dict["lqu_sigma2_i"][2] = model.θnative.σ²ᵢ[1]
+	dict["lqu_sigma2_s"][2] = model.θnative.σ²ₛ[1]
+	dict["lqu_w_h"][2] = model.θnative.wₕ[1]
+	Model(options=Options(dict),
+		gaussianprior=model.gaussianprior,
+		θnative = model.θnative,
+		θreal = model.θreal,
+		θ₀native = model.θ₀native,
+		trialsets = model.trialsets)
 end
 
 """
