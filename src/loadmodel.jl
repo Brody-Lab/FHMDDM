@@ -100,7 +100,7 @@ RETURN
 """
 function Model(options::Options, trialsets::Vector{<:Trialset})
 	gaussianprior=GaussianPrior(options, trialsets)
-	θnative = initializeparameters(options)
+	θnative = randomize_latent_parameters(options)
 	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # making a deep copy
 	Model(options=options,
 		   gaussianprior=gaussianprior,
@@ -277,23 +277,16 @@ function Trialset(trialset::Dict)
 end
 
 """
-	initializeparameters(options)
+	randomize_latent_parameters(options)
 
 Initialize the value of each model parameters in native space by sampling from a Uniform random variable""
 
 RETURN
 -values of model parameter in native space
 """
-function initializeparameters(options::Options)
+function randomize_latent_parameters(options::Options)
 	θnative = Latentθ()
-	for field in fieldnames(Latentθ)
-		fit = is_parameter_fit(options, field)
-		lqu = getfield(options, Symbol("lqu_"*string(field)))
-		l = lqu[1]
-		q = lqu[2]
-		u = lqu[3]
-		getfield(θnative, field)[1] = fit ? l + (u-l)*rand() : q
-	end
+	randomize_latent_parameters!(θnative, options)
 	return θnative
 end
 
@@ -309,7 +302,25 @@ MODIFIED ARGUMENT
 """
 function randomize_latent_parameters!(model::Model)
 	@unpack options, θnative, θreal = model
-	for field in fieldnames(Latentθ)
+	randomize_latent_parameters!(θnative, options)
+	native2real!(θreal, options, θnative)
+end
+
+"""
+	randomize_latent_parameters!(θnative, options)
+
+Set the value of each latent-variable parameter as a sample from a Uniform distribution.
+
+Only parameters being fit are randomized
+
+MODIFIED ARGUMENT
+-`θnative`: latent variables' parameters in native space
+
+UNMODIFIED ARGUMENT
+-`options`: settings of the model
+"""
+function randomize_latent_parameters!(θnative::Latentθ, options::Options)
+	for field in fieldnames(typeof(θnative))
 		fit = is_parameter_fit(options, field)
 		lqu = getfield(options, Symbol("lqu_"*string(field)))
 		l = lqu[1]
@@ -317,5 +328,5 @@ function randomize_latent_parameters!(model::Model)
 		u = lqu[3]
 		getfield(θnative, field)[1] = fit ? l + (u-l)*rand() : q
 	end
-	native2real!(θreal, options, θnative)
+	return nothing
 end

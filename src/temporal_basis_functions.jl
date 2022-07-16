@@ -127,6 +127,8 @@ Raised cosines that are stretched in time.
 The first cosine is equal to zero in the first time bin, and the last cosine is equal to its peak at the last time bin
 
 ARGUMENT
+-`begins_at_0`: whether the value of the first temporal basis function at the first time step is equal to zero or equal to 1
+-`ends_at_0`: whether the value of the last temporal basis function at the last time step is equal 0 or equal to 1.
 -`nbases`: number of bases
 -`nbins`: number of bins in the time window tiled by the bases
 
@@ -136,12 +138,26 @@ OPTIONAL ARGUMENT
 RETURN
 -`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis at the i-th timestep from beginning of the trial
 """
-function stretched_raised_cosines(nbases::Integer, nbins::Integer; stretch::AbstractFloat=1e3)
+function stretched_raised_cosines(begins_at_0::Bool, ends_at_0::Bool, nbases::Integer, nbins::Integer; stretch::AbstractFloat=1e3)
     λ = max(1/stretch, eps())
     a = log(1+λ)
     b = log(nbins+λ)
-    Δcenters = (b-a)/(nbases+1)
-    centers = collect(a+2Δcenters:Δcenters:b)
+    if begins_at_0
+        if ends_at_0
+            Δcenter = (b-a) / (nbases+3)
+        else
+            Δcenter = (b-a) / (nbases+1)
+        end
+        centers = a .+ 2Δcenter .+ collect(0:max(1,nbases-1)).*Δcenter
+    else
+        if ends_at_0
+            Δcenter = (b-a) / (nbases+1)
+        else
+            Δcenter = (b-a) / max(1,nbases-1)
+        end
+        centers = a .+ collect(0:max(1,nbases-1)).*Δcenter
+    end
     x = log.(collect(1:nbins) .+ λ) .- transpose(centers)
-    (cos.(max.(-π, min.(π, x/Δcenters/2*π))) .+ 1)/2
+    tbf = (cos.(max.(-π, min.(π, x/Δcenter/2*π))) .+ 1)/2
+    tbf./maximum(tbf, dims=1)
 end
