@@ -22,14 +22,13 @@ julia> maximizeevidence!(model)
 ```
 """
 function maximizeevidence!(model::Model;
-						αrange::Vector{<:Real}=[1e-1, 1e2],
-						srange::Vector{<:Real}=[1e-8, 1e2],
 						iterations::Int = 500,
 						max_consecutive_failures::Int=2,
 						outer_iterations::Int=10,
 						verbose::Bool=true,
 						g_tol::Real=1e-3,
 						x_reltol::Real=1e-1)
+	@unpack αrange, srange = model.options
 	@unpack index𝚽 = model.gaussianprior
 	memory = Memoryforgradient(model)
 	best𝛉, index𝛉 = concatenateparameters(model)
@@ -88,7 +87,7 @@ function maximizeevidence!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀; αrange=αrange, srange=srange)
+			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀)
 			if verbose
 				println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
 				println("Outer iteration ", i, ": new 𝐬 → ", model.gaussianprior.𝐬)
@@ -175,10 +174,9 @@ function maximizeevidence!(memory::Memoryforgradient,
 						model::Model,
 						𝐇::Matrix{<:Real},
 						𝛉₀::Vector{<:Real};
-						αrange::Vector{<:Real}=[1e-1, 1e2],
-						srange::Vector{<:Real}=[1e-8, 1e2],
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
+	@unpack αrange, srange = model.options
 	𝐰₀ = 𝛉₀[model.gaussianprior.index𝚽]
 	𝐁₀𝐰₀ = (model.gaussianprior.𝚽-𝐇)*𝐰₀
 	𝛂₀𝐬₀ = vcat(model.gaussianprior.𝛂, model.gaussianprior.𝐬)

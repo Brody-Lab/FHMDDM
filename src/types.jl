@@ -53,6 +53,8 @@ Model settings
 	α₀::TF=0.0
 	"initial coefficient for L2 regularization for the ddm parameters"
 	α₀_choices::TF=0.0
+	"minimum and maximum of the L2 shrinkage coefficients"
+	αrange::TVF= [1e-1, 1e2]
 	"type of temporal basis functions"
     basistype::TS="raised_cosine"
 	"full path of the data"
@@ -124,6 +126,8 @@ Model settings
     resultspath::TS=""
 	"initial coefficient for the L2 smoothing penalty"
 	s₀::TF=0.0
+	"minimum and maximum of the L2 smoothing coefficients"
+	srange::TVF= [1e-8, 1e2]
 	"whether the tuning to the accumulator is state-dependent"
 	tuning_state_dependent::TB=true
 	"whether to update the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space, to be the value learned from maximizing the evidence of only the choices"

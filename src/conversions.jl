@@ -343,6 +343,7 @@ function dictionary(options::Options)
 			"a_latency_s"=>options.a_latency_s,
 			"alpha0"=>options.α₀,
 			"alpha0_choices"=>options.α₀_choices,
+			"alpharange"=>options.αrange,
 			"basistype"=>options.basistype,
 			"datapath"=>options.datapath,
 			"dt"=>options.Δt,
@@ -378,6 +379,7 @@ function dictionary(options::Options)
     		"objective"=> options.objective,
 			"resultspath"=>options.resultspath,
 			"s0"=>options.s₀,
+			"srange"=>options.srange,
 			"tuning_state_dependent"=>options.tuning_state_dependent,
 			"updateDDtransformation"=>options.updateDDtransformation,
 			"Xi"=>options.Ξ)
@@ -556,6 +558,7 @@ function Options(options::Dict)
 			a_latency_s = options["a_latency_s"],
 			α₀=options["alpha0"],
 			α₀_choices=options["alpha0_choices"],
+			αrange=vec(options["alpharange"]),
 			basistype = options["basistype"],
 			datapath = options["datapath"],
 			Δt = options["dt"],
@@ -591,6 +594,7 @@ function Options(options::Dict)
 			objective = options["objective"],
 			resultspath = options["resultspath"],
 			s₀ = options["s0"],
+			srange = vec(options["srange"]),
 			tuning_state_dependent = options["tuning_state_dependent"],
 			updateDDtransformation=options["updateDDtransformation"],
 			Ξ = convert(Int, options["Xi"]))

@@ -22,7 +22,7 @@ function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
     elseif options.basistype == "Chebyshev_polynomial"
         Φ = chebyshevbases(nbases, Tmax)
     elseif options.basistype == "stretched_raised_cosine"
-        Φ = stretched_raised_cosines(nbases, Tmax)
+        Φ = stretched_raised_cosines(false, false, nbases, Tmax)
     else
         error("unrecognized type for temporal basis function: ", options.basistype)
     end
