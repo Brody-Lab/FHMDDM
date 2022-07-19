@@ -14,7 +14,7 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_15b_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat")
 julia> learnparameters!(model)
 julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
 julia> fbz = posterior_first_state(model)
@@ -171,19 +171,14 @@ function maximizeposterior!(model::Model;
 							f_tol::AbstractFloat=0.0,
 							g_tol::AbstractFloat=1e-8,
 							iterations::Integer=1000,
+							optimizer::Optim.FirstOrderOptimizer = LBFGS(linesearch = LineSearches.BackTracking()),
 							show_every::Integer=10,
 							show_trace::Bool=true,
 							store_trace::Bool=true,
 							x_tol::AbstractFloat=0.0)
-	optimizer = LBFGS(linesearch = LineSearches.BackTracking())
 	memory = Memoryforgradient(model)
-	@unpack 𝚲 = model.gaussianprior
-    f(concatenatedθ) = -loglikelihood!(model, memory, concatenatedθ) + 0.5dot(concatenatedθ, 𝚲, concatenatedθ)
-    function g!(∇, concatenatedθ)
-		∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
-		mul!(∇, 𝚲, concatenatedθ, 1, 1) # same as `∇ .+= 𝚲*concatenatedθ` but allocates no memory; not much faster though
-		return nothing
-	end
+    f(concatenatedθ) = -logposterior!(model, memory, concatenatedθ)
+	g!(∇,concatenatedθ) = ∇negativelogposterior!(∇, model, memory, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
                                   g_tol=g_tol,
@@ -207,4 +202,97 @@ function maximizeposterior!(model::Model;
 		end
 	end
     return losses, gradientnorms, optimizationresults
+end
+
+"""
+	logposterior!(model, memory, concatenatedθ)
+
+Log of the posterior probability, minus the terms independent of the parameters
+
+MODIFIED ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
+-`memory`: structure for in-place computation of the gradient of the log-likelihood
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: Values of the parameters being fitted concatenated into a vector
+
+RETURN
+-log of the posterior probability of the parameters, minus the parameter-independent terms
+"""
+function logposterior!(model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
+	loglikelihood!(model, memory, concatenatedθ) - 0.5dot(concatenatedθ, model.gaussianprior.𝚲, concatenatedθ)
+end
+
+"""
+	logposterior(concatenatedθ, indexθ, model)
+
+ForwardDiff-compatiable computation of the log of the posterior probability, minus the terms independent of the parameters
+
+ARGUMENT
+-`concatenatedθ`: a vector of concatenated parameter values
+-`indexθ`: struct indexing of each parameter in the vector of concatenated values
+-`model`: an instance of FHM-DDM
+
+RETURN
+-log of the posterior probability of the parameters, minus the parameter-independent terms
+
+"""
+function logposterior(concatenatedθ::Vector{T}, indexθ::Indexθ, model::Model) where {T<:Real}
+	loglikelihood(concatenatedθ, indexθ, model) - 0.5dot(concatenatedθ, model.gaussianprior.𝚲, concatenatedθ)
+end
+
+"""
+	∇negativelogposterior!(∇, model, memory, concatenatedθ)
+
+Gradient of the negative of the log of the posterior probability, minus the terms independent of the parameters
+
+MODIFIED ARGUMENT
+-`∇`: the gradient
+-`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
+-`memory`: structure for in-place computation of the gradient of the log-likelihood
+
+UNMODIFIED ARGUMENT
+-`concatenatedθ`: Values of the parameters being fitted concatenated into a vector
+"""
+function ∇negativelogposterior!(∇::Vector{<:Real}, model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
+	∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
+	mul!(∇, model.gaussianprior.𝚲, concatenatedθ, 1, 1) # same as `∇ .+= 𝚲*concatenatedθ` but allocates no memory; not much faster though
+	return nothing
+end
+
+"""
+	check_∇negativelogposterior(model)
+
+Compare the hand-computed and automatically-differentiated gradients
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+
+RETURN
+-`absdiffℓ`: absolute difference in the log-posterior evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
+-`absdiff∇`: absolute difference in the gradients
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat"
+julia> model = Model(datapath)
+julia> absdiffℓ, absdiff∇ = FHMDDM.check_∇negativelogposterior(model)
+julia> println("")
+julia> println(datapath)
+julia> println("   max(|Δloss|): ", absdiffℓ)
+julia> println("   max(|Δgradient|): ", maximum(absdiff∇))
+julia>
+```
+"""
+function check_∇negativelogposterior(model::Model)
+	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+	memory = Memoryforgradient(model)
+	ℓhand = logposterior!(model, memory, concatenatedθ)
+	∇hand = similar(concatenatedθ)
+	∇negativelogposterior!(∇hand, model, memory, concatenatedθ)
+	f(x) = logposterior(x, indexθ, model)
+	ℓauto = f(concatenatedθ)
+	∇auto = ForwardDiff.gradient(f, concatenatedθ)
+	return abs(ℓauto-ℓhand), abs.(∇auto .+ ∇hand)
 end

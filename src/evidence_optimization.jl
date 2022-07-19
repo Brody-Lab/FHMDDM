@@ -16,7 +16,7 @@ OPTIONAL ARGUMET
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_10a_test/T176_2018_05_03_b3K2K1/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat")
 julia> initializeparameters!(model)
 julia> maximizeevidence!(model)
 ```
@@ -55,7 +55,7 @@ function maximizeevidence!(model::Model;
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
 			𝛉₀ = concatenateparameters(model)[1] # exact posterior mode
-			stats = @timed ∇∇loglikelihood(model)[index𝚽, index𝚽]
+			stats = @timed ∇∇loglikelihood(model)[3][index𝚽, index𝚽]
 			𝐇 = stats.value
 			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
 			𝐸 = logevidence!(memory, model, 𝐇, 𝛉₀)

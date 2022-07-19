@@ -14,11 +14,11 @@ RETURN
 -`nothing`
 """
 function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
+					 p𝑑_a::Vector{<:Vector{<:Vector{<:Real}}},
                      trialsets::Vector{<:Trialset},
                      ψ::Real)
 	Ξ = size(p𝐘𝑑[1][1][end],1)
 	K = size(p𝐘𝑑[1][1][end],2)
-	zeroindex = cld(Ξ,2)
     @inbounds for i in eachindex(p𝐘𝑑)
 		N = length(trialsets[i].mpGLMs)
 	    for j = 1:Ξ
@@ -37,38 +37,34 @@ function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 	        end
 	    end
 		for m in eachindex(p𝐘𝑑[i])
-			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, ψ; zeroindex=zeroindex)
+			choicelikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, ψ)
+			p𝐘𝑑[i][m][end] .*= p𝑑_a[i][m]
 		end
     end
     return nothing
 end
 
 """
-    likelihood!(p𝐘ₜ𝑑, choice, ψ)
+    choicelikelihood!(p𝑑, choice, ψ)
 
-Multiply against the conditional probability of a right choice given the state of the accumulator
+Conditional likelihood of a right choice given the state of the accumulator
 
 MODIFIED ARGUMENT
--`p𝐘ₜ𝑑`: A matrix whose element p𝐘ₜ𝑑[j,k] ≡ p(𝐘ₜ, 𝑑 ∣ aₜ = ξⱼ, zₜ = k) for time bin t that is the at the end of the trial
+-`p𝑑`: A vector for in-place computation
 
 UNMODIFIED ARGUMENT
 -`choice`: the observed choice, either right (`choice`=true) or left.
 -`ψ`: the prior probability of a lapse state
-
-OPTIONAL ARGUMENT
-- `zeroindex`: the index of the bin for which the accumulator variable equals zero
 """
-function likelihood!(p𝐘ₜ𝑑::Matrix{<:Real},
-		             choice::Bool,
-		             ψ::Real;
-		             zeroindex=cld(size(p𝐘ₜ𝑑,1),2))
-    p𝐘ₜ𝑑[zeroindex,:] .*= 0.5
+function choicelikelihood!(p𝑑::Vector{<:Real}, choice::Bool, ψ::Real)
+	zeroindex = cld(size(p𝑑,1),2)
+    p𝑑[zeroindex] = 0.5
     if choice
-        p𝐘ₜ𝑑[1:zeroindex-1,:] .*= ψ/2
-        p𝐘ₜ𝑑[zeroindex+1:end,:] .*= 1-ψ/2
+        p𝑑[1:zeroindex-1] .= ψ/2
+        p𝑑[zeroindex+1:end] .= 1-ψ/2
     else
-        p𝐘ₜ𝑑[1:zeroindex-1,:]   .*= 1-ψ/2
-        p𝐘ₜ𝑑[zeroindex+1:end,:] .*= ψ/2
+        p𝑑[1:zeroindex-1]   .= 1-ψ/2
+        p𝑑[zeroindex+1:end] .= ψ/2
     end
     return nothing
 end
@@ -398,10 +394,11 @@ function update_for_choice_posteriors!(memory::Memoryforgradient,
 				 					   model::Model)
 	@unpack options, θnative, trialsets = model
 	@unpack Δt, K, minpa, Ξ = options
-	@unpack p𝐘𝑑 = memory
+	@unpack p𝑑_a, p𝐘𝑑 = memory
 	@inbounds for i in eachindex(p𝐘𝑑)
 		for m in eachindex(p𝐘𝑑[i])
-			likelihood!(p𝐘𝑑[i][m][end], trialsets[i].trials[m].choice, θnative.ψ[1])
+			choicelikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, θnative.ψ[1])
+			p𝐘𝑑[i][m][end] .*= p𝑑_a[i][m]
 		end
     end
 	P = Probabilityvector(Δt, minpa, θnative, Ξ)

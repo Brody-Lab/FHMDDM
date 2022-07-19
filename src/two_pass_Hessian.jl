@@ -1,5 +1,5 @@
 """
-	check_twopasshessian(model)
+	check_∇∇loglikelihood(model)
 
 Compare the automatically computed and hand-coded gradients and hessians with respect to the parameters being fitted in their real space
 
@@ -13,24 +13,22 @@ RETURN
 
 EXAMPLE
 ```julia-repl
-using FHMDDM, ForwardDiff, Random
-subdirectories = filter(isdir, readdir("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_10a_test";join=true))
-for subdirectory in subdirectories
-    datapath = subdirectory*"/data.mat"
-    model = Model(datapath);
-    absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_twopasshessian(model)
-    println("")
-    println(datapath)
-    println("   max(|Δloss|): ", absdiffℓ)
-    println("   max(|Δgradient|): ", maximum(absdiff∇))
-    println("   max(|Δhessian|): ", maximum(absdiff∇∇))
-end
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat"
+julia> model = Model(datapath)
+julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_∇∇loglikelihood(model)
+julia> println("")
+julia> println(datapath)
+julia> println("   max(|Δloss|): ", absdiffℓ)
+julia> println("   max(|Δgradient|): ", maximum(absdiff∇))
+julia> println("   max(|Δhessian|): ", maximum(absdiff∇∇))
+julia>
 ```
 """
-function check_twopasshessian(model::Model)
-	concatenatedθ, indexθ = concatenateparameters(model)
-	ℓhand, ∇hand, ∇∇hand = twopasshessian!(model,concatenatedθ,indexθ)
-	f(x) = loglikelihood(x, indexθ, model)
+function check_∇∇loglikelihood(model::Model)
+	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood(model)
+	f(x) = FHMDDM.loglikelihood(x, indexθ, model)
 	ℓauto = f(concatenatedθ)
 	∇auto = ForwardDiff.gradient(f, concatenatedθ)
 	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
@@ -38,47 +36,28 @@ function check_twopasshessian(model::Model)
 end
 
 """
-	twopasshessian!(model, concatenatedθ, indexθ)
-
-Sort a vector of parameters and compute the log-likelihood, its gradient, and its hessian
-
-ARGUMENT
--`model`: a structure containing the data and hyperparameters of the factorial hidden drift-diffusion model
--`concatenatedθ`: values of the parameters in real space concatenated as a vector
--`indexθ`: a structure for sorting (i.e., un-concatenating) the parameters
-
-RETURN
--`ℓ`: log-likelihood
--`∇ℓ`: gradient of the log-likelihood with respect to fitted parameters in real space
--`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to fitted parameters in real space
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true)
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian!(model, concatenatedθ, indexθ)
-```
-"""
-function twopasshessian!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::Indexθ)
-	sortparameters!(model, concatenatedθ, indexθ)
-	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
-	native2real!(∇ℓ, ∇∇ℓ, model)
-	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
-	∇∇ℓ = sortparameters(indexθ.latentθ, ∇∇ℓ)
-	return ℓ, ∇ℓ, ∇∇ℓ
-end
-
-"""
     ∇∇loglikelihood(model)
 
-Return of the Hessian of the log-likelihood given the parameters and data in the structure `model`
+Hessian of the log-likelihood of the data
+
+ARGUMENT
+-`model`: a structure containing the parameters, data, and hyperparameters of a factorial hidden Markov drift-diffusion model
+
+RETURN
+-`ℓ`: log-likelihood, as a float
+-`∇ℓ`: gradient of the log-likelihood with respect to the fitted parameters in real space
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to the fitted parameters in real space
 """
 function ∇∇loglikelihood(model::Model)
 	indexθ = concatenateparameters(model)[2]
 	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
 	native2real!(∇ℓ, ∇∇ℓ, model)
-	sortparameters(indexθ.latentθ, ∇∇ℓ)
+	if model.options.scalechoiceLL
+		∇∇scalechoiceLL!(ℓ, ∇ℓ, ∇∇ℓ, model)
+	end
+	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
+	∇∇ℓ = sortparameters(indexθ.latentθ, ∇∇ℓ)
+	return ℓ[1], ∇ℓ, ∇∇ℓ
 end
 
 """
@@ -90,15 +69,9 @@ ARGUMENT
 -`model`: a structure containing the parameters, data, and hyperparameters of a factorial hidden Markov drift-diffusion model
 
 RETURN
--`ℓ`: log-likelihood
--`∇ℓ`: gradient of the log-likelihood with respect to fitted parameters in real space
--`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to fitted parameters in real space
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat")
-julia> ℓ, ∇ℓ, ∇∇ℓ = FHMDDM.twopasshessian(model)
+-`ℓ`: log-likelihood, as an one element vector
+-`∇ℓ`: gradient of the log-likelihood with respect to parameters in native space. Parameters not being fitted have not been sorted out.
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to parameters in native space. Parameters not being fitted have not been sorted out.
 ```
 """
 function twopasshessian(model::Model)
@@ -119,7 +92,7 @@ function twopasshessian(model::Model)
 			∇∇ℓ[j,i] = ∇∇ℓ[i,j]
 		end
 	end
-	return ℓ[1], ∇ℓ, ∇∇ℓ
+	return ℓ, ∇ℓ, ∇∇ℓ
 end
 
 """
@@ -1148,4 +1121,44 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					∇∇pa₁=∇∇pa₁,
 					pY=pY,
 					∇pY=∇pY)
+end
+
+"""
+	∇∇scalechoiceLL!(ℓ, ∇ℓ, ∇∇ℓ, model)
+
+Adjust the log-likelihood, its gradient, and hessian by the scaling factor of the log-likelihood of choices
+
+MODIFIED ARGUMENT
+-`ℓ`: log-likelihood of the data before scaling up the log-likelihood of the choices
+-`∇ℓ`: gradient of the log-likelihood of the data before scaling up the log-likelihood of the choices. This is before sorting to remove parameters that are not being fitted.
+-`∇∇ℓ`: hessian of the log-likelihood of the data before scaling up the log-likelihood of the choices. This is before sorting to remove parameters that are not being fitted.
+
+UNMODIFIED ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters
+"""
+function ∇∇scalechoiceLL!(ℓ::Vector{<:AbstractFloat}, ∇ℓ::Vector{<:AbstractFloat}, ∇∇ℓ::Matrix{<:AbstractFloat}, model::Model)
+	s = scaling_factor_choiceLL(model)
+	ℓˢ, ∇ℓˢ, ∇∇ℓˢ = ∇∇choiceLL(model)
+	ℓ[1] += (s-1)*ℓˢ
+	nθchoice = length(∇ℓˢ)
+	indices = zeros(Int, nθchoice)
+	i = 0
+	j = 0
+	for field in fieldnames(Latentθ)
+		i += 1
+		if field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+		else
+			j += 1
+			indices[j] = i
+		end
+	end
+	for j = 1:nθchoice
+		i = indices[j]
+		∇ℓ[i] += (s-1)*∇ℓˢ[j]
+		for n = 1:nθchoice
+			m = indices[n]
+			∇∇ℓ[i,m] += (s-1)*∇∇ℓˢ[j,n]
+		end
+	end
+	return nothing
 end

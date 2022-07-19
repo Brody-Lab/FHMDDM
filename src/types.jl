@@ -126,6 +126,8 @@ Model settings
     resultspath::TS=""
 	"initial coefficient for the L2 smoothing penalty"
 	s₀::TF=0.0
+	"whether to scale the log-likelihood of the choices to be of similar magnitude of the log-likelihood of the spike trains"
+	scalechoiceLL::TB=true
 	"minimum and maximum of the L2 smoothing coefficients"
 	srange::TVF= [1e-8, 1e2]
 	"whether the tuning to the accumulator is state-dependent"
@@ -824,6 +826,7 @@ Container of variables used by both the log-likelihood and gradient computation
 								VMR<:Vector{<:Matrix{<:Real}},
 								VTVR<:Vector{<:Transpose{<:Real, <:Vector{<:Real}}},
 								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
+								VVVR<:Vector{<:Vector{<:Vector{<:Real}}},
 								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
 								VMVR<:Vector{<:Matrix{<:Vector{<:Real}}},
 								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
@@ -844,6 +847,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	∇Aᶜ::VMR
 	"first-order partial derivatives of the transpose of the transition matrix of the coupling. Element ∇Aᶜᵀ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=j ∣ c(t-1)=i} with respect to the q-th parameter that influence coupling transitions."
 	∇Aᶜᵀ::VTMR = transpose.(∇Aᶜ)
+	"scaling factor of the log-likelihood of choices"
+	choiceLLscaling::R
 	"a vector of the concatenated values of the parameters being fitted"
 	concatenatedθ::VR
 	"normalization parameters in the forward-backward algorithm"
@@ -852,6 +857,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	Δt::R
 	"forward terms"
 	f::VMR
+	"forward terms for the choice only chains"
+	fᶜ::VVR
 	"a structure indicating the index of each model parameter in the vector of concatenated values"
 	indexθ::Tindex
 	"indices of the parameters that influence the prior probabilities of the accumulator"
@@ -894,10 +901,12 @@ Container of variables used by both the log-likelihood and gradient computation
 	∇πᶜ::VVR
 	"first-order partial derivatives of the transpose of the prior probability of the coupling."
 	∇πᶜᵀ::VTVR=transpose.(∇πᶜ)
-	"Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
+	"Conditional likelihood of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
 	p𝐘𝑑::VVVMR
 	"number of accumulator states"
 	Ξ::TI
+	"condition likelihood of a behavioral choice"
+	p𝑑_a::VVVR
 end
 
 

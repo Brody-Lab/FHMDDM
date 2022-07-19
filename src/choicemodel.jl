@@ -949,9 +949,9 @@ ARGUMENT
 -`model`: a structure containing the data and hyperparameters of the factorial hidden drift-diffusion model
 
 RETURN
--`ℓ`: log-likelihood
--`∇ℓ`: gradient of the log-likelihood with respect to fitted parameters in real space
--`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to fitted parameters in real space
+-`ℓ`: log-likelihood, as a float
+-`∇ℓ`: gradient of the log-likelihood with respect to all choice-related parameters in real space. Parameters not being fitted have not been sorted out.
+-`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to all choice-related parameters in real space. Parameters not being fitted have not been sorted out.
 """
 function ∇∇choiceLL(model::Model)
 	@unpack trialsets = model
@@ -979,6 +979,7 @@ function ∇∇choiceLL(model::Model)
 	end
 	return ℓ[1], ∇ℓ, ∇∇ℓ
 end
+
 
 """
 	 ∇∇choiceLL!(memory, θnative, trial)
