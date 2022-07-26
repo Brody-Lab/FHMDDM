@@ -45,18 +45,26 @@ Model settings
 						TI<:Integer,
 						TVI<:Vector{<:Integer},
 						TVF<:Vector{<:AbstractFloat}}
-	"number of temporal basis functions for the accumulator per s"
-    a_basis_per_s::TI=10
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
+	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
+	atbf_begins0::TB=false
+	"whether the temporal basis functions parametrizing the weight of the accumulator can parametrize a constant function"
+	atbf_constantfunction::TB=false
+	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
+	atbf_ends0::TB=false
+	"number of temporal basis functions parametrizing the weight of the accumulator per second"
+	atbf_hz::TF=4
+	"period of each temporal basis functions parametrizing the weight of the accumulator, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
+	atbf_period::TF=4
+	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
+	atbf_stretch::TF=100.0
 	"initial coefficient for L2 regularization for the ddm parameters"
 	α₀_choices::TF=0.0
 	"minimum and maximum of the L2 shrinkage coefficients for DDM parameters"
 	αrangeDDM::TVF= [1e-1, 1e2]
 	"minimum and maximum of the L2 shrinkage coefficients for GLM parameters"
 	αrangeGLM::TVF= [1e-1, 1e2]
-	"type of temporal basis functions"
-    basistype::TS="raised_cosine"
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
 	"full path of the data"
@@ -216,15 +224,18 @@ Mixture of Poisson generalized linear model
                                   VF<:Vector{<:AbstractFloat},
 								  VI<:Vector{<:Integer},
 								  Tθ<:GLMθ,
-                                  MF<:Matrix{<:AbstractFloat}}
+                                  MF<:Matrix{<:AbstractFloat},
+								  VMF<:Vector{<:Matrix{<:AbstractFloat}}}
     "size of the time bin"
     Δt::F
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
 	"number of spike history lags"
 	max_spikehistory_lag::TI
-	"Temporal bases"
+	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
 	Φ::MF
+	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between events in the trial and the neuron's probability of spiking. The timing of each event is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. Each element of `Φevents` corresponds to one event and is a matrix whose columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
+	Φevents::VMF
 	"parameters"
 	θ::Tθ
     "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"

@@ -181,18 +181,20 @@ function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
     ntimesteps = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
 	units = vec(trialset["units"])
-    𝐘 = map(x->convert.(Int64, vec(x["y"])), units)
+    𝐘 = map(x->convert.(typeof(1), vec(x["y"])), units)
     @assert sum(ntimesteps) == length(𝐘[1])
 	@unpack K, Ξ = options
 	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
 	𝐕, Φ = temporal_bases_values(options, ntimesteps)
 	𝐆 = ones(size(trialset["Xtiming"],1))
+	Φevents = map(x->convert.(typeof(1.0), x), vec(trialset["Phievents"]))
 	mpGLMs = map(units, 𝐘) do unit, 𝐲
 				𝐗=hcat(𝐆, unit["Xautoreg"], trialset["Xtiming"], 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
   								d𝛏_dB=d𝛏_dB,
 								max_spikehistory_lag = size(unit["Xautoreg"],2),
 								Φ=Φ,
+								Φevents=Φevents,
 								θ=GLMθ(options, 𝐗, 𝐕),
 								𝐕=𝐕,
 								𝐗=𝐗,

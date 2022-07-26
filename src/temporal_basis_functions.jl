@@ -10,31 +10,114 @@ INPUT
 RETURN
 -`𝐕`: A matrix whose element 𝐕[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_26a_test/T176_2018_05_03/data.mat"
+julia> model = Model(datapath)
+julia> model.trialsets[1].mpGLMs[1].𝐕
+julia> model.trialsets[1].mpGLMs[1].Φ
+julia> save(model)
+julia>
+```
 """
 function temporal_bases_values(options::Options, 𝐓::Vector{<:Integer})
     Tmax = maximum(𝐓)
-    nbases = max(1, ceil(Integer, options.a_basis_per_s*(Tmax*options.Δt)))
-    if options.basistype == "none"
+    nbases = max(1, ceil(Integer, options.atbf_hz*(Tmax*options.Δt)))
+    if nbases == 1
         Φ = ones(Tmax,1)
-        nbases = 1
-    elseif options.basistype == "raised_cosine"
-        Φ = raisedcosinebases(false, false, nbases, Tmax)
-    elseif options.basistype == "Chebyshev_polynomial"
-        Φ = chebyshevbases(nbases, Tmax)
-    elseif options.basistype == "stretched_raised_cosine"
-        Φ = stretched_raised_cosines(true, false, nbases, Tmax)
+        𝐕 = ones(sum(𝐓), 1)
     else
-        error("unrecognized type for temporal basis function: ", options.basistype)
-    end
-    𝐕 = zeros(sum(𝐓), nbases)
-    k = 0
-    for T in 𝐓
-        for t = 1:T
-            k = k + 1;
-            𝐕[k,:] = Φ[t,:]
+        Φ = raisedcosines(nbases, Tmax, options)
+        𝐕 = zeros(sum(𝐓), nbases)
+        k = 0
+        for T in 𝐓
+            for t = 1:T
+                k = k + 1;
+                𝐕[k,:] = Φ[t,:]
+            end
         end
     end
     return 𝐕, Φ
+end
+
+"""
+    raisedcosines(nbases, nbins, options)
+
+Values of raised cosine temporal basis functions (tbf's)
+
+ARGUMENT
+-`nbases`: number of bases
+-`nbins`: number of bins in the time window tiled by the bases
+-`options`: Settings of the model
+
+RETURN
+-`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
+"""
+function raisedcosines(nbases::Integer, nbins::Integer, options::Options)
+    if isnan(options.atbf_stretch) || options.atbf_stretch < eps()
+        a = 1
+        b = nbins
+        t = collect(1:nbins)
+    else
+        λ = 1/options.atbf_stretch
+        a = log(1+λ)
+        b = log(nbins+λ)
+        t = log.(collect(1:nbins) .+ λ)
+    end
+    if options.atbf_constantfunction
+        begins0 = false
+        ends0 = false
+    else
+        begins0 = options.atbf_begins0
+        ends0 = options.atbf_ends0
+    end
+    if begins0
+        if ends0
+            Δcenter = (b-a) / (nbases+3)
+        else
+            Δcenter = (b-a) / (nbases+1)
+        end
+        centers = a .+ 2Δcenter .+ collect(0:max(1,nbases-1)).*Δcenter
+    else
+        if ends0
+            Δcenter = (b-a) / (nbases+1)
+        else
+            Δcenter = (b-a) / (nbases-1)
+        end
+        centers = a .+ collect(0:max(1,nbases-1)).*Δcenter
+    end
+    ω = 2π/Δcenter/options.atbf_period
+    Φ = raisedcosines(centers, ω, t)
+    if options.atbf_constantfunction
+        lefttail = raisedcosines([centers[1]-Δcenter], ω, t)
+        righttail = raisedcosines([centers[end]+Δcenter], ω, t)
+        Φ[:,1] += lefttail
+        Φ[:,end] += righttail
+        indices = t .<= centers[1] + options.atbf_period/2*Δcenter
+        deviations = 2.0 .- sum(Φ,dims=2) # introduced by time compression
+        Φ[indices,1] .+= deviations[indices]
+    end
+    return Φ
+end
+
+"""
+    raisedcosines(centers, ω, t)
+
+Values of raised cosine temporal basis functions
+
+ARGUMENT
+-`centers`: Vector of the centers of the raised cosines
+-`ω`: angular frequency
+-`t`: values at which the temporal basis functions are evaluated
+
+RETURN
+-`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
+"""
+function raisedcosines(centers::Vector{<:AbstractFloat}, ω::AbstractFloat, t::Vector{<:AbstractFloat})
+    T = t .- centers'
+    (cos.(max.(-π, min.(π, ω.*T))) .+ 1)/2
 end
 
 """
@@ -74,49 +157,6 @@ function raisedcosinebases(begins_at_0::Bool, ends_at_0::Bool, nbases::Integer, 
     timefromcenter = collect(1:nbins) .- transpose(centers)
     period = 4Δcenter
     (abs.(timefromcenter) .< period/2).*(cos.(timefromcenter*2π/period)*0.5 .+ 0.5)
-end
-
-"""
-    chebyshevT(x,n)
-
-Construct Chebyshev polynomial of the first kind
-
-ARGUMENT
--`x`: argument to the polynomial
--`n`: the n-th polynomial
-
-RETURN
--`T_n(x)`: the output of the n-th Chebyshev polynomial evaluated at x
-"""
-function chebyshevT(x::AbstractFloat, n::Integer)
-    if n == 0
-        return 1.
-    elseif n == 1
-        return x
-    else
-        return 2x * chebyshevT(x, n - 1) - chebyshevT(x, n - 2)
-    end
-end
-
-"""
-    chebyshevbases(nbases,nbins)
-
-Construct Chebyshev bases of (nbases)-th order
-
-ARGUMENT
--`nbases`: number of bases
--`nbins`: number of bins in the time window tiled by the bases
-
-RETURN
--`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis at the i-th timestep from beginning of the trial
-"""
-function chebyshevbases(nbases::Integer, nbins::Integer)
-    trange = range(-1, 1, length=nbins)
-    Φ = chebyshevT.(trange, 0)
-    for ibasis = 1:nbases-1
-        Φ = hcat(Φ, chebyshevT.(trange, ibasis))
-    end
-    Φ
 end
 
 """
