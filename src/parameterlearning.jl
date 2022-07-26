@@ -14,28 +14,32 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20e_test/T249_2020_02_12/data.mat")
 julia> learnparameters!(model)
 julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
 julia> fbz = posterior_first_state(model)
 julia> save(model, fbz, λΔt, pchoice)
+julia>
+julia> using FHMDDM
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20j_test/T224_2020_01_03/data.mat")
+julia> learnparameters!(model)
+julia>
 ```
 """
-function learnparameters!(model::Model)
+function learnparameters!(model::Model; initialize::Bool=true)
 	@unpack objective = model.options
-	initializeparameters!(model)
+	initialize && initializeparameters!(model)
 	if objective == "evidence"
 		output = maximizeevidence!(model)
 	elseif objective == "posterior"
 		output = maximizeposterior!(model)
 	elseif objective == "likelihood"
-		output = maximizelikelihood!(model)
+		output = maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()))
 	else
 		error(objective, " is not a recognized objective.")
 	end
 	return output
 end
-
 
 """
 	initializeparameters!(model)
@@ -55,11 +59,26 @@ julia> model = Model(datapath)
 julia> FHMDDM.initializeparameters!(model)
 ```
 """
-function initializeparameters!(model::Model)
+function initializeparameters!(model::Model; verbose::Bool=true)
 	fitonlychoices!(model)
 	if model.options.updateDDtransformation
 		model = update_drift_diffusion_transformation(model)
 	end
+	verbose && println("Initializing GLM parameters")
+	stats = @timed initialize_GLM_parameters!(model)
+	verbose && println("Initializing the GLM parameters took ", stats.time, " seconds")
+	return nothing
+end
+
+"""
+	initialize_GLM_parameters!(model)
+
+Initialize the GLM parameters
+
+MODIFIED ARGUMENT
+-`model`: an instance of the factorial hidden Markov drift-diffusion model
+"""
+function initialize_GLM_parameters!(model::Model)
 	memory = FHMDDM.Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
@@ -85,7 +104,6 @@ function initializeparameters!(model::Model)
 			end
 		end
 	end
-	return nothing
 end
 
 """

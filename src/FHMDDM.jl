@@ -20,6 +20,7 @@ export  crossvalidate, # module-specific functions and types in this module that
         maximize_choice_posterior!,
         maximizeposterior!,
         maximizeevidence!,
+        ∇∇loglikelihood,
         learnparameters!,
         posterior_first_state,
         save

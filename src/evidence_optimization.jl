@@ -16,9 +16,10 @@ OPTIONAL ARGUMET
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20e_test/T249_2020_02_12/data.mat")
 julia> initializeparameters!(model)
 julia> maximizeevidence!(model)
+julia>
 ```
 """
 function maximizeevidence!(model::Model;
@@ -28,8 +29,8 @@ function maximizeevidence!(model::Model;
 						verbose::Bool=true,
 						g_tol::Real=1e-3,
 						x_reltol::Real=1e-1)
-	@unpack αrange, srange = model.options
-	@unpack index𝚽 = model.gaussianprior
+	@unpack srange = model.options
+	@unpack index𝚽, 𝛂min, 𝛂max = model.gaussianprior
 	memory = Memoryforgradient(model)
 	best𝛉, index𝛉 = concatenateparameters(model)
 	best𝐸 = -Inf
@@ -41,11 +42,17 @@ function maximizeevidence!(model::Model;
 	    results = maximizeposterior!(model; iterations=iterations, g_tol=g_tol)[3]
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
-				new_α = min(maximum(αrange), 2geomean(model.gaussianprior.𝛂))
-				model.gaussianprior.𝛂 .= new_α
-				new_s = min(maximum(srange), 2geomean(model.gaussianprior.𝐬))
-				model.gaussianprior.𝐬 .= new_s
-				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be twice the geometric mean of the hyperparameters. New (𝛂, 𝐬) → (", new_α, ", ", new_s, ")")
+				for i = 1:length(model.gaussianprior.𝛂)
+					model.gaussianprior.𝛂[i] = min(𝛂max[i], 2model.gaussianprior.𝛂[i])
+				end
+				for i = 1:length(model.gaussianprior.𝐬)
+					model.gaussianprior.𝐬[i] = min(srange[2], 2model.gaussianprior.𝐬[i])
+				end
+				if verbose
+					println("Outer iteration: ", i, ": because the MAP optimization did not converge after reaching the maximum number of iterations, the values of the precisions are doubled")
+					println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
+					println("Outer iteration ", i, ": new 𝐬 → ", model.gaussianprior.𝐬)
+				end
 			else
 				verbose && println("Outer iteration: ", i, ": because of a line search failure, Gaussian noise is added to the parameter values")
 				𝛉 = concatenateparameters(model)[1]
@@ -164,6 +171,8 @@ Learn hyperparameters by fixing the parameters of the model and maximizing the e
 MODIFIED ARGUMENT
 -`memory`: structure containing variables to be modified during computations
 -`model`: structure containing the parameters, hyperparameters, and data. The parameter values are modified, but the hyperparameters are not modified
+
+UNMODIFIED ARGUMENT
 -`𝐇`: Hessian of the log-likelihood evaluated at the MAP solution `𝛉₀`, containing only the parameters associated with hyperparameters that are being optimized
 -`𝛉₀`: exact MAP solution
 
@@ -176,7 +185,8 @@ function maximizeevidence!(memory::Memoryforgradient,
 						𝛉₀::Vector{<:Real};
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
-	@unpack αrange, srange = model.options
+	@unpack srange = model.options
+	@unpack 𝛂min, 𝛂max = model.gaussianprior
 	𝐰₀ = 𝛉₀[model.gaussianprior.index𝚽]
 	𝐁₀𝐰₀ = (model.gaussianprior.𝚽-𝐇)*𝐰₀
 	𝛂₀𝐬₀ = vcat(model.gaussianprior.𝛂, model.gaussianprior.𝐬)
@@ -184,7 +194,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 	N𝛂 = length(model.gaussianprior.𝛂)
 	N𝐬 = length(model.gaussianprior.𝐬)
 	for i = 1:N𝛂
-		𝐱₀[i] = native2real(𝛂₀𝐬₀[i], αrange[1], αrange[2])
+		𝐱₀[i] = native2real(𝛂₀𝐬₀[i], 𝛂min[i], 𝛂max[i])
 	end
 	for i = N𝛂+1:N𝛂+N𝐬
 		𝐱₀[i] = native2real(𝛂₀𝐬₀[i], srange[1], srange[2])
@@ -194,7 +204,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 	function f(𝐱)
 		𝛂𝐬 = copy(𝐱)
 		for i = 1:N𝛂
-			𝛂𝐬[i] = real2native(𝐱[i], αrange[1], αrange[2])
+			𝛂𝐬[i] = real2native(𝐱[i], 𝛂min[i], 𝛂max[i])
 		end
 		for i = N𝛂+1:N𝛂+N𝐬
 			𝛂𝐬[i] = real2native(𝐱[i], srange[1], srange[2])
@@ -204,14 +214,14 @@ function maximizeevidence!(memory::Memoryforgradient,
 	function g!(∇n𝐸, 𝐱)
 		𝛂𝐬 = copy(𝐱)
 		for i = 1:N𝛂
-			𝛂𝐬[i] = real2native(𝐱[i], αrange[1], αrange[2])
+			𝛂𝐬[i] = real2native(𝐱[i], 𝛂min[i], 𝛂max[i])
 		end
 		for i = N𝛂+1:N𝛂+N𝐬
 			𝛂𝐬[i] = real2native(𝐱[i], srange[1], srange[2])
 		end
 		∇negativelogevidence!(memory, model, ∇n𝐸, ∇nℓ, 𝛉, 𝛂𝐬, 𝐁₀𝐰₀, 𝐇)
 		for i = 1:N𝛂
-			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αrange[1], αrange[2])
+			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], 𝛂min[i], 𝛂max[i])
 		end
 		for i = N𝛂+1:N𝛂+N𝐬
 			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], srange[1], srange[2])
@@ -226,7 +236,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 	end
 	𝛂̂𝐬̂ = 𝐱̂
 	for i = 1:N𝛂
-		𝛂̂𝐬̂[i] = real2native(𝐱̂[i], αrange[1], αrange[2])
+		𝛂̂𝐬̂[i] = real2native(𝐱̂[i], 𝛂min[i], 𝛂max[i])
 	end
 	for i = N𝛂+1:N𝛂+N𝐬
 		𝛂̂𝐬̂[i] = real2native(𝐱̂[i], srange[1], srange[2])

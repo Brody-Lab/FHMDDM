@@ -146,6 +146,31 @@ function save(model::Model,
 end
 
 """
+    save(hessian_loglikelihood, λΔt, model, pchoice)
+
+Save the model parameters and the expectation of the emissions and a hessian
+"""
+function save(hessian_loglikelihood::Matrix{<:AbstractFloat},
+              λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
+              model::Model,
+              pchoice::Vector{<:Vector{<:AbstractFloat}}; filename="results.mat")
+    dict = Dict("theta_native"=> dictionary(model.θnative),
+                "theta_real"=> dictionary(model.θreal),
+                "theta0_native" => dictionary(model.θ₀native),
+                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
+                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
+                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
+                "smoothingcoefficients"=>model.gaussianprior.𝐬,
+                "hessian_loglikelihood"=>hessian_loglikelihood,
+                "precisionmatrix"=>model.gaussianprior.𝚲,
+                "pchoice" => pchoice,
+                "lambdaDeltat" => λΔt)
+    path = joinpath(dirname(model.options.resultspath), filename)
+    matwrite(path, dict)
+    return nothing
+end
+
+"""
     save(cvresults,options)
 
 Save the results of crossvalidation

@@ -35,7 +35,7 @@ function maximizelikelihood!(model::Model,
 			                 extended_trace::Bool=false,
 			                 f_tol::AbstractFloat=0.0,
 			                 g_tol::AbstractFloat=1e-8,
-			                 iterations::Integer=1000,
+			                 iterations::Integer=500,
 			                 show_every::Integer=10,
 			                 show_trace::Bool=true,
 							 store_trace::Bool=true,
@@ -755,9 +755,12 @@ Scaling factor for the log-likelihood of behavioral choices
 """
 function scaling_factor_choiceLL(model::Model)
 	if model.options.scalechoiceLL
-		ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
+		# ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
+		# ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
+		# ntimesteps_neurons/ntrials
+		ntimesteps = sum(collect(trialset.ntimesteps for trialset in model.trialsets))
 		ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
-		ntimesteps_neurons/ntrials
+		ntimesteps/ntrials
 	else
 		1.0
 	end

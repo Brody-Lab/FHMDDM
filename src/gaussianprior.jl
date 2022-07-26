@@ -13,11 +13,7 @@ OUTPUT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_20a_test/T176_2018_05_03_b3K2K2/data.mat")
-julia> model.gaussianprior
-julia>
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_06_20a_test/no_smoothing/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20e_test/T249_2020_02_12/data.mat")
 julia> model.gaussianprior
 julia>
 ```
@@ -36,8 +32,9 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 	    𝐬 = ones(length(𝐒)).*options.s₀
 	end
 	index𝛂 = index_shrinkage_coefficients(indexθ)
-	𝛂 = ones(length(index𝛂)).*options.α₀
-    gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬)
+	𝛂min, 𝛂max = shrinkage_coefficients_limits(options.αrangeDDM, options.αrangeGLM, indexθ, length(index𝛂))
+	𝛂 = sqrt.(𝛂min.*𝛂max)
+    gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬, 𝛂min=𝛂min, 𝛂max=𝛂max)
     precisionmatrix!(gaussianprior)
     return gaussianprior
 end
@@ -61,6 +58,7 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset}, 𝛂𝐬
     N = indexθ.glmθ[end][end].𝐯[end][end]
     𝚲 = zeros(type,N,N)
 	index𝛂 = index_shrinkage_coefficients(indexθ)
+	𝛂min, 𝛂max = shrinkage_coefficients_limits(options.αrangeDDM, options.αrangeGLM, indexθ, length(index𝛂))
 	𝛂 = 𝛂𝐬[1:length(index𝛂)]
 	if isnan(options.s₀)
 		𝐒 = Matrix{eltype(options.nbases_each_event)}[]
@@ -71,7 +69,7 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset}, 𝛂𝐬
 		𝐒 = squared_difference_matrices(indexθ.glmθ, options.nbases_each_event)
 		𝐬 = 𝛂𝐬[length(index𝛂)+1:length(index𝛂)+length(index𝐒)]
 	end
-    gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬)
+	gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬, 𝛂min=𝛂min, 𝛂max=𝛂max)
     precisionmatrix!(gaussianprior)
     return gaussianprior
 end
@@ -205,7 +203,7 @@ function index_shrinkage_coefficients(indexθ::Indexθ)
 	index𝛂 = Int[]
 	for field in fieldnames(Latentθ)
 		i = getfield(indexθ.latentθ, field)[1]
-		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂
+		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
 		else
 			index𝛂 = vcat(index𝛂, i)
 		end
@@ -220,6 +218,60 @@ function index_shrinkage_coefficients(indexθ::Indexθ)
 		end
 	end
 	index𝛂
+end
+
+"""
+	shrinkage_coefficients_limits(αrangeDDM, αrangeGLM, indexθ, N𝛂)
+
+Limits of the L2 shrinkage coefficients
+
+ARGUMENT
+-`αrangeDDM`: minimum and maximum of the precisions on the priors of the DDM parameters
+-`αrangeGLM`: minimum and maximum of the precisions on the priors of the GLM parameters
+-`indexθ`: index of each parameter
+-`N𝛂`: number of precisions being leared
+
+RETURN
+-`𝛂min`: vector of the minimum of each precision being learned
+-`𝛂max`: vector of the maximum of each precision being learned
+"""
+function shrinkage_coefficients_limits(αrangeDDM::Vector{<:AbstractFloat}, αrangeGLM::Vector{<:AbstractFloat}, indexθ::Indexθ, N𝛂::Integer)
+	𝛂min, 𝛂max = zeros(N𝛂), zeros(N𝛂)
+	k = 0
+	for field in fieldnames(Latentθ)
+		i = getfield(indexθ.latentθ, field)[1]
+		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+		else
+			k += 1
+			𝛂min[k] = αrangeDDM[1]
+			𝛂max[k] = αrangeDDM[2]
+		end
+	end
+	for glmθ in indexθ.glmθ
+		for glmθ in glmθ
+			if length(glmθ.𝐠) > 1
+				for g in glmθ.𝐠[2]
+					k +=1
+					𝛂min[k] = αrangeGLM[1]
+					𝛂max[k] = αrangeGLM[2]
+				end
+			end
+			for u in glmθ.𝐮
+				k +=1
+				𝛂min[k] = αrangeGLM[1]
+				𝛂max[k] = αrangeGLM[2]
+			end
+			for 𝐯ₖ in glmθ.𝐯
+				for v in 𝐯ₖ
+					k +=1
+					𝛂min[k] = αrangeGLM[1]
+					𝛂max[k] = αrangeGLM[2]
+				end
+			end
+		end
+	end
+	@assert k == N𝛂
+	return 𝛂min, 𝛂max
 end
 
 """

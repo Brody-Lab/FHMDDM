@@ -49,14 +49,16 @@ Model settings
     a_basis_per_s::TI=10
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
-	"initial coefficient for L2 regularization for the non-constant parameters of each neuron's GLM"
-	α₀::TF=0.0
 	"initial coefficient for L2 regularization for the ddm parameters"
 	α₀_choices::TF=0.0
-	"minimum and maximum of the L2 shrinkage coefficients"
-	αrange::TVF= [1e-1, 1e2]
+	"minimum and maximum of the L2 shrinkage coefficients for DDM parameters"
+	αrangeDDM::TVF= [1e-1, 1e2]
+	"minimum and maximum of the L2 shrinkage coefficients for GLM parameters"
+	αrangeGLM::TVF= [1e-1, 1e2]
 	"type of temporal basis functions"
     basistype::TS="raised_cosine"
+	"value optimized when initializing the choice-related parameters"
+	choiceobjective::TS="posterior"
 	"full path of the data"
     datapath::TS=""
 	"duration of each timestep in seconds"
@@ -288,6 +290,10 @@ Information on the zero-meaned Gaussian prior distribution on the values of the 
 				map(indices->map(i->findfirst(index𝚽.==i), indices), index𝐒)
  			end
 		end
+	"minimum values of the shrinkage coefficients"
+	𝛂min::VR
+	"maximum values of the shrinkage coefficients"
+	𝛂max::VR
 end
 
 """

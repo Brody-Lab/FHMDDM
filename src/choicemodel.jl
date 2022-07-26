@@ -10,17 +10,17 @@ RETURN
 -`𝛂`: the precisions that maximize evidence
 """
 function fitonlychoices!(model::Model)
-	@unpack objective = model.options
-	if objective == "evidence"
+	@unpack choiceobjective = model.options
+	if choiceobjective == "evidence"
 		𝛂 = maximize_evidence_choices!(model)
-	elseif objective == "posterior"
+	elseif choiceobjective == "posterior"
 		maximize_choice_posterior!(model)
 		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
-	elseif objective == "likelihood"
+	elseif choiceobjective == "likelihood"
 		output = maximizechoiceLL!(model)
 		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
 	else
-		error(objective, " is not a recognized objective.")
+		error(choiceobjective, " is not a recognized objective.")
 	end
 	return 𝛂
 end
