@@ -207,7 +207,7 @@ Parameters of a mixture of Poisson generalized linear model
 """
 @with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
     "state-dependent gain"
-    𝐠::VVR
+    𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
     "state-dependent linear filters of the inputs from the accumulator "
@@ -813,20 +813,6 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 end
 
 """
-	PoissonGLMOptimization
-
-A structure for finding the parameters that maximize the expectation under the posterior probability of the log-likelihood of a GLM, as well as the expectation of the gradient and the Hessian
-"""
-@with_kw struct PoissonGLMOptimization{VF<:Vector{<:AbstractFloat},
-										MF<:Matrix{<:AbstractFloat}}
-
-	𝐮::VF
-	ℓ::VF = zeros(1)
-	∇ℓ::VF = zeros(length(𝐮))
-	∇∇ℓ::MF = zeros(length(𝐮), length(𝐮))
-end
-
-"""
 	Memoryforgradient
 
 Container of variables used by both the log-likelihood and gradient computation
@@ -925,7 +911,6 @@ Container of variables used by both the log-likelihood and gradient computation
 	"condition likelihood of a behavioral choice"
 	p𝑑_a::VVVR
 end
-
 
 """
 	Memory and pre-computed quantities for obtaining the hessian of the log-likelihood of the choices

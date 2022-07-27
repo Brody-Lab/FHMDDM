@@ -1,6 +1,5 @@
 module FHMDDM
-
-using   Distributed, # packages whose name and exported function is in scope
+using   Distributed,
         Distributions,
         ForwardDiff,
         LinearAlgebra,
@@ -11,8 +10,9 @@ using   Distributed, # packages whose name and exported function is in scope
         Random,
         SpecialFunctions,
         StatsFuns
-import  Flux # packages whose name but not its exported function is in scope
-export  crossvalidate, # module-specific functions and types in this module that we can call in the REPL without preceding with the name of the module
+import  Flux
+export  concenateparameters,
+        crossvalidate,
         expectedemissions,
         initializeparameters!,
         initialize_for_stochastic_transition!,
@@ -41,5 +41,4 @@ include("temporal_basis_functions.jl")
 include("sampling.jl")
 include("save.jl")
 include("two_pass_Hessian.jl")
-
-end # module
+end

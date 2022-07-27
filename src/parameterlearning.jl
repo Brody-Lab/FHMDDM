@@ -89,9 +89,9 @@ function initialize_GLM_parameters!(model::Model)
 	if model.options.gain_state_dependent
 		for i in eachindex(model.trialsets)
 		    for mpGLM in model.trialsets[i].mpGLMs
-		        gmean = mean(mpGLM.θ.𝐠)
-				mpGLM.θ.𝐠[1] .= 3.0.*gmean
-				mpGLM.θ.𝐠[2] .= -gmean
+		        for k = 2:length(mpGLM.θ.𝐠)
+					mpGLM.θ.𝐠[k] = 1-2rand()
+				end
 		    end
 		end
 	end

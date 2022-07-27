@@ -605,10 +605,9 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
 	K = max(K𝐠, K𝐯)
-	n𝐠 = length(𝐠[1])
-	N𝐠 = K𝐠*n𝐠
 	n𝐮 = length(𝐮)
-	N𝐠𝐮 = N𝐠 + n𝐮
+	offset𝐮 = K𝐠-1
+	n𝐠𝐮 = n𝐮 + offset𝐮
 	n𝐯 = length(𝐯[1])
 	Ξ = length(d𝛏_dB)
 	for i = 1:Ξ
@@ -617,44 +616,38 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 		end
 		for j = 1:K
 			dlogp_dL, d²logp_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
-			offset𝐠 = (K𝐠==K) ? (j-1)*n𝐠 : 0
-			offset𝐯 = N𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
-			for q=1:n𝐠
-				s = offset𝐠 + q
-				∇logpy[s][i,j] = dlogp_dL
+			offset𝐯 = n𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
+			if j > 1 && K𝐠 > 1
+				∇logpy[j-1][i,j] = dlogp_dL
 			end
 			for q=1:n𝐮
-				s = N𝐠 + q
-				∇logpy[s][i,j] = dlogp_dL*𝐗[τ,n𝐠+q]
+				s = offset𝐮+q
+				∇logpy[s][i,j] = dlogp_dL*𝐗[τ,1+q]
 			end
 			for q=1:n𝐯
 				s = offset𝐯 + q
 				∇logpy[s][i,j] = dlogp_dL*dL_d𝐯[q]
 			end
-			for q=1:n𝐠
-				s = offset𝐠 + q
-				for r=1:n𝐠
-					t = offset𝐠 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL
+			if j > 1 && K𝐠 > 1
+				∇∇logpy[j-1,j-1][i,j] = d²logp_dL
+				for q=1:n𝐮
+					s = offset𝐮 + q
+					∇∇logpy[j-1,s][i,j] = d²logp_dL*𝐗[τ,1+q]
 				end
-				for r=1:n𝐮
-					t = N𝐠 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,n𝐠+r]
-				end
-				for r=1:n𝐯
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL*dL_d𝐯[r]
+				for q=1:n𝐯
+					s = offset𝐯 + q
+					∇∇logpy[j-1,s][i,j] = d²logp_dL*dL_d𝐯[q]
 				end
 			end
 			for q=1:n𝐮
-				s = N𝐠 + q
+				s = offset𝐮 + q
 				for r=q:n𝐮
-					t = N𝐠 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,n𝐠+q]*𝐗[τ,n𝐠+r]
+					t = offset𝐮 + r
+					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,1+q]*𝐗[τ,1+r]
 				end
 				for r=1:n𝐯
 					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,n𝐠+q]*dL_d𝐯[r]
+					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,1+q]*dL_d𝐯[r]
 				end
 			end
 			for q=1:n𝐯
@@ -998,7 +991,7 @@ function Sameacrosstrials(model::Model)
 	counter = 13
 	indexθ_py = map(trialsets) do trialset
 					map(trialset.mpGLMs) do mpGLM
-						q = sum(length.(mpGLM.θ.𝐠)) + length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
+						q = length(mpGLM.θ.𝐠)-1 + length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
 						zeros(Int,q)
 					end
 				end

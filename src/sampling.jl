@@ -123,8 +123,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
 	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
 	𝐡 = 𝐮[1:max_spikehistory_lag]
 	𝐞 = 𝐮[max_spikehistory_lag+1:end]
-	indices𝐄 = length(𝐠[1]) .+ max_spikehistory_lag .+ (1:length(𝐞))
-	𝐄 = @view 𝐗[:,indices𝐄]
+	𝐄 = @view 𝐗[:,3:2+length(𝐞)]
 	𝐄𝐞 = 𝐄*𝐞
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
@@ -137,7 +136,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
             τ += 1
             j = trials[m].a[t]
             k = trials[m].c[t]
-			gₖ = 𝐠[min(k, K𝐠)][1]
+			gₖ = 𝐠[min(k, K𝐠)]
 			𝐯ₖ = 𝐯[min(k, K𝐯)]
 			L = gₖ + 𝐄𝐞[τ]
 			for i in eachindex(𝐯ₖ)
@@ -240,7 +239,7 @@ RETURN
 """
 function sample(mpGLM::MixturePoissonGLM, sampledtrials::Vector{<:Trial})
     𝐲̂ = sampleemissions(mpGLM, sampledtrials)
-	θ = GLMθ(𝐠 = map(𝐠ₖ->copy(𝐠ₖ), mpGLM.θ.𝐠),
+	θ = GLMθ(𝐠 = copy(mpGLM.θ.𝐠),
 			𝐮 = copy(mpGLM.θ.𝐮),
 			𝐯 = map(𝐯ₖ->copy(𝐯ₖ), mpGLM.θ.𝐯))
     MixturePoissonGLM(Δt=mpGLM.Δt,

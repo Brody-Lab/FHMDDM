@@ -29,8 +29,9 @@ function Model(datapath::String)
 		trialsets = map(trialset->Trialset(trialset), vec(dataMAT["trialsets"]))
 		for trialset in trialsets
 			for mpGLM in trialset.mpGLMs
-				for 𝐠ₖ in mpGLM.θ.𝐠
-					𝐠ₖ .= 1.0 .- 2.0.*rand(length(𝐠ₖ))
+				mpGLM.θ.𝐠[1] = 0
+				for k = 2:length(mpGLM.θ.𝐠)
+					mpGLM.θ.𝐠[k] = 1-2rand()
 				end
 				mpGLM.θ.𝐮 .= 1.0 .- 2.0.*rand(length(mpGLM.θ.𝐮))
 				for 𝐯ₖ in mpGLM.θ.𝐯
@@ -68,7 +69,7 @@ function Model(options::Options,
 		for n in eachindex(trialsets[i].mpGLMs)
 			trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[i][n]["u"]
         	for k in eachindex(glmθ[i][n]["g"])
-				trialsets[i].mpGLMs[n].θ.𝐠[k] .= glmθ[i][n]["g"][k]
+				trialsets[i].mpGLMs[n].θ.𝐠[k] = glmθ[i][n]["g"][k]
 			end
 			for k in eachindex(glmθ[i][n]["v"])
 				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
@@ -259,9 +260,7 @@ function Trialset(trialset::Dict)
 	Φ = trialset["mpGLMs"][1]["Phi"]
 	𝐕 = trialset["mpGLMs"][1]["V"]
 	mpGLMs = map(trialset["mpGLMs"]) do mpGLM
-				𝐠 = map(mpGLM["theta"]["g"]) do x
-			           	typeof(x)<:AbstractFloat ? [x] : x
-			        end
+				𝐠 = typeof(mpGLM["theta"]["g"])<:AbstractFloat ? [mpGLM["theta"]["g"]] : mpGLM["theta"]["g"]
 				𝐯 = map(mpGLM["theta"]["v"]) do x
 			           	typeof(x)<:AbstractFloat ? [x] : x
 			        end

@@ -513,7 +513,7 @@ end
 Convert a dictionary into an instance of `GLMθ`
 """
 function GLMθ(θ::Dict)
-    GLMθ(𝐠=vec(map(𝐠ₖ->vec(𝐠ₖ), mpGLM["g"])),
+    GLMθ(𝐠=vec(mpGLM["g"]),
 		 𝐮=vec(mpGLM["u"]),
          𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])))
 end

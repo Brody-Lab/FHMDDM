@@ -17,13 +17,13 @@ function GLMθ(options::Options, 𝐗::Matrix{<:AbstractFloat}, 𝐕::Matrix{<:A
 	n𝐮 = size(𝐗,2)-size(𝐕,2)-1
 	𝐮 = 1.0 .- 2.0.*rand(n𝐮)
 	if K == 1
-		𝐠 = [ones(1)]
+		𝐠 = [0.0]
 		𝐯 = [ones(n𝐯)]
 	else
 		if gain_state_dependent
-			𝐠 = collect(i*ones(1) for i = -1:2/(K-1):1)
+			𝐠 = vcat(0.0, 1 .- 2rand(K-1))
 		else
-			𝐠 = [ones(1)]
+			𝐠 = [0.0]
 		end
 		if tuning_state_dependent
 			𝐯 = collect(i*ones(n𝐯) for i = -1:2/(K-1):1)
@@ -49,7 +49,7 @@ RETURN
 -an instance of GLMθ
 """
 function GLMθ(glmθ::GLMθ, elementtype)
-	GLMθ(𝐠 = collect(zeros(elementtype, length(𝐠)) for 𝐠 in glmθ.𝐠),
+	GLMθ(𝐠 = zeros(elementtype, length(glmθ.𝐠)),
 		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
 		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯))
 end
@@ -74,6 +74,7 @@ function MixturePoissonGLM(concatenatedθ::Vector{T},
 							d𝛏_dB=mpGLM.d𝛏_dB,
 							max_spikehistory_lag=mpGLM.max_spikehistory_lag,
 							Φ=mpGLM.Φ,
+							Φevents=mpGLM.Φevents,
 							θ=GLMθ(mpGLM.θ, T),
 							𝐕=mpGLM.𝐕,
 							𝐗=mpGLM.𝐗,
@@ -179,9 +180,9 @@ RETURN
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack 𝐗, d𝛏_dB = mpGLM
     @unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
-	𝐠ₖ = 𝐠[min(length(𝐠), k)]
+	gₖ = 𝐠[min(length(𝐠), k)]
 	𝐯ₖ = 𝐯[min(length(𝐯), k)]
-	𝐗*vcat(𝐠ₖ, 𝐮, 𝐯ₖ.*d𝛏_dB[j])
+	𝐗*vcat(gₖ, 𝐮, 𝐯ₖ.*d𝛏_dB[j])
 end
 
 """
@@ -470,28 +471,30 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 	end
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
-	n𝐠 = length(𝐠[1])
 	n𝐮 = length(𝐮)
 	n𝐯 = length(𝐯[1])
-	indices𝐠 = collect(((k-1)*n𝐠+1 : k*n𝐠) for k = 1:K𝐠)
-	indices𝐮 = indices𝐠[end][end] .+ (1:n𝐮)
+	if K𝐠 == K
+		indices𝐠 = 1:K𝐠-1
+		indices𝐮 = indices𝐠[end] .+ (1:n𝐮)
+	else
+		indices𝐮 = 1:n𝐮
+	end
 	indices𝐯 = collect(indices𝐮[end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K𝐯)
-	𝐔 = @view 𝐗[:, n𝐠+1:n𝐠+n𝐮]
+	𝐔 = @view 𝐗[:, 2:1+n𝐮]
 	𝐔ᵀ, 𝐕ᵀ = transpose(𝐔), transpose(𝐕)
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
 	∇Q[indices𝐮] .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
 	∇∇Q[indices𝐮, indices𝐮] .= 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
 	if K𝐠 == K
-		@inbounds for k = 1:K
-			∇Q[indices𝐠[k]] .= sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
-			∇∇Q[indices𝐠[k], indices𝐠[k]] .= sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
-			∇∇Q[indices𝐠[k], indices𝐮] .= transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])*𝐔
+		@inbounds for k = 2:K
+			∇Q[indices𝐠[k-1]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
+			∇∇Q[indices𝐠[k-1], indices𝐠[k-1]] = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
+			∇∇Q[indices𝐠[k-1], indices𝐮] = transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])*𝐔
 		end
-	else
-		∇Q[indices𝐠[1]] .= sum(∑ᵢₖ_dQᵢₖ_dLᵢₖ)
-		∇∇Q[indices𝐠[1], indices𝐠[1]] .= sum(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²)
-		∇∇Q[indices𝐠[1], indices𝐮] .= transpose(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²)*𝐔
+		@inbounds for k = 2:K𝐯
+			∇∇Q[indices𝐠[k-1], indices𝐯[k]] = transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])*𝐕
+		end
 	end
 	if K𝐯 == K
 		@inbounds for k = 1:K
@@ -503,9 +506,6 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 		∇Q[indices𝐯[1]] .= 𝐕ᵀ*sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB)
 		∇∇Q[indices𝐯[1], indices𝐯[1]] .= 𝐕ᵀ*(sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²).*𝐕)
 		∇∇Q[indices𝐮, indices𝐯[1]] .= 𝐔ᵀ*(sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB).*𝐕)
-	end
-	@inbounds for k = 1:K
-		∇∇Q[indices𝐠[min(length(𝐠), k)], indices𝐯[min(length(𝐯), k)]] .= transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])*𝐕
 	end
 	for i = 1:size(∇∇Q,1)
 		for j = i+1:size(∇∇Q,2)
@@ -595,16 +595,11 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 			end
 		end
 	end
-	indices𝐮 = length(∇Q.𝐠[1]) .+ (1:length(∇Q.𝐮))
-	𝐔 = @view 𝐗[:, indices𝐮]
+	𝐔 = @view 𝐗[:, 2:1+length(∇Q.𝐮)]
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
 	∇Q.𝐮 .= 𝐔' * ∑ᵢₖ_dQᵢₖ_dLᵢₖ
-	if length(∇Q.𝐠) == K
-		@inbounds for k = 1:K
-			∇Q.𝐠[k] .= sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
-		end
-	else
-		∇Q.𝐠[1] .= sum(∑ᵢₖ_dQᵢₖ_dLᵢₖ)
+	@inbounds for k = 2:length(∇Q.𝐠)
+		∇Q.𝐠[k] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
 	end
 	if length(∇Q.𝐯) == K
 		@inbounds for k = 1:K

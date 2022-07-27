@@ -28,10 +28,8 @@ function sortparameters!(model::Model,
 		for n in eachindex(indexθ.glmθ[i])
 			@unpack θ = trialsets[i].mpGLMs[n]
 			index = indexθ.glmθ[i][n]
-			for k in eachindex(θ.𝐠)
-				for q in eachindex(θ.𝐠[k])
-					θ.𝐠[k][q] = concatenatedθ[index.𝐠[k][q]]
-				end
+			for k = 2:length(θ.𝐠)
+				θ.𝐠[k] = concatenatedθ[index.𝐠[k]]
 			end
 			for q in eachindex(θ.𝐮)
 				θ.𝐮[q] = concatenatedθ[index.𝐮[q]]
@@ -312,12 +310,11 @@ function concatenate_glm_parameters(offset::Integer, trialsets::Vector{<:Trialse
 	for i in eachindex(trialsets)
         for n in eachindex(trialsets[i].mpGLMs)
 			@unpack θ = trialsets[i].mpGLMs[n]
-			for k in eachindex(θ.𝐠)
-				for q in eachindex(θ.𝐠[k])
-					counter += 1
-					concatenatedθ[counter] = θ.𝐠[k][q]
-					indexθ[i][n].𝐠[k][q] = offset + counter
-				end
+			indexθ[i][n].𝐠[1] = 0
+			for k = 2:length(θ.𝐠)
+				counter += 1
+				concatenatedθ[counter] = θ.𝐠[k]
+				indexθ[i][n].𝐠[k] = offset + counter
 			end
 			for q in eachindex(θ.𝐮)
 				counter += 1
@@ -351,11 +348,9 @@ RETURN
 function concatenateparameters(θ::GLMθ)
 	concatenatedθ = zeros(eltype(θ.𝐮), countparameters(θ))
 	counter = 0
-	for k in eachindex(θ.𝐠)
-		for q in eachindex(θ.𝐠[k])
-			counter += 1
-			concatenatedθ[counter] = θ.𝐠[k][q]
-		end
+	for k = 2:length(θ.𝐠)
+		counter += 1
+		concatenatedθ[counter] = θ.𝐠[k]
 	end
 	for q in eachindex(θ.𝐮)
 		counter += 1
@@ -439,7 +434,7 @@ function Model(concatenatedθ::Vector{type},
 	real2native!(θnative, model.options, θreal)
 	trialsets = map(model.trialsets, indexθ.glmθ) do trialset, glmθindex
 					mpGLMs =map(trialset.mpGLMs, glmθindex) do mpGLM, glmθindex
-								MixturePoissonGLM(concatenatedθ, mpGLM; offset=glmθindex.𝐠[1][1]-1)
+								MixturePoissonGLM(concatenatedθ, mpGLM; offset=glmθindex.𝐮[1]-length(glmθindex.𝐠))
 							end
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
@@ -522,11 +517,9 @@ function sortparameters!(θall::Vector{<:Real},
 						 index::GLMθ,
 						 θglm::Vector{<:Real})
 	counter = 0
-	for k in eachindex(θ.𝐠)
-		for q in eachindex(index.𝐠[k])
-			counter+=1
-			θall[index.𝐠[k][q]] = θglm[counter]
-		end
+	for k = 2:length(θ.𝐠)
+		counter+=1
+		θall[index.𝐠[k]] = θglm[counter]
 	end
 	for q in eachindex(index.𝐮)
 		counter+=1
@@ -554,11 +547,9 @@ UNMODIFIED ARGUMENT
 """
 function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset=0)
 	counter = offset
-	for k in eachindex(θ.𝐠)
-		for q in eachindex(θ.𝐠[k])
-			counter+=1
-			θ.𝐠[k][q] = concatenatedθ[counter]
-		end
+	for k = 2:length(θ.𝐠)
+		counter+=1
+		θ.𝐠[k] = concatenatedθ[counter]
 	end
 	for q in eachindex(θ.𝐮)
 		counter+=1
@@ -587,11 +578,9 @@ RETURN
 function countparameters(θ::GLMθ)
 	counter = 0
 	counter = length(θ.𝐮)
-	for 𝐠 in θ.𝐠
-		counter += length(𝐠)
-	end
-	for 𝐯 in θ.𝐯
-		counter += length(𝐯)
+	counter += length(θ.𝐠)-1
+	for 𝐯ₖ in θ.𝐯
+		counter += length(𝐯ₖ)
 	end
 	return counter
 end

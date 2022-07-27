@@ -101,10 +101,6 @@ function squared_difference_matrices(indexθglm::Vector{<:Vector{<:GLMθ}}, nbas
             𝐒 = vcat(𝐒, [squared_difference_matrix(B𝐯)])
         end
     end
-    K𝐠 = length(θ.𝐠)
-    if K𝐠 > 1
-        𝐒 = vcat(𝐒, [squared_difference_matrix(K𝐠)])
-    end
     if K𝐯 > 1
 		for j = 1:B𝐯
 	        𝐒 = vcat(𝐒, [squared_difference_matrix(K𝐯)])
@@ -173,10 +169,6 @@ function index_smoothing_coefficients(indexθglm::Vector{<:Vector{<:GLMθ}}, max
                     index𝐒 = vcat(index𝐒, [indexθglm.𝐯[k]])
                 end
             end
-            K𝐠 = length(indexθglm.𝐠)
-            if K𝐠 > 1
-                index𝐒 = vcat(index𝐒, [vcat(indexθglm.𝐠...)])
-            end
             if K𝐯 > 1
 				for j = 1:B𝐯
 	                index𝐒 = vcat(index𝐒, [[indexθglm.𝐯[1][j], indexθglm.𝐯[2][j]]])
@@ -210,8 +202,8 @@ function index_shrinkage_coefficients(indexθ::Indexθ)
 	end
 	for glmθ in indexθ.glmθ
 		for glmθ in glmθ
-			if length(glmθ.𝐠) == 2
-				index𝛂 = vcat(index𝛂, glmθ.𝐠[2][1]:glmθ.𝐯[end][end])
+			if length(glmθ.𝐠) > 1
+				index𝛂 = vcat(index𝛂, glmθ.𝐠[2]:glmθ.𝐯[end][end])
 			else
 				index𝛂 = vcat(index𝛂, glmθ.𝐮[1]:glmθ.𝐯[end][end])
 			end
@@ -249,12 +241,10 @@ function shrinkage_coefficients_limits(αrangeDDM::Vector{<:AbstractFloat}, αra
 	end
 	for glmθ in indexθ.glmθ
 		for glmθ in glmθ
-			if length(glmθ.𝐠) > 1
-				for g in glmθ.𝐠[2]
-					k +=1
-					𝛂min[k] = αrangeGLM[1]
-					𝛂max[k] = αrangeGLM[2]
-				end
+			for i = 2:length(glmθ.𝐠)
+				k +=1
+				𝛂min[k] = αrangeGLM[1]
+				𝛂max[k] = αrangeGLM[2]
 			end
 			for u in glmθ.𝐮
 				k +=1

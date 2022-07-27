@@ -375,11 +375,9 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 	native2real!(∇nℓ, memory.indexθ.latentθ, model)
 	for ∇ℓglms in memory.∇ℓglm
 		for ∇ℓglm in ∇ℓglms
-			for 𝐠ₖ in ∇ℓglm.𝐠
-				for g in 𝐠ₖ
-					indexfit+=1
-					∇nℓ[indexfit] = -g
-				end
+			for k = 2:length(∇ℓglm.𝐠)
+				indexfit+=1
+				∇nℓ[indexfit] = -∇ℓglm.𝐠[k]
 			end
 			for u in ∇ℓglm.𝐮
 				indexfit+=1
