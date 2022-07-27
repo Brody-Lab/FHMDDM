@@ -61,10 +61,6 @@ Model settings
 	atbf_stretch::TF=100.0
 	"initial coefficient for L2 regularization for the ddm parameters"
 	α₀_choices::TF=0.0
-	"minimum and maximum of the L2 shrinkage coefficients for DDM parameters"
-	αrangeDDM::TVF= [1e-1, 1e2]
-	"minimum and maximum of the L2 shrinkage coefficients for GLM parameters"
-	αrangeGLM::TVF= [1e-1, 1e2]
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
 	"full path of the data"
@@ -99,6 +95,18 @@ Model settings
 	fit_wₕ::TB=true
 	"whether the gain is state-dependent"
 	gain_state_dependent::TB=true
+	"maximum L2 flattening penalty for each group of GLM parameters"
+	L2flattening_GLM_max::TF=1e0
+	"maximum L2 flattening penalty for each group of GLM parameters"
+	L2flattening_GLM_min::TF=1e-4
+	"maximum L2 shrinkage penalty for each group of GLM parameters"
+	L2shrinkage_GLM_max::TF=1e1
+	"maximum L2 shrinkage penalty for each group of GLM parameters"
+	L2shrinkage_GLM_min::TF=1e-3
+	"maximum L2 shrinkage penalty for a latent variable parameter"
+	L2shrinkage_LV_max::TF=1e2
+	"minimum L2 shrinkage penalty for a latent variable parameter"
+	L2shrinkage_LV_min::TF=1e-2
 	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
 	"transition probability of the coupling variable to remain in the coupled state"
 	lqu_Aᶜ₁₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₁₁[1]) && (lqu_Aᶜ₁₁[1] <= lqu_Aᶜ₁₁[2]) && (lqu_Aᶜ₁₁[2] < lqu_Aᶜ₁₁[3]) && (lqu_Aᶜ₁₁[3] <= 1.0)
@@ -134,12 +142,8 @@ Model settings
 	objective::String; @assert any(objective .== ["evidence", "posterior", "likelihood"])
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
-	"initial coefficient for the L2 smoothing penalty"
-	s₀::TF=0.0
 	"whether to scale the log-likelihood of the choices to be of similar magnitude of the log-likelihood of the spike trains"
 	scalechoiceLL::TB=true
-	"minimum and maximum of the L2 smoothing coefficients"
-	srange::TVF= [1e-8, 1e2]
 	"whether the tuning to the accumulator is state-dependent"
 	tuning_state_dependent::TB=true
 	"whether to update the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space, to be the value learned from maximizing the evidence of only the choices"
@@ -269,42 +273,30 @@ end
 
 Information on the zero-meaned Gaussian prior distribution on the values of the parameters in real space
 """
-@with_kw struct GaussianPrior{MR<:Matrix{<:Real},
-								VI<:Vector{<:Integer},
+@with_kw struct GaussianPrior{	VI<:Vector{<:Integer},
+								VF<:Vector{<:AbstractFloat},
+								VR<:Vector{<:Real},
+								MR<:Matrix{<:Real},
 								VVI<:Vector{<:Vector{<:Integer}},
-								VMI<:Vector{<:Matrix{<:Integer}},
-								VR<:Vector{<:Real}}
-	"coefficients of the L2 shrinkage penalties"
+								VMF<:Vector{<:Matrix{<:AbstractFloat}}}
+	"L2 penalty matrices"
+	𝐀::VMF
+	"L2 penalty coefficients"
 	𝛂::VR
-	"indices of the parameters being shrunk"
-	index𝛂::VI
-	"indices of the parameters being smoothed"
-	index𝐒::VVI
-	"the precision matrix, i.e., inverse of the covariance matrix"
+	"minimum values of the L2 penalty coefficients"
+	𝛂min::VF
+	"maximum values of the L2 penalty coefficients"
+	𝛂max::VF
+	"Indices of the parameters related to each L2 penalty coefficient: element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group"
+	index𝐀::VVI
+	"the precision matrix, i.e., inverse of the covariance matrix, of the gaussian prior on the model parameters"
 	𝚲::MR
-	"vector of the squared difference matrices for implementing L2 smoothing penalties"
-	𝐒::VMI
-	"coefficients of the L2 smoothing penalties"
-	𝐬::VR
 	"indices of the dimensions with finite variance"
-	index𝚽::VI = sort(union(index𝛂, index𝐒...))
-	"precision matrix of the dimensions with finite variance"
+	index𝚽::VI = sort(union(index𝐀...))
+	"square submatrix of the precision matrix after deleting the columns and rows corresponding to the dimensions with infinite variance"
 	𝚽::MR= 𝚲[index𝚽,index𝚽]
-	"indices of 𝛂 within `index𝚽`"
-	index𝛂_in_index𝚽::VI = map(i->findfirst(index𝚽.==i), index𝛂)
 	"indices of 𝐒 within `index𝚽`"
-	index𝐒_in_index𝚽::VVI =
-		let
-			if isempty(index𝐒)
-				copy(index𝐒)
-			else
-				map(indices->map(i->findfirst(index𝚽.==i), indices), index𝐒)
- 			end
-		end
-	"minimum values of the shrinkage coefficients"
-	𝛂min::VR
-	"maximum values of the shrinkage coefficients"
-	𝛂max::VR
+	index𝐀_in_index𝚽::VVI = map(indexA->map(indexAᵢⱼ->findfirst(index𝚽.==indexAᵢⱼ), indexA), index𝐀)
 end
 
 """

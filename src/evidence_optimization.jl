@@ -416,7 +416,7 @@ function logevidence(𝛂𝐬::Vector{type},
 					𝐁₀𝐰₀::Vector{<:Real},
 					𝐇::Matrix{<:Real},
 					model::Model) where{type<:Real}
-	gaussianprior = GaussianPrior(model.options, model.trialsets, 𝛂𝐬)
+	gaussianprior = GaussianPrior(model.gaussianprior, 𝛂𝐬)
 	@unpack index𝚽, 𝚽 = gaussianprior
 	𝐁 = 𝚽-𝐇
     𝐰 = 𝐁 \ 𝐁₀𝐰₀

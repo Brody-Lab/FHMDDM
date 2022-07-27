@@ -13,254 +13,197 @@ OUTPUT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20e_test/T249_2020_02_12/data.mat")
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_27a_test/T176_2018_05_03/data.mat"
+julia> model = Model(datapath)
 julia> model.gaussianprior
 julia>
 ```
 """
 function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
     indexθ = indexparameters(options, trialsets)
-    N = indexθ.glmθ[end][end].𝐯[end][end]
-    𝚲 = zeros(N,N)
-	if isnan(options.s₀)
-		𝐒 = Matrix{eltype(options.nbases_each_event)}[]
-		index𝐒 = Vector{eltype(options.nbases_each_event)}[]
-		𝐬 = typeof(options.s₀)[]
-	else
-	    𝐒 = squared_difference_matrices(indexθ.glmθ, options.nbases_each_event)
-	    index𝐒 = index_smoothing_coefficients(indexθ.glmθ, trialsets[1].mpGLMs[1].max_spikehistory_lag, options.nbases_each_event)
-	    𝐬 = ones(length(𝐒)).*options.s₀
-	end
-	index𝛂 = index_shrinkage_coefficients(indexθ)
-	𝛂min, 𝛂max = shrinkage_coefficients_limits(options.αrangeDDM, options.αrangeGLM, indexθ, length(index𝛂))
+	mpGLM₁₁ = trialsets[1].mpGLMs[1]
+	Φaccumulator = mpGLM₁₁.Φ
+	Φtime = mpGLM₁₁.Φevents[1]
+	Φpremovement = mpGLM₁₁.Φevents[2]
+	𝐀_lv, index𝐀_lv = sum_of_square_matrices(indexθ.latentθ)
+	𝐀_glm, index𝐀_glm = mean_of_squares_matrices(indexθ.glmθ, mpGLM₁₁.max_spikehistory_lag, Φaccumulator, Φpremovement, Φtime)
+	𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ, mpGLM₁₁.max_spikehistory_lag, Φaccumulator, Φtime)
+	𝐀 = vcat(𝐀_lv, 𝐀_glm, 𝚪_glm)
+	index𝐀 = vcat(index𝐀_lv, index𝐀_glm, index𝚪_glm)
+	𝛂min, 𝛂max = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
 	𝛂 = sqrt.(𝛂min.*𝛂max)
-    gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬, 𝛂min=𝛂min, 𝛂max=𝛂max)
+    N = indexθ.glmθ[end][end].𝐯[end][end]
+    gaussianprior = GaussianPrior(𝐀=𝐀, 𝛂=𝛂, 𝛂min=𝛂min, 𝛂max=𝛂max, index𝐀=index𝐀, 𝚲=zeros(N,N))
     precisionmatrix!(gaussianprior)
     return gaussianprior
 end
 
 """
-	GaussianPrior(options, trialsets, 𝛂𝐬)
+	GaussianPrior(options, trialsets, 𝛂)
 
 Construct a structure containing information on the Gaussian prior on the model's parameters
 
 ARGUMENT
 -`options`: settings of the model
 -`trialsets`: data for the model
--`𝛂𝐬`: a vector concatenating the L2 shrinkrage and smoothing coefficients
+-`𝛂`: a vector concatenating the L2 shrinkrage and smoothing coefficients
 
 OUTPUT
 -an instance of `GaussianPrior`
-
 """
-function GaussianPrior(options::Options, trialsets::Vector{<:Trialset}, 𝛂𝐬::Vector{type}) where {type<:Real}
-    indexθ = indexparameters(options, trialsets)
-    N = indexθ.glmθ[end][end].𝐯[end][end]
-    𝚲 = zeros(type,N,N)
-	index𝛂 = index_shrinkage_coefficients(indexθ)
-	𝛂min, 𝛂max = shrinkage_coefficients_limits(options.αrangeDDM, options.αrangeGLM, indexθ, length(index𝛂))
-	𝛂 = 𝛂𝐬[1:length(index𝛂)]
-	if isnan(options.s₀)
-		𝐒 = Matrix{eltype(options.nbases_each_event)}[]
-		index𝐒 = Vector{eltype(options.nbases_each_event)}[]
-		𝐬 = type[]
-	else
-		index𝐒 = index_smoothing_coefficients(indexθ.glmθ, trialsets[1].mpGLMs[1].max_spikehistory_lag, options.nbases_each_event)
-		𝐒 = squared_difference_matrices(indexθ.glmθ, options.nbases_each_event)
-		𝐬 = 𝛂𝐬[length(index𝛂)+1:length(index𝛂)+length(index𝐒)]
-	end
-	gaussianprior = GaussianPrior(𝛂=𝛂, index𝛂=index𝛂, index𝐒=index𝐒, 𝚲=𝚲, 𝐒=𝐒, 𝐬=𝐬, 𝛂min=𝛂min, 𝛂max=𝛂max)
+function GaussianPrior(gaussianprior::GaussianPrior, 𝛂::Vector{type}) where {type<:Real}
+	N = length(𝛂)
+	GaussianPrior(𝐀=gaussianprior.𝐀, 𝛂=𝛂, 𝛂min=gaussianprior.𝛂min, 𝛂max=gaussianprior.𝛂max, index𝐀=gaussianprior.index𝐀, 𝚲=zeros(type,N,N))
     precisionmatrix!(gaussianprior)
     return gaussianprior
 end
 
 """
-    squared_difference_matrices(model)
+	sum_of_square_matrices(indexθlatent)
 
-Return the square of the difference matrix of each gorup of parameters being smoothed
+Return the sum of squares matrix of the latent variable parameters
 
 ARGUMENT
--`indexθglm`: a nested array indexing each parameter in each mixture of Poisson GLM. The element `indexθglm[i][n]` corresponds to the n-th neuron in the i-th trialset
--`nbases_each_event`: number of temporal basis functions in each trial event
+-`indexθlatent`: structure indicating the order of each latent variable parameter if all parameters were concatenated into a vector
 
-OUTPUT
--`𝐒`: A nest array of matrices. Element `𝐒[i]` corresponds to the Nᵢ×Nᵢ squared difference matrix of the i-th group parameters
+RETURN
+-`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
+-`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function squared_difference_matrices(indexθglm::Vector{<:Vector{<:GLMθ}}, nbases_each_event::Vector{<:Integer})
-    θ = indexθglm[1][1]
-    𝐒 = Matrix{eltype(nbases_each_event)}[]
-    for n in nbases_each_event
-        if n > 1
-            𝐒 = vcat(𝐒, [squared_difference_matrix(n)])
-        end
-    end
-    K𝐯 = length(θ.𝐯)
-    B𝐯 = length(θ.𝐯[1])
-    if B𝐯 > 1
-        for k = 1:K𝐯
-            𝐒 = vcat(𝐒, [squared_difference_matrix(B𝐯)])
-        end
-    end
-    if K𝐯 > 1
-		for j = 1:B𝐯
-	        𝐒 = vcat(𝐒, [squared_difference_matrix(K𝐯)])
+function sum_of_square_matrices(indexθlatent::Latentθ)
+	𝐀 = Matrix{typeof(1.0)}[]
+	index𝐀 = Vector{typeof(1)}[]
+	for field in fieldnames(Latentθ)
+		i = getfield(indexθlatent, field)[1]
+		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+		else
+			𝐀 = vcat(𝐀, [ones(1,1)])
+			index𝐀 = vcat(index𝐀, [[i]])
 		end
-    end
-    return [S for indexθglm in indexθglm for indexθglm in indexθglm for S in 𝐒] # copies 𝐒 for each neuron
-end
-
-"""
-    squared_difference_matrix(n)
-
-Return the squared difference matrix for a group of parameters
-
-ARGUMENT
--`n`: number of parameters in the group
-
-OUTPUT
--`S`: a matrix:
-    1   -1  0   0   ...     0   0
-    -1  2   -1  0   ...     0   0
-    0   -1  2   -1  ...     0   0
-    0   0   -1  2   ...     0   0
-                    ...
-    0   0   0   0   ...     2   -1
-    0   0   0   0   ...     -1   1
-"""
-function squared_difference_matrix(n::Integer)
-    S = zeros(typeof(n), n, n) + I
-    for i = 2:n-1
-        S[i,i] += 1
 	end
-	for i = 2:n
-        S[i,i-1] = S[i-1,i] = -1
-    end
-    return S
+	return 𝐀, index𝐀
 end
 
 """
-    index_smoothing_coefficients(indexθglm, max_spikehistory_lag, nbases_each_event)
+	mean_of_squares_matrices(indexθ, max_spikehistory_lag, Φpremovement)
 
-Index parameters that have a L2 smoothing penalty
-
-ARGUMENT
--`indexθglm`: a nested array indexing each parameter in each mixture of Poisson GLM. The element `indexθglm[i][n]` corresponds to the n-th neuron in the i-th trialset
--`max_spikehistory_lag`: number of parameters to specify the weight of spike history
--`nbases_each_event`: number of temporal basis functions in each trial event
-
-OUTPUT
--`index𝐒`: Element `index𝐒[i][j]` corresponds to the i-th group of parameters being smoothed and the j-th parameter in that group. The value of the element indicates the order of the parameter in a vector concatenating all the parameters in the model that are being fit.
-"""
-function index_smoothing_coefficients(indexθglm::Vector{<:Vector{<:GLMθ}}, max_spikehistory_lag::Integer, nbases_each_event::Vector{<:Integer})
-    index𝐒 = Vector{eltype(nbases_each_event)}[] # empty vector of vectors
-    for indexθglm in indexθglm
-        for indexθglm in indexθglm
-            for i in eachindex(nbases_each_event)
-                n = nbases_each_event[i]
-                if n > 1
-                    indices_in_𝐮 = indexθglm.𝐮[max_spikehistory_lag .+ sum(nbases_each_event[1:i-1]) .+ (1:n)]
-                    index𝐒 = vcat(index𝐒, [indices_in_𝐮])
-                end
-            end
-            K𝐯 = length(indexθglm.𝐯)
-            B𝐯 = length(indexθglm.𝐯[1])
-            if B𝐯 > 1
-                for k = 1:K𝐯
-                    index𝐒 = vcat(index𝐒, [indexθglm.𝐯[k]])
-                end
-            end
-            if K𝐯 > 1
-				for j = 1:B𝐯
-	                index𝐒 = vcat(index𝐒, [[indexθglm.𝐯[1][j], indexθglm.𝐯[2][j]]])
-				end
-            end
-        end
-    end
-    return index𝐒
-end
-
-"""
-	index_shrinkage_coefficients(model)
-
-Create a structure indexing the precisions
+Matrices that compute can compute the time average of the squares of each kernel
 
 ARGUMENT
 -`indexθ`: structure indicating the order of each parameter if all parameters were concatenated into a vector
+-`max_spikehistory_lag`: number of parameters controlling the effect of spike history
+-`Φaccumulator`: values of the temporal basis functions parametrizing hte time-varying encoding of the accumulator. Element `Φaccumulator[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial
+-`Φpremovement`: values of the temporal basis functions parametizing the kernel of the timing of movement
+-`Φtime`: values of the temporal basis functions parametrizing time in each trial. Element `Φtime[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial.
 
 RETURN
--a vector of integers
-```
+-`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
+-`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function index_shrinkage_coefficients(indexθ::Indexθ)
-	index𝛂 = Int[]
-	for field in fieldnames(Latentθ)
-		i = getfield(indexθ.latentθ, field)[1]
-		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-		else
-			index𝛂 = vcat(index𝛂, i)
-		end
-	end
-	for glmθ in indexθ.glmθ
-		for glmθ in glmθ
-			if length(glmθ.𝐠) > 1
-				index𝛂 = vcat(index𝛂, glmθ.𝐠[2]:glmθ.𝐯[end][end])
-			else
-				index𝛂 = vcat(index𝛂, glmθ.𝐮[1]:glmθ.𝐯[end][end])
+function mean_of_squares_matrices(indexθglm::Vector{<:Vector{<:GLMθ}}, max_spikehistory_lag::Integer,  Φaccumulator::Matrix{<:AbstractFloat}, Φpremovement::Matrix{<:AbstractFloat}, Φtime::Matrix{<:AbstractFloat})
+	I_spikehistory = zeros(max_spikehistory_lag,max_spikehistory_lag) + I # computations with `Diagonal` are slower
+	length𝐮 = length(indexθglm[1][1].𝐮)
+	index𝐮time = max_spikehistory_lag .+ (1:size(Φtime,2))
+	index𝐮premovement = length𝐮-size(Φpremovement,2)+1:length𝐮
+	Atime = (Φtime'*Φtime)./size(Φtime,1)
+	Apremovement = (Φpremovement'*Φpremovement)./size(Φpremovement,1)
+	Aaccumulator = (Φaccumulator'*Φaccumulator)./size(Φaccumulator,1)
+	𝐀 = Matrix{typeof(1.0)}[]
+	index𝐀 = Vector{typeof(1)}[]
+	for indexᵢ in indexθglm
+		for indexᵢₙ in indexᵢ
+			for k = 2:length(indexᵢₙ.𝐠)
+				𝐀 = vcat(𝐀, [ones(1,1)])
+				index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])
+			end
+			if max_spikehistory_lag > 0
+				𝐀 = vcat(𝐀, [I_spikehistory])
+				index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[1:max_spikehistory_lag]])
+			end
+			𝐀 = vcat(𝐀, [Atime])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮time]])
+			𝐀 = vcat(𝐀, [Apremovement])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮premovement]])
+			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
+				𝐀 = vcat(𝐀, [Aaccumulator])
+				index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
 			end
 		end
 	end
-	index𝛂
+	return 𝐀, index𝐀
 end
 
 """
-	shrinkage_coefficients_limits(αrangeDDM, αrangeGLM, indexθ, N𝛂)
+    variancematrices(indexθglm, max_spikehistory_lag, Φaccumulator, Φtime)
 
-Limits of the L2 shrinkage coefficients
+Return the variance matrix of each group of parameters representing a time-varying quantity being flattened
 
 ARGUMENT
--`αrangeDDM`: minimum and maximum of the precisions on the priors of the DDM parameters
--`αrangeGLM`: minimum and maximum of the precisions on the priors of the GLM parameters
--`indexθ`: index of each parameter
--`N𝛂`: number of precisions being leared
+-`indexθglm`: a nested array indexing each parameter in each mixture of Poisson GLM. The element `indexθglm[i][n]` corresponds to the n-th neuron in the i-th trialset
+-`max_spikehistory_lag`: number of parameters for the spike history effect. This is needed only for indexing. Spike history effects are not being flattened.
+-`Φaccumulator`: values of the temporal basis functions parametrizing hte time-varying encoding of the accumulator. Element `Φaccumulator[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial
+-`Φtime`: values of the temporal basis functions parametrizing time in each trial. Element `Φtime[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial.
 
-RETURN
--`𝛂min`: vector of the minimum of each precision being learned
--`𝛂max`: vector of the maximum of each precision being learned
+OUTPUT
+-`𝚪`: A nest array of matrices. Element `𝚪[i]` corresponds to the Nᵢ×Nᵢ variance matrix of the i-th group of parameters, with N parameters in the group
+-`index𝚪`: Element `index𝚪[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function shrinkage_coefficients_limits(αrangeDDM::Vector{<:AbstractFloat}, αrangeGLM::Vector{<:AbstractFloat}, indexθ::Indexθ, N𝛂::Integer)
-	𝛂min, 𝛂max = zeros(N𝛂), zeros(N𝛂)
-	k = 0
-	for field in fieldnames(Latentθ)
-		i = getfield(indexθ.latentθ, field)[1]
-		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-		else
-			k += 1
-			𝛂min[k] = αrangeDDM[1]
-			𝛂max[k] = αrangeDDM[2]
-		end
-	end
-	for glmθ in indexθ.glmθ
-		for glmθ in glmθ
-			for i = 2:length(glmθ.𝐠)
-				k +=1
-				𝛂min[k] = αrangeGLM[1]
-				𝛂max[k] = αrangeGLM[2]
-			end
-			for u in glmθ.𝐮
-				k +=1
-				𝛂min[k] = αrangeGLM[1]
-				𝛂max[k] = αrangeGLM[2]
-			end
-			for 𝐯ₖ in glmθ.𝐯
-				for v in 𝐯ₖ
-					k +=1
-					𝛂min[k] = αrangeGLM[1]
-					𝛂max[k] = αrangeGLM[2]
-				end
+function variancematrices(indexθglm::Vector{<:Vector{<:GLMθ}}, max_spikehistory_lag::Integer, Φaccumulator::Matrix{<:AbstractFloat}, Φtime::Matrix{<:AbstractFloat})
+	Γaccumulator = Φaccumulator'*variancematrix(size(Φaccumulator,1))*Φaccumulator
+	Γtime = Φtime'*variancematrix(size(Φtime,1))*Φtime
+	𝚪 = Matrix{typeof(1.0)}[]
+	index𝚪 = Vector{typeof(1)}[]
+	index𝐮time = max_spikehistory_lag .+ (1:size(Φtime,2))
+	for indexᵢ in indexθglm
+		for indexᵢₙ in indexᵢ
+			𝚪 = vcat(𝚪, [Γtime])
+			index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[index𝐮time]])
+			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
+				𝚪 = vcat(𝚪, [Γaccumulator])
+				index𝚪 = vcat(index𝚪, [indexᵢₙ𝐯ₖ])
 			end
 		end
 	end
-	@assert k == N𝛂
+    return 𝚪, index𝚪
+end
+
+"""
+    variancematrix(n)
+
+Return a matrix that computes the variance of `n` elements
+
+OUTPUT
+-`Γ`: a matrix:
+    (n-1)/n 	-1/n		-1/n		...		-1/n
+	-1/n		(n-1)/n		-1/n		...		-1/n
+	-1/n		-1/n		(n-1)/n		...		-1/n
+										...
+	-1/n		-1/n		-1/n		...		(n-1)/n
+"""
+variancematrix(n::Integer) = I/n - ones(n,n)./n^2
+
+"""
+	L2penalty_coeffcients_limits(options, N_shrinkage_DDM, N_shrinkage_GLM, N_flattening_GLM)
+
+Minimum and maximum of the coefficients of the L2 penalties
+
+ARGUMENT
+-`options`: Settings of the model
+-`N_shrinkage_DDM`: number of shrinkage coefficients related to DDM parameters
+-`N_shrinkage_GLM`: number of shrinkage coefficients related to GLM parameters
+-`N_flattening_GLM`: number of flattening coefficients related to GLM parameters
+
+OUTPUT
+-`𝛂min`: vector of the minimum of the coefficient of each L2 penalty being learned
+-`𝛂max`: vector of the maximum of the coefficient of each L2 penalty being learned
+"""
+function L2penalty_coeffcients_limits(options::Options, N_shrinkage_LV::Integer, N_shrinkage_GLM::Integer, N_flattening_GLM::Integer)
+	𝛂min = vcat(options.L2shrinkage_LV_min	.*ones(N_shrinkage_LV),
+				options.L2shrinkage_GLM_min	.*ones(N_shrinkage_GLM),
+				options.L2flattening_GLM_min.*ones(N_flattening_GLM))
+	𝛂max = vcat(options.L2shrinkage_LV_max .*ones(N_shrinkage_LV),
+				options.L2shrinkage_GLM_max	.*ones(N_shrinkage_GLM),
+ 				options.L2flattening_GLM_max.*ones(N_flattening_GLM))
 	return 𝛂min, 𝛂max
 end
 
@@ -270,66 +213,18 @@ end
 Update the precision matrix
 
 MODIFIED ARGUMENT
--`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the shrinkage coefficients 𝛂 and smoothing coefficients 𝐬
+-`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the L2 penalty coefficients 𝛂. The square submatrix 𝚽 of 𝚲 is also updated.
 """
 function precisionmatrix!(gaussianprior::GaussianPrior)
-    @unpack 𝛂, index𝛂, index𝐒, 𝚲, 𝐒, 𝐬, 𝚽, index𝚽  = gaussianprior
+    @unpack 𝐀, 𝛂, index𝐀, 𝚲, 𝚽, index𝚽  = gaussianprior
     𝚲 .= 0
-    for i in eachindex(index𝛂)
-        j = index𝛂[i]
-        𝚲[j,j] = 𝛂[i]
+    for i in eachindex(index𝐀)
+        𝚲[index𝐀[i],index𝐀[i]] .+= 𝛂[i].*𝐀[i]
     end
-    for i in eachindex(index𝐒)
-        𝚲[index𝐒[i],index𝐒[i]] .+= 𝐬[i].*𝐒[i]
-    end
-	𝚽 .= 𝚲[index𝚽, index𝚽]
+	for i = 1:length(index𝚽)
+		for j = 1:length(index𝚽)
+			𝚽[i,j] = 𝚲[index𝚽[i], index𝚽[j]]
+		end
+	end
     return nothing
-end
-
-"""
-	precisionmatrix!(gaussianprior, 𝛂𝐬)
-
-Update the precision matrix with new L2 coefficients
-
-MODIFIED ARGUMENT
--`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the shrinkage coefficients 𝛂 and smoothing coefficients 𝐬
-
-UNMODFIED ARGUMENT
--`𝛂𝐬`: vector concatenating the values of the L2 shrinkage coefficients and the L2 smoothing coefficcients
-"""
-function precisionmatrix!(gaussianprior::GaussianPrior, 𝛂𝐬::Vector{<:AbstractFloat})
-	length𝛂 = length(gaussianprior.𝛂)
-	for i = 1:length𝛂
-		gaussianprior.𝛂[i] = 𝛂𝐬[i]
-	end
-	length𝐬 = length(gaussianprior.𝐬)
-	for i = 1:length𝐬
-		j = i + length𝛂
-		gaussianprior.𝐬[i] = 𝛂𝐬[j]
-	end
-	precisionmatrix!(gaussianprior)
-end
-
-"""
-	precisionmatrix!(gaussianprior, 𝛂, 𝐬)
-
-Update the precision matrix with new L2 coefficients
-
-MODIFIED ARGUMENT
--`gaussianprior`: structure containing information on the Gaussian prior on the values of the model parameters in real space. The precision matrix `𝚲` is updated with respect to the shrinkage coefficients 𝛂 and smoothing coefficients 𝐬
-
-UNMODFIED ARGUMENT
--`𝛂`: L2 shrinkage coefficients
--`𝐬`: L2 smoothing coefficcients
-"""
-function precisionmatrix!(gaussianprior::GaussianPrior, 𝛂::Vector{<:AbstractFloat}, 𝐬::Vector{<:AbstractFloat})
-	length𝛂 = length(gaussianprior.𝛂)
-	for i = 1:length𝛂
-		gaussianprior.𝛂[i] = 𝛂[i]
-	end
-	length𝐬 = length(gaussianprior.𝐬)
-	for i = 1:length𝐬
-		gaussianprior.𝐬[i] = 𝐬[i]
-	end
-	precisionmatrix!(gaussianprior)
 end
