@@ -898,7 +898,9 @@ function update_drift_diffusion_transformation(model::Model)
 	dict["lqu_sigma2_i"][2] = model.θnative.σ²ᵢ[1]
 	dict["lqu_sigma2_s"][2] = model.θnative.σ²ₛ[1]
 	dict["lqu_w_h"][2] = model.θnative.wₕ[1]
-	Model(options=Options(dict),
+	newoptions = Options(dict)
+	native2real!(model.θreal,newoptions,model.θnative)
+	Model(options=newoptions,
 		gaussianprior=model.gaussianprior,
 		θnative = model.θnative,
 		θreal = model.θreal,

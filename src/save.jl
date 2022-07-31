@@ -31,9 +31,13 @@ function save(model::Model,
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
-                "smoothingcoefficients"=>model.gaussianprior.𝐬,
+                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φ,
+                "Phitime"=>model.trialsets[1].mpGLMs[1].Φevents[1],
+                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φevents[2],
+                "penaltycoefficients"=>model.gaussianprior.𝛂,
+                "penaltymatrices"=>model.gaussianprior.𝐀,
+                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
+                "precisionmatrix"=>model.gaussianprior.𝚲,
                 "fbz"=>fbz,
                 "gradientnorms"=>gradientnorms,
                 "losses"=>losses,
@@ -53,9 +57,12 @@ function save(model::Model)
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
-                "smoothingcoefficients"=>model.gaussianprior.𝐬)
+                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φ,
+                "Phitime"=>model.trialsets[1].mpGLMs[1].Φevents[1],
+                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φevents[2],
+                "penaltycoefficients"=>model.gaussianprior.𝛂,
+                "penaltymatrices"=>model.gaussianprior.𝐀,
+                "penaltymatrixindices"=>model.gaussianprior.index𝐀,                "precisionmatrix"=>model.gaussianprior.𝚲)
     matwrite(model.options.resultspath, dict)
     return nothing
 end
@@ -91,9 +98,13 @@ function save(model::Model,
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
-                "smoothingcoefficients"=>model.gaussianprior.𝐬,
+                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φ,
+                "Phitime"=>model.trialsets[1].mpGLMs[1].Φevents[1],
+                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φevents[2],
+                "penaltycoefficients"=>model.gaussianprior.𝛂,
+                "penaltymatrices"=>model.gaussianprior.𝐀,
+                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
+                "precisionmatrix"=>model.gaussianprior.𝚲,
                 "fbz"=>fbz,
                 "pchoice" => pchoice,
                 "lambdaDeltat" => λΔt)
@@ -106,42 +117,45 @@ end
 
 Save the model parameters and the expectation of the emissions
 """
-function save(model::Model,
-              λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
-              pchoice::Vector{<:Vector{<:AbstractFloat}})
+function save(λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}}, model::Model, pchoice::Vector{<:Vector{<:AbstractFloat}}; filename="results.mat")
     dict = Dict("theta_native"=> dictionary(model.θnative),
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
-                "smoothingcoefficients"=>model.gaussianprior.𝐬,
+                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φ,
+                "Phitime"=>model.trialsets[1].mpGLMs[1].Φevents[1],
+                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φevents[2],
+                "penaltycoefficients"=>model.gaussianprior.𝛂,
+                "penaltymatrices"=>model.gaussianprior.𝐀,
+                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
+                "precisionmatrix"=>model.gaussianprior.𝚲,
                 "pchoice" => pchoice,
                 "lambdaDeltat" => λΔt)
-    matwrite(model.options.resultspath, dict)
+    path = joinpath(dirname(model.options.resultspath), filename)
+    matwrite(path, dict)
     return nothing
 end
 
 """
-    save(model, H, λΔt, pchoice)
+    save(hessian_loglikelihood, λΔt, model, pchoice)
 
 Save the model parameters and the expectation of the emissions and a hessian
 """
-function save(model::Model,
-              H::Matrix{<:AbstractFloat},
-              λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
-              pchoice::Vector{<:Vector{<:AbstractFloat}})
+function save(hessian_loglikelihood::Matrix{<:AbstractFloat}, model::Model; filename="preinitialization.mat")
     dict = Dict("theta_native"=> dictionary(model.θnative),
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
-                "smoothingcoefficients"=>model.gaussianprior.𝐬,
-                "H"=>H,
-                "pchoice" => pchoice,
-                "lambdaDeltat" => λΔt)
-    matwrite(model.options.resultspath, dict)
+                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φ,
+                "Phitime"=>model.trialsets[1].mpGLMs[1].Φevents[1],
+                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φevents[2],
+                "penaltycoefficients"=>model.gaussianprior.𝛂,
+                "penaltymatrices"=>model.gaussianprior.𝐀,
+                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
+                "precisionmatrix"=>model.gaussianprior.𝚲,
+                "hessian_loglikelihood"=>hessian_loglikelihood)
+    path = joinpath(dirname(model.options.resultspath), filename)
+    matwrite(path, dict)
     return nothing
 end
 
@@ -158,11 +172,14 @@ function save(hessian_loglikelihood::Matrix{<:AbstractFloat},
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
                 "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phi"=>model.trialsets[1].mpGLMs[1].Φ,
-                "shrinkagecoefficients"=>model.gaussianprior.𝛂,
-                "smoothingcoefficients"=>model.gaussianprior.𝐬,
-                "hessian_loglikelihood"=>hessian_loglikelihood,
+                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φ,
+                "Phitime"=>model.trialsets[1].mpGLMs[1].Φevents[1],
+                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φevents[2],
+                "penaltycoefficients"=>model.gaussianprior.𝛂,
+                "penaltymatrices"=>model.gaussianprior.𝐀,
+                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
                 "precisionmatrix"=>model.gaussianprior.𝚲,
+                "hessian_loglikelihood"=>hessian_loglikelihood,
                 "pchoice" => pchoice,
                 "lambdaDeltat" => λΔt)
     path = joinpath(dirname(model.options.resultspath), filename)

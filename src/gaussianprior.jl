@@ -13,7 +13,7 @@ OUTPUT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_27a_test/T176_2018_05_03/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_29a_test/T176_2018_05_03/data.mat"
 julia> model = Model(datapath)
 julia> model.gaussianprior
 julia>
@@ -21,16 +21,23 @@ julia>
 """
 function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
     indexθ = indexparameters(options, trialsets)
-	mpGLM₁₁ = trialsets[1].mpGLMs[1]
-	Φaccumulator = mpGLM₁₁.Φ
-	Φtime = mpGLM₁₁.Φevents[1]
-	Φpremovement = mpGLM₁₁.Φevents[2]
-	𝐀_lv, index𝐀_lv = sum_of_square_matrices(indexθ.latentθ)
-	𝐀_glm, index𝐀_glm = mean_of_squares_matrices(indexθ.glmθ, mpGLM₁₁.max_spikehistory_lag, Φaccumulator, Φpremovement, Φtime)
-	𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ, mpGLM₁₁.max_spikehistory_lag, Φaccumulator, Φtime)
-	𝐀 = vcat(𝐀_lv, 𝐀_glm, 𝚪_glm)
-	index𝐀 = vcat(index𝐀_lv, index𝐀_glm, index𝚪_glm)
-	𝛂min, 𝛂max = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
+	𝐀 = Matrix{typeof(1.0)}[]
+	index𝐀 = Vector{typeof(1)}[]
+	𝛂min, 𝛂max = typeof(1.0)[], typeof(1.0)[]
+	for i = 1:length(trialsets)
+		mpGLM = trialsets[i].mpGLMs[1]
+		Φaccumulator = mpGLM.Φ
+		Φtime = mpGLM.Φevents[1]
+		Φpremovement = mpGLM.Φevents[2]
+		𝐀_lv, index𝐀_lv = sum_of_square_matrices(indexθ.latentθ)
+		𝐀_glm, index𝐀_glm = mean_of_squares_matrices(indexθ.glmθ[i], mpGLM.max_spikehistory_lag, Φaccumulator, Φpremovement, Φtime)
+		𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.max_spikehistory_lag, Φaccumulator, Φtime)
+		𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm, 𝚪_glm)
+		index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm, index𝚪_glm)
+		𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
+		𝛂min = vcat(𝛂min, 𝛂min_t)
+		𝛂max = vcat(𝛂max, 𝛂max_t)
+	end
 	𝛂 = sqrt.(𝛂min.*𝛂max)
     N = indexθ.glmθ[end][end].𝐯[end][end]
     gaussianprior = GaussianPrior(𝐀=𝐀, 𝛂=𝛂, 𝛂min=𝛂min, 𝛂max=𝛂max, index𝐀=index𝐀, 𝚲=zeros(N,N))
@@ -91,6 +98,7 @@ Matrices that compute can compute the time average of the squares of each kernel
 
 ARGUMENT
 -`indexθ`: structure indicating the order of each parameter if all parameters were concatenated into a vector
+-`λ`: scaling factor of GLM inputs
 -`max_spikehistory_lag`: number of parameters controlling the effect of spike history
 -`Φaccumulator`: values of the temporal basis functions parametrizing hte time-varying encoding of the accumulator. Element `Φaccumulator[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial
 -`Φpremovement`: values of the temporal basis functions parametizing the kernel of the timing of movement
@@ -100,9 +108,9 @@ RETURN
 -`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
 -`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function mean_of_squares_matrices(indexθglm::Vector{<:Vector{<:GLMθ}}, max_spikehistory_lag::Integer,  Φaccumulator::Matrix{<:AbstractFloat}, Φpremovement::Matrix{<:AbstractFloat}, Φtime::Matrix{<:AbstractFloat})
+function mean_of_squares_matrices(indexθglm::Vector{<:GLMθ}, max_spikehistory_lag::Integer,  Φaccumulator::Matrix{<:AbstractFloat}, Φpremovement::Matrix{<:AbstractFloat}, Φtime::Matrix{<:AbstractFloat})
 	I_spikehistory = zeros(max_spikehistory_lag,max_spikehistory_lag) + I # computations with `Diagonal` are slower
-	length𝐮 = length(indexθglm[1][1].𝐮)
+	length𝐮 = length(indexθglm[1].𝐮)
 	index𝐮time = max_spikehistory_lag .+ (1:size(Φtime,2))
 	index𝐮premovement = length𝐮-size(Φpremovement,2)+1:length𝐮
 	Atime = (Φtime'*Φtime)./size(Φtime,1)
@@ -110,24 +118,22 @@ function mean_of_squares_matrices(indexθglm::Vector{<:Vector{<:GLMθ}}, max_spi
 	Aaccumulator = (Φaccumulator'*Φaccumulator)./size(Φaccumulator,1)
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
-	for indexᵢ in indexθglm
-		for indexᵢₙ in indexᵢ
-			for k = 2:length(indexᵢₙ.𝐠)
-				𝐀 = vcat(𝐀, [ones(1,1)])
-				index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])
-			end
-			if max_spikehistory_lag > 0
-				𝐀 = vcat(𝐀, [I_spikehistory])
-				index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[1:max_spikehistory_lag]])
-			end
-			𝐀 = vcat(𝐀, [Atime])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮time]])
-			𝐀 = vcat(𝐀, [Apremovement])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮premovement]])
-			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
-				𝐀 = vcat(𝐀, [Aaccumulator])
-				index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
-			end
+	for indexᵢₙ in indexθglm
+		for k = 2:length(indexᵢₙ.𝐠)
+			𝐀 = vcat(𝐀, [ones(1,1)])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])
+		end
+		if max_spikehistory_lag > 0
+			𝐀 = vcat(𝐀, [I_spikehistory])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[1:max_spikehistory_lag]])
+		end
+		𝐀 = vcat(𝐀, [Atime])
+		index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮time]])
+		𝐀 = vcat(𝐀, [Apremovement])
+		index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮premovement]])
+		for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
+			𝐀 = vcat(𝐀, [Aaccumulator])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
 		end
 	end
 	return 𝐀, index𝐀
@@ -148,20 +154,18 @@ OUTPUT
 -`𝚪`: A nest array of matrices. Element `𝚪[i]` corresponds to the Nᵢ×Nᵢ variance matrix of the i-th group of parameters, with N parameters in the group
 -`index𝚪`: Element `index𝚪[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function variancematrices(indexθglm::Vector{<:Vector{<:GLMθ}}, max_spikehistory_lag::Integer, Φaccumulator::Matrix{<:AbstractFloat}, Φtime::Matrix{<:AbstractFloat})
+function variancematrices(indexθglm::Vector{<:GLMθ}, max_spikehistory_lag::Integer, Φaccumulator::Matrix{<:AbstractFloat}, Φtime::Matrix{<:AbstractFloat})
 	Γaccumulator = Φaccumulator'*variancematrix(size(Φaccumulator,1))*Φaccumulator
 	Γtime = Φtime'*variancematrix(size(Φtime,1))*Φtime
 	𝚪 = Matrix{typeof(1.0)}[]
 	index𝚪 = Vector{typeof(1)}[]
 	index𝐮time = max_spikehistory_lag .+ (1:size(Φtime,2))
-	for indexᵢ in indexθglm
-		for indexᵢₙ in indexᵢ
-			𝚪 = vcat(𝚪, [Γtime])
-			index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[index𝐮time]])
-			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
-				𝚪 = vcat(𝚪, [Γaccumulator])
-				index𝚪 = vcat(index𝚪, [indexᵢₙ𝐯ₖ])
-			end
+	for indexᵢₙ in indexθglm
+		𝚪 = vcat(𝚪, [Γtime])
+		index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[index𝐮time]])
+		for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
+			𝚪 = vcat(𝚪, [Γaccumulator])
+			index𝚪 = vcat(index𝚪, [indexᵢₙ𝐯ₖ])
 		end
 	end
     return 𝚪, index𝚪

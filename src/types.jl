@@ -95,6 +95,8 @@ Model settings
 	fit_wₕ::TB=true
 	"whether the gain is state-dependent"
 	gain_state_dependent::TB=true
+	"scaling of the glm inputs"
+	glminputscaling::TF=10.0
 	"maximum L2 flattening penalty for each group of GLM parameters"
 	L2flattening_GLM_max::TF=1e0
 	"maximum L2 flattening penalty for each group of GLM parameters"

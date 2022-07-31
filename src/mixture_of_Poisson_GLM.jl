@@ -473,7 +473,7 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 	K𝐯 = length(𝐯)
 	n𝐮 = length(𝐮)
 	n𝐯 = length(𝐯[1])
-	if K𝐠 == K
+	if K𝐠 > 1
 		indices𝐠 = 1:K𝐠-1
 		indices𝐮 = indices𝐠[end] .+ (1:n𝐮)
 	else
@@ -486,7 +486,7 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
 	∇Q[indices𝐮] .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
 	∇∇Q[indices𝐮, indices𝐮] .= 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
-	if K𝐠 == K
+	if K𝐠 > 1
 		@inbounds for k = 2:K
 			∇Q[indices𝐠[k-1]] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
 			∇∇Q[indices𝐠[k-1], indices𝐠[k-1]] = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k])
@@ -496,7 +496,7 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 			∇∇Q[indices𝐠[k-1], indices𝐯[k]] = transpose(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k])*𝐕
 		end
 	end
-	if K𝐯 == K
+	if K𝐯 > 1
 		@inbounds for k = 1:K
 			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
 			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
