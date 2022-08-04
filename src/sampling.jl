@@ -22,7 +22,7 @@ julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_29a_
 julia> model = Model(datapath)
 julia> λΔt, pchoice = expectedemissions(model; nsamples=2)
 julia> save(λΔt, model, pchoice; filename="postinitialization.mat")
-julia> 
+julia>
 ```
 """
 function expectedemissions(model::Model; nsamples::Integer=100)
@@ -103,6 +103,7 @@ function sample!(memory::Memoryforgradient, P::Probabilityvector, θnative::Late
 	choice = rand() < p_right_choice
     Trial(	clicks=trial.clicks,
           	choice=choice,
+			movementtime_s=trial.movementtime_s,
 		  	ntimesteps=trial.ntimesteps,
 			previousanswer=trial.previousanswer,
 			a=a,

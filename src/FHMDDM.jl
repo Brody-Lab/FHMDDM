@@ -23,7 +23,8 @@ export  concenateparameters,
         ∇∇loglikelihood,
         learnparameters!,
         posterior_first_state,
-        save
+        save,
+        test
 include("types.jl") # This list contains files that in which functions and types are specified. The file "types.jl" has to be listed first, but the order of the other files does not matter.
 include("choicemodel.jl")
 include("conversions.jl")
@@ -40,5 +41,6 @@ include("parametersorting.jl")
 include("temporal_basis_functions.jl")
 include("sampling.jl")
 include("save.jl")
+include("tests.jl")
 include("two_pass_Hessian.jl")
 end

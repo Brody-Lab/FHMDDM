@@ -180,33 +180,26 @@ OUTPUT
 """
 function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
+	movementtimes_s = map(x->x["movementtimes_s"], rawtrials)
+	@assert all(movementtimes_s.>0)
     ntimesteps = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
 	units = vec(trialset["units"])
     𝐘 = map(x->convert.(typeof(1), vec(x["y"])), units)
     @assert sum(ntimesteps) == length(𝐘[1])
 	@unpack K, Ξ = options
 	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
-	𝐕, Φaccumulator = temporal_bases_values(options, ntimesteps)
-	𝐆 = ones(size(trialset["Xtiming"],1))
-	Φevents = map(x->convert.(typeof(1.0), x), vec(trialset["Phievents"]))
-	λ = options.glminputscaling
-	λₐ = λ/maximum(Φaccumulator)
-	𝐕 .*= λₐ
-	Φaccumulator .*= λₐ
-	λtime = λ/maximum(Φevents[1])
-	λmove = λ/maximum(Φevents[2])
-	Φevents[1] .*= λtime
-	Φevents[2] .*= λmove
-	𝐗timing = trialset["Xtiming"]
-	𝐗timing[:,1:size(Φevents[1],2)] .*= λtime
-	𝐗timing[:,size(Φevents[1],2)+1:end] .*= λmove
+	𝐕, Φₐ = accumulatorbases(options, ntimesteps)
+	𝐔ₜ, Φₜ = timebases(options, ntimesteps)
+	𝐔ₘ, Φₘ = premovementbases(options, movementtimes_s, ntimesteps)
+	𝐆 = options.glminputscaling.*ones(size(𝐕,1))
 	mpGLMs = map(units, 𝐘) do unit, 𝐲
-				𝐗=hcat(𝐆, λ.*unit["Xautoreg"], 𝐗timing, 𝐕)
+				𝐗=hcat(𝐆, options.glminputscaling.*unit["Xautoreg"], 𝐔ₜ, 𝐔ₘ, 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
   								d𝛏_dB=d𝛏_dB,
 								max_spikehistory_lag = size(unit["Xautoreg"],2),
-								Φ=Φaccumulator,
-								Φevents=Φevents,
+								Φₐ=Φₐ,
+								Φₜ=Φₜ,
+								Φₘ=Φₘ,
 								θ=GLMθ(options, 𝐗, 𝐕),
 								𝐕=𝐕,
 								𝐗=𝐗,
@@ -224,9 +217,10 @@ function Trialset(options::Options, trialset::Dict)
 	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
     previousanswer = vec(convert.(Int64, trialset["lagged"]["answer"]))
     clicks = map((L,R,ntimesteps)->Clicks(options.a_latency_s, options.Δt,L,ntimesteps,R), L, R, ntimesteps)
-    trials = map(clicks, rawtrials, ntimesteps, previousanswer) do clicks, rawtrial, ntimesteps, previousanswer
+    trials = map(clicks, rawtrials, movementtimes_s, ntimesteps, previousanswer) do clicks, rawtrial, movementtime_s, ntimesteps, previousanswer
                 Trial(clicks=clicks,
                       choice=rawtrial["choice"],
+					  movementtime_s=movementtime_s,
                       ntimesteps=ntimesteps,
                       previousanswer=previousanswer)
              end

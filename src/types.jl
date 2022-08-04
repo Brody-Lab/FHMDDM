@@ -47,18 +47,6 @@ Model settings
 						TVF<:Vector{<:AbstractFloat}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
-	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
-	atbf_begins0::TB=false
-	"whether the temporal basis functions parametrizing the weight of the accumulator can parametrize a constant function"
-	atbf_constantfunction::TB=false
-	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
-	atbf_ends0::TB=false
-	"number of temporal basis functions parametrizing the weight of the accumulator per second"
-	atbf_hz::TF=4
-	"period of each temporal basis functions parametrizing the weight of the accumulator, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
-	atbf_period::TF=4
-	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
-	atbf_stretch::TF=100.0
 	"initial coefficient for L2 regularization for the ddm parameters"
 	α₀_choices::TF=0.0
 	"value optimized when initializing the choice-related parameters"
@@ -148,6 +136,44 @@ Model settings
 	scalechoiceLL::TB=true
 	"whether the tuning to the accumulator is state-dependent"
 	tuning_state_dependent::TB=true
+	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
+	tbf_accu_begins0::TB=false
+	"whether the temporal basis functions parametrizing the weight of the accumulator can parametrize a constant function"
+	tbf_accu_constantfunction::TB=true
+	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
+	tbf_accu_ends0::TB=false
+	"number of temporal basis functions parametrizing the weight of the accumulator per second"
+	tbf_accu_hz::TF=4
+	"period of each temporal basis functions parametrizing the weight of the accumulator, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
+	tbf_accu_period::TF=4
+	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
+	tbf_accu_stretch::TF=0.1
+	"whether the temporal basis functions parametrizing the weight of time from movement is at the trough or at the peak in the beginning of the trial"
+	tbf_move_begins0::TB=true
+	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial can parametrize a constant function"
+	tbf_move_constantfunction::TB=false
+	""
+	tbf_move_dur_s::TF=0.6
+	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the end of the trial"
+	tbf_move_ends0::TB=false
+	"number of temporal basis functions parametrizing the weight of time from movement per second"
+	tbf_move_hz::TF=2
+	"period of each temporal basis functions parametrizing the weight of time from movement, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
+	tbf_move_period::TF=4
+	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
+	tbf_move_stretch::TF=0.001
+	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the beginning of the trial"
+	tbf_time_begins0::TB=false
+	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial can parametrize a constant function"
+	tbf_time_constantfunction::TB=true
+	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the end of the trial"
+	tbf_time_ends0::TB=false
+	"number of temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial per second"
+	tbf_time_hz::TF=4
+	"period of each temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
+	tbf_time_period::TF=4
+	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
+	tbf_time_stretch::TF=1.0
 	"whether to update the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space, to be the value learned from maximizing the evidence of only the choices"
 	updateDDtransformation::TB=true
     "number of states of the discrete accumulator variable"
@@ -190,12 +216,15 @@ Spike trains are not included. In sampled data, the generatives values of the la
 """
 @with_kw struct Trial{TB<:Bool,
                       TC<:Clicks,
+					  TF<:AbstractFloat,
                       TI<:Integer,
                       VI<:Vector{<:Integer}}
     "information on the auditory clicks"
     clicks::TC
     "behavioral choice"
     choice::TB
+	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
+	movementtime_s::TF
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
@@ -230,8 +259,7 @@ Mixture of Poisson generalized linear model
                                   VF<:Vector{<:AbstractFloat},
 								  VI<:Vector{<:Integer},
 								  Tθ<:GLMθ,
-                                  MF<:Matrix{<:AbstractFloat},
-								  VMF<:Vector{<:Matrix{<:AbstractFloat}}}
+                                  MF<:Matrix{<:AbstractFloat}}
     "size of the time bin"
     Δt::F
 	"Normalized values of the accumulator"
@@ -239,9 +267,11 @@ Mixture of Poisson generalized linear model
 	"number of spike history lags"
 	max_spikehistory_lag::TI
 	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
-	Φ::MF
-	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between events in the trial and the neuron's probability of spiking. The timing of each event is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. Each element of `Φevents` corresponds to one event and is a matrix whose columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
-	Φevents::VMF
+	Φₐ::MF
+	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the animal leaving the center and the neuron's probability of spiking. The timing is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. The columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
+	Φₘ::MF
+	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
+	Φₜ::MF
 	"parameters"
 	θ::Tθ
     "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
