@@ -65,7 +65,8 @@ RETURN
 function premovementbases(options::Options, movementtimes_s::Vector{<:AbstractFloat}, 𝐓::Vector{<:Integer})
 	nbases = ceil(Int, options.tbf_move_dur_s*options.tbf_move_hz)
 	nbins = ceil(Int, options.tbf_move_dur_s/options.Δt)
-	Φ = orthogonal_wellconditioned_tbf(options.tbf_move_begins0, options.tbf_move_constantfunction, options.tbf_move_ends0, nbases, nbins, options.tbf_move_period, options.tbf_move_stretch)
+	Φ = unitarybases(options.tbf_move_begins0, options.tbf_move_constantfunction, options.tbf_move_ends0, nbases, nbins, options.tbf_move_period, options.tbf_move_stretch)
+	Φ .*= options.glminputscaling
 	nbases = size(Φ,2)
 	movementbin = ceil.(Int, movementtimes_s./options.Δt) # movement times are always positive
 	𝐔 = zeros(sum(𝐓), nbases)
@@ -85,9 +86,6 @@ function premovementbases(options::Options, movementtimes_s::Vector{<:AbstractFl
 		end
 		τ += T
 	end
-    Φmax = maximum(Φ)
-	𝐔 .*= options.glminputscaling/Φmax
-	Φ .*= options.glminputscaling/Φmax
 	return 𝐔, Φ
 end
 
@@ -108,11 +106,12 @@ function temporal_bases_values(begins0::Bool, constantfunction::Bool, Δt::Abstr
     Tmax = maximum(𝐓)
     nbases = max(1, ceil(Int, hz*(Tmax*Δt)))
     if nbases == 1
-        Φ = ones(Tmax,1)
-        𝐕 = ones(sum(𝐓), 1)
+		x = scaling/sqrt(Tmax)
+        Φ = fill(x,Tmax)
+        𝐕 = fill(x, sum(𝐓), 1)
     else
-        Φ = orthogonal_wellconditioned_tbf(begins0, constantfunction, ends0, nbases, Tmax, period, stretch)
-        nbases = size(Φ,2)
+        Φ = unitarybases(begins0, constantfunction, ends0, nbases, Tmax, period, stretch)
+		Φ .*= scaling
         𝐕 = zeros(sum(𝐓), nbases)
         k = 0
         for T in 𝐓
@@ -122,10 +121,40 @@ function temporal_bases_values(begins0::Bool, constantfunction::Bool, Δt::Abstr
             end
         end
     end
-    Φmax = maximum(Φ)
-	𝐕 .*= scaling/Φmax
-	Φ .*= scaling/Φmax
     return 𝐕, Φ
+end
+
+"""
+	unitarybases(begins0, constantfunction, ends0, nbases, nbins, period, stretch)
+
+A matrix of values from orthogonal temporal basis functions that each has an L2 norm of one.
+
+The raised cosines temporal basis functions are used as the starting point.
+
+ARGUMENT
+-`begins0`: whether the raised cosines begin at the trough or at the peak
+-`constantfunction`: whether the bases can parametrize a flat line
+-`ends0`: whether the raised cosines end at the trough or at the peak
+-`nbases`: number of temporal basis functions
+-`nbins`: number of time steps
+-`period`: width of the cosines, in terms of inter-center distance
+-`stretch`: degree to which later cosines are stretched
+
+RETURN
+-`Φ`: A unitary matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM, LinearAlgebra
+julia> Φ = FHMDDM.unitarybases(true, true, true, 4, 121, 4, 0.1)
+julia> maximum(abs.(Φ'*Φ - I))
+8.881784197001252e-16
+```
+"""
+function unitarybases(begins0::Bool, constantfunction::Bool, ends0::Bool, nbases::Integer, nbins::Integer, period::Real, stretch::Real)
+	Φ = raisedcosines(begins0, constantfunction, ends0, nbases, nbins, period, stretch)
+	F = svd(Φ)
+	F.U[:,1:nbases]
 end
 
 """

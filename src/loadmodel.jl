@@ -191,7 +191,7 @@ function Trialset(options::Options, trialset::Dict)
 	𝐕, Φₐ = accumulatorbases(options, ntimesteps)
 	𝐔ₜ, Φₜ = timebases(options, ntimesteps)
 	𝐔ₘ, Φₘ = premovementbases(options, movementtimes_s, ntimesteps)
-	𝐆 = options.glminputscaling.*ones(size(𝐕,1))
+	𝐆 = fill(options.glminputscaling,size(𝐕,1))
 	mpGLMs = map(units, 𝐘) do unit, 𝐲
 				𝐗=hcat(𝐆, options.glminputscaling.*unit["Xautoreg"], 𝐔ₜ, 𝐔ₘ, 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
