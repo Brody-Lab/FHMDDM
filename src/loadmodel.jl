@@ -76,9 +76,8 @@ function Model(options::Options,
 			end
 		end
 	end
-	𝛂 = vec(read(resultsMAT, "shrinkagecoefficients"))
-	𝐬 = vec(read(resultsMAT, "smoothingcoefficients"))
-	gaussianprior = GaussianPrior(options, trialsets, vcat(𝛂,𝐬))
+	𝛂 = vec(read(resultsMAT, "penaltycoefficients"))
+	gaussianprior = GaussianPrior(options, trialsets, 𝛂)
 	Model(options=options,
 		   gaussianprior=gaussianprior,
 		   θnative=Latentθ(read(resultsMAT, "theta_native")),
@@ -182,25 +181,33 @@ function Trialset(options::Options, trialset::Dict)
     rawtrials = vec(trialset["trials"])
 	movementtimes_s = map(x->x["movementtimes_s"], rawtrials)
 	@assert all(movementtimes_s.>0)
-    ntimesteps = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
+    𝐓 = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
 	units = vec(trialset["units"])
     𝐘 = map(x->convert.(typeof(1), vec(x["y"])), units)
-    @assert sum(ntimesteps) == length(𝐘[1])
+	Ttrialset = sum(𝐓)
+    @assert all(length.(𝐘) .== Ttrialset)
 	@unpack K, Ξ = options
 	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
-	𝐕, Φₐ = accumulatorbases(options, ntimesteps)
-	𝐔ₜ, Φₜ = timebases(options, ntimesteps)
-	𝐔ₘ, Φₘ = premovementbases(options, movementtimes_s, ntimesteps)
-	𝐆 = fill(options.glminputscaling,size(𝐕,1))
-	mpGLMs = map(units, 𝐘) do unit, 𝐲
-				𝐗=hcat(𝐆, options.glminputscaling.*unit["Xautoreg"], 𝐔ₜ, 𝐔ₘ, 𝐕)
+	𝐆 = ones(Ttrialset)
+	Φₕ = FHMDDM.spikehistorybases(options)
+	𝐔ₕ = map(𝐲->FHMDDM.spikehistorybases(Φₕ, 𝐓, 𝐲), 𝐘)
+	𝐔ₜ, Φₜ = FHMDDM.timebases(options, 𝐓)
+	Φₘ = FHMDDM.premovementbases(options)
+	𝐔ₘ = FHMDDM.premovementbases(movementtimes_s, options, Φₘ, 𝐓)
+	𝐕, Φₐ = FHMDDM.accumulatorbases(options, 𝐓)
+	𝐮indices_hist = 1:size(Φₕ,2)
+	𝐮indices_time = 𝐮indices_hist[end] .+ (1:size(Φₜ,2))
+	𝐮indices_move = 𝐮indices_time[end] .+ (1:size(Φₘ,2))
+	mpGLMs = map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
+				𝐗=hcat(𝐆, 𝐔ₕ, 𝐔ₜ, 𝐔ₘ, 𝐕)
+				glmθ = GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_time, 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
   								d𝛏_dB=d𝛏_dB,
-								max_spikehistory_lag = size(unit["Xautoreg"],2),
 								Φₐ=Φₐ,
-								Φₜ=Φₜ,
+								Φₕ=Φₕ,
 								Φₘ=Φₘ,
-								θ=GLMθ(options, 𝐗, 𝐕),
+								Φₜ=Φₜ,
+								θ=glmθ,
 								𝐕=𝐕,
 								𝐗=𝐗,
 								𝐲=𝐲)
@@ -216,12 +223,12 @@ function Trialset(options::Options, trialset::Dict)
 		end
 	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
     previousanswer = vec(convert.(Int64, trialset["lagged"]["answer"]))
-    clicks = map((L,R,ntimesteps)->Clicks(options.a_latency_s, options.Δt,L,ntimesteps,R), L, R, ntimesteps)
-    trials = map(clicks, rawtrials, movementtimes_s, ntimesteps, previousanswer) do clicks, rawtrial, movementtime_s, ntimesteps, previousanswer
+    clicks = map((L,R,T)->Clicks(options.a_latency_s, options.Δt,L,T,R), L, R, 𝐓)
+    trials = map(clicks, rawtrials, movementtimes_s, 𝐓, previousanswer) do clicks, rawtrial, movementtime_s, T, previousanswer
                 Trial(clicks=clicks,
                       choice=rawtrial["choice"],
 					  movementtime_s=movementtime_s,
-                      ntimesteps=ntimesteps,
+                      ntimesteps=T,
                       previousanswer=previousanswer)
              end
     Trialset(mpGLMs=mpGLMs, trials=trials)
@@ -262,18 +269,26 @@ function Trialset(trialset::Dict)
                       previousanswer=trial["previousanswer"])
 			end
 	d𝛏_dB = trialset["mpGLMs"][1]["dxi_dB"]
-	Φ = trialset["mpGLMs"][1]["Phi"]
+	Φₐ = trialset["mpGLMs"][1]["Phiaccumulator"]
+	Φₕ = trialset["mpGLMs"][1]["Phihistory"]
+	Φₘ = trialset["mpGLMs"][1]["Phipremovement"]
+	Φₜ = trialset["mpGLMs"][1]["Phitime"]
 	𝐕 = trialset["mpGLMs"][1]["V"]
+	𝐮indices_hist = min(trialset["mpGLMs"][1]["theta"]["uindices_hist"]):max(trialset["mpGLMs"][1]["theta"]["uindices_hist"])
+	𝐮indices_move = min(trialset["mpGLMs"][1]["theta"]["uindices_move"]):max(trialset["mpGLMs"][1]["theta"]["uindices_move"])
+	𝐮indices_time = min(trialset["mpGLMs"][1]["theta"]["uindices_time"]):max(trialset["mpGLMs"][1]["theta"]["uindices_time"])
 	mpGLMs = map(trialset["mpGLMs"]) do mpGLM
 				𝐠 = typeof(mpGLM["theta"]["g"])<:AbstractFloat ? [mpGLM["theta"]["g"]] : mpGLM["theta"]["g"]
 				𝐯 = map(mpGLM["theta"]["v"]) do x
 			           	typeof(x)<:AbstractFloat ? [x] : x
 			        end
-				θ = GLMθ(𝐠=𝐠, 𝐮=mpGLM["theta"]["u"], 𝐯=𝐯)
+				θ = GLMθ(𝐠=𝐠, 𝐮=mpGLM["theta"]["u"], 𝐯=𝐯, 𝐮indices_hist=𝐮indices_hist, 𝐮indices_move=𝐮indices_move, 𝐮indices_time=𝐮indices_time)
 				MixturePoissonGLM(Δt=mpGLM["dt"],
 									d𝛏_dB=d𝛏_dB,
-									max_spikehistory_lag=mpGLM["max_spikehistory_lag"],
-									Φ=Φ,
+									Φₐ=Φₐ,
+									Φₕ=Φₕ,
+									Φₘ=Φₘ,
+									Φₜ=Φₜ,
 									θ=θ,
 									𝐕=𝐕,
 									𝐗=mpGLM["X"],

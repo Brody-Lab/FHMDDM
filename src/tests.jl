@@ -5,6 +5,14 @@ Run a number of test on the model
 
 ARGUMENT
 -`datapath`: full path of the data file
+
+EXAMPLE
+```julia-repl
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08c_test/T176_2018_05_03/data.mat"
+julia> test(datapath)
+julia>
+```
 """
 function test(datapath::String)
     println(" ")
@@ -23,15 +31,29 @@ function test(datapath::String)
     println("---------")
     println("testing hessian of the log-likelihood of the model")
     test_∇∇loglikelihood(datapath)
+    println("---------")
+    println("testing gradient of log evidence")
+    model = Model(datapath)
+    check_∇logevidence(model)
+    println("---------")
+    println("testing parameter learning")
+    model = Model(datapath)
+    learnparameters!(model)
     println(" ")
     println("---------")
-    println("testing saving model as `test.mat`")
-    model = Model(datapath)
-    save(model; filename="test.mat")
+    println("testing saving model parameters, hessian, and predictions in `test.mat`")
+    ∇∇ℓ = ∇∇loglikelihood(model)[3]
+    λΔt, pchoice = expectedemissions(model)
+    save(∇∇ℓ, λΔt, model, pchoice; filename="test.mat")
     return nothing
 end
 
 """
+    test_expectation_of_∇∇loglikelihood(datapath)
+
+Check the hessian and gradient of the expectation of the log-likelihood of one neuron's GLM.
+
+The function being checked is used in parameter initialization.
 """
 function test_expectation_of_∇∇loglikelihood!(datapath::String)
     model = Model(datapath)
@@ -52,6 +74,11 @@ function test_expectation_of_∇∇loglikelihood!(datapath::String)
 end
 
 """
+    test_expectation_∇loglikelihood(datapath)
+
+Check the gradient of the expectation of the log-likelihood of one neuron's GLM.
+
+The function being checked is used in computing the gradient of the log-likelihood of the entire model.
 """
 function test_expectation_∇loglikelihood!(datapath::String)
     model = Model(datapath)

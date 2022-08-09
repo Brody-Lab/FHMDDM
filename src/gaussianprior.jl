@@ -13,7 +13,7 @@ OUTPUT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_04e_test/T176_2018_05_03/data.mat"
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08a_test/T176_2018_05_03/data.mat"
 julia> model = Model(datapath)
 julia> model.gaussianprior
 julia>
@@ -27,8 +27,8 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 	for i = 1:length(trialsets)
 		mpGLM = trialsets[i].mpGLMs[1]
 		𝐀_lv, index𝐀_lv = shrinkagematrices(indexθ.latentθ)
-		𝐀_glm, index𝐀_glm = shrinkagematrices(indexθ.glmθ[i], options.glminputscaling, mpGLM.max_spikehistory_lag, mpGLM.Φₘ, mpGLM.Φₜ)
-		𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.max_spikehistory_lag, mpGLM.Φₐ, mpGLM.Φₜ)
+		𝐀_glm, index𝐀_glm = shrinkagematrices(indexθ.glmθ[i], options)
+		𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.Φₐ, mpGLM.Φₜ)
 		𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm, 𝚪_glm)
 		index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm, index𝚪_glm)
 		𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
@@ -43,27 +43,96 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 end
 
 """
-	GaussianPrior(options, trialsets, 𝛂)
+	native2real(gaussianprior)
 
-Construct a structure containing information on the Gaussian prior on the model's parameters
+Convert the L2 penalty coefficients from native to real space
 
 ARGUMENT
--`options`: settings of the model
--`trialsets`: data for the model
--`𝛂`: a vector concatenating the L2 shrinkrage and smoothing coefficients
+-`gaussianprior`: a structure with information on the Gaussian prior. The field `𝛂` is modified.
 
-OUTPUT
--an instance of `GaussianPrior`
+RETURN
+-`𝐱`: a vector of the L2 penalty coefficients in real space
 """
-function GaussianPrior(gaussianprior::GaussianPrior, 𝛂::Vector{type}) where {type<:Real}
-	N = length(𝛂)
-	GaussianPrior(𝐀=gaussianprior.𝐀, 𝛂=𝛂, 𝛂min=gaussianprior.𝛂min, 𝛂max=gaussianprior.𝛂max, index𝐀=gaussianprior.index𝐀, 𝚲=zeros(type,N,N))
+function native2real(gaussianprior::GaussianPrior)
+	collect(native2real(α, αmin, αmax) for (α, αmin, αmax) in zip(gaussianprior.𝛂, gaussianprior.𝛂min, gaussianprior.𝛂max))
+end
+
+"""
+	native2real(n,l,u)
+
+Convert hyperparameters from native space to real space
+
+ARGUMENT
+-`n`: value in native space
+-`l`: lower bound in native space
+-`u`: upper bound in native space
+
+RETURN
+-vector representing the values in real space
+
+"""
+function native2real(n::Real, l::Real, u::Real)
+	logit((n-l)/(u-l))
+end
+
+"""
+	real2native!(gaussianprior, 𝐱)
+
+Convert the L2 penalty coefficients from real to native space
+
+MODIFIED ARGUMENT
+-`gaussianprior`: a structure with information on the Gaussian prior. The field `𝛂` is modified.
+
+UNMODIFIED ARGUMENT
+-`𝐱`: a vector of the L2 penalty coefficients in real space
+"""
+function real2native!(gaussianprior::GaussianPrior, 𝐱::Vector{<:Real})
+	@unpack 𝛂, 𝛂min, 𝛂max = gaussianprior
+	for i = 1:length(𝛂)
+		𝛂[i] = real2native(𝐱[i], 𝛂min[i], 𝛂max[i])
+	end
+	return nothing
+end
+
+"""
+	real2native(gaussianprior, 𝐱)
+
+Convert the L2 penalty coefficients from real to native space
+
+ARGUMENT
+-`gaussianprior`: a structure with information on the Gaussian prior. The field `𝛂` is modified.
+-`𝐱`: a vector of the L2 penalty coefficients in real space
+
+RETURN
+-`gaussianpiror`
+"""
+function real2native(gaussianprior::GaussianPrior, 𝐱::Vector{type}) where {type<:Real}
+	@unpack 𝛂min, 𝛂max = gaussianprior
+	𝛂 = collect(real2native(x, αmin, αmax) for (x, αmin, αmax) in zip(𝐱, 𝛂min, 𝛂max))
+	gaussianprior = GaussianPrior(𝐀=gaussianprior.𝐀, 𝛂=𝛂, 𝛂min=gaussianprior.𝛂min, 𝛂max=gaussianprior.𝛂max, index𝐀=gaussianprior.index𝐀, 𝚲=zeros(type,size(gaussianprior.𝚲)))
     precisionmatrix!(gaussianprior)
     return gaussianprior
 end
 
 """
-	sum_of_square_matrices(indexθlatent)
+	real2native(r,l,u)
+
+Convert a hyperparameter from real space to native space.
+
+ARGUMENT
+-`r`: vector of values in real space
+-`l`: lower bound in native space
+-`u`: upper bound in native space
+
+RETURN
+-scalar representing the value in native space
+"""
+function real2native(r::Real, l::Real, u::Real)
+	l + (u-l)*logistic(r)
+end
+
+"""
+	shrinkagematrices(indexθlatent)
 
 Return the sum of squares matrix of the latent variable parameters
 
@@ -89,35 +158,29 @@ function shrinkagematrices(indexθlatent::Latentθ)
 end
 
 """
-	shrinkagematrices(indexθ, max_spikehistory_lag, Φₐ, Φₘ, Φₜ)
+	shrinkagematrices(indexθ, options)
 
 Matrices that compute can compute the time average of the squares of each kernel
 
 ARGUMENT
 -`indexθ`: structure indicating the order of each parameter if all parameters were concatenated into a vector
--`glminputscaling`: scaling factor of GLM inputs
--`max_spikehistory_lag`: number of parameters controlling the effect of spike history
--`Φₘ`: values of the temporal basis functions parametizing the kernel of the timing of movement
--`Φₜ`: values of the temporal basis functions parametrizing time in each trial. Element `Φₜ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial.
+-`options`: settings of the model
 
 RETURN
 -`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
 -`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function shrinkagematrices(indexθglm::Vector{<:GLMθ}, glminputscaling::AbstractFloat, max_spikehistory_lag::Integer, Φₘ::Matrix{<:AbstractFloat}, Φₜ::Matrix{<:AbstractFloat})
-	length𝐮 = length(indexθglm[1].𝐮)
-	nbasestime = size(Φₜ,2)
-	nbasesmove = size(Φₘ,2)
+function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
+	@unpack 𝐮indices_hist, 𝐮indices_time, 𝐮indices_move = indexθglm[1]
+	nbaseshist = length(𝐮indices_hist)
+	nbasestime = length(𝐮indices_time)
+	nbasesmove = length(𝐮indices_move)
 	nbasesaccu = length(indexθglm[1].𝐯[1])
-	index𝐮hist = indexθglm[1].𝐠[end] .+ (1:max_spikehistory_lag)
-	index𝐮time = index𝐮hist[end] .+ (1:nbasestime)
-	index𝐮move = index𝐮time[end] .+ (1:nbasesmove)
-	s² = glminputscaling^2
-	Again = fill(s²,1,1)
-	Ahist = zeros(max_spikehistory_lag,max_spikehistory_lag) + s²*I # computations with `Diagonal` are slower
-	Atime = zeros(nbasestime,nbasestime) + s²*I
-	Amove = zeros(nbasesmove,nbasesmove) + s²*I
-	Aaccu = zeros(nbasesaccu,nbasesaccu) + s²*I
+	Again = ones(1,1)
+	Ahist = zeros(nbaseshist,nbaseshist) + options.tbf_hist_scalefactor^2*I # computations with `Diagonal` are slower
+	Atime = zeros(nbasestime,nbasestime) + options.tbf_time_scalefactor^2*I
+	Amove = zeros(nbasesmove,nbasesmove) + options.tbf_move_scalefactor^2*I
+	Aaccu = zeros(nbasesaccu,nbasesaccu) + options.tbf_accu_scalefactor^2*I
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
 	for indexᵢₙ in indexθglm
@@ -125,30 +188,35 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, glminputscaling::Abstrac
 			𝐀 = vcat(𝐀, [Again])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])
 		end
-		if max_spikehistory_lag > 0
+		if nbaseshist > 0
 			𝐀 = vcat(𝐀, [Ahist])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮hist]])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_hist]])
 		end
-		𝐀 = vcat(𝐀, [Atime])
-		index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮time]])
-		𝐀 = vcat(𝐀, [Amove])
-		index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[index𝐮move]])
-		for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
-			𝐀 = vcat(𝐀, [Aaccu])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
+		if nbasestime > 0
+			𝐀 = vcat(𝐀, [Atime])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_time]])
+		end
+		if nbasesmove > 0
+			𝐀 = vcat(𝐀, [Amove])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_move]])
+		end
+		if nbasesaccu > 0
+			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
+				𝐀 = vcat(𝐀, [Aaccu])
+				index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
+			end
 		end
 	end
 	return 𝐀, index𝐀
 end
 
 """
-    variancematrices(indexθglm, max_spikehistory_lag, Φₐ, Φₜ)
+    variancematrices(indexθglm, Φₐ, Φₜ)
 
 Return the variance matrix of each group of parameters representing a time-varying quantity being flattened
 
 ARGUMENT
 -`indexθglm`: a nested array indexing each parameter in each mixture of Poisson GLM. The element `indexθglm[i][n]` corresponds to the n-th neuron in the i-th trialset
--`max_spikehistory_lag`: number of parameters for the spike history effect. This is needed only for indexing. Spike history effects are not being flattened.
 -`Φₐ`: values of the temporal basis functions parametrizing hte time-varying encoding of the accumulator. Element `Φₐ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial
 -`Φₜ`: values of the temporal basis functions parametrizing time in each trial. Element `Φₜ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial.
 
@@ -156,15 +224,15 @@ OUTPUT
 -`𝚪`: A nest array of matrices. Element `𝚪[i]` corresponds to the Nᵢ×Nᵢ variance matrix of the i-th group of parameters, with N parameters in the group
 -`index𝚪`: Element `index𝚪[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function variancematrices(indexθglm::Vector{<:GLMθ}, max_spikehistory_lag::Integer, Φₐ::Matrix{<:AbstractFloat}, Φₜ::Matrix{<:AbstractFloat})
+function variancematrices(indexθglm::Vector{<:GLMθ}, Φₐ::Matrix{<:AbstractFloat}, Φₜ::Matrix{<:AbstractFloat})
 	Γaccumulator = Φₐ'*variancematrix(size(Φₐ,1))*Φₐ
 	Γtime = Φₜ'*variancematrix(size(Φₜ,1))*Φₜ
 	𝚪 = Matrix{typeof(1.0)}[]
 	index𝚪 = Vector{typeof(1)}[]
-	index𝐮time = max_spikehistory_lag .+ (1:size(Φₜ,2))
+	@unpack 𝐮indices_time = indexθglm[1]
 	for indexᵢₙ in indexθglm
 		𝚪 = vcat(𝚪, [Γtime])
-		index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[index𝐮time]])
+		index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[𝐮indices_time]])
 		for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
 			𝚪 = vcat(𝚪, [Γaccumulator])
 			index𝚪 = vcat(index𝚪, [indexᵢₙ𝐯ₖ])

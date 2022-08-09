@@ -46,23 +46,6 @@ function real2native(r::Real, q::Real, l::Real, u::Real)
 end
 
 """
-	real2native(r,q,l,u)
-
-Convert a hyperparameter from real space to native space.
-
-ARGUMENT
--`r`: vector of values in real space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--scalar representing the value in native space
-"""
-function real2native(r::Real, l::Real, u::Real)
-	l + (u-l)*logistic(r)
-end
-
-"""
     real2native(options, θreal)
 
 Map values of model parameters from real space to native space
@@ -125,24 +108,6 @@ function native2real(n::Real, q::Real, l::Real, u::Real)
 	else
 		logit((n-l)/(u-l)) - logit((q-l)/(u-l))
 	end
-end
-
-"""
-	native2real(n,l,u)
-
-Convert hyperparameters from native space to real space
-
-ARGUMENT
--`n`: value in native space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--vector representing the values in real space
-
-"""
-function native2real(n::Real, l::Real, u::Real)
-	logit((n-l)/(u-l))
 end
 
 """
@@ -358,7 +323,7 @@ function dictionary(options::Options)
 			"fit_sigma2_s"=>options.fit_σ²ₛ,
 			"fit_w_h"=>options.fit_wₕ,
 			"gain_state_dependent"=>options.gain_state_dependent,
-			"glminputscaling"=>options.glminputscaling,
+			"g_tol"=>options.g_tol,
 			"L2flattening_GLM_max"=>options.L2flattening_GLM_max,
 			"L2flattening_GLM_min"=>options.L2flattening_GLM_min,
 			"L2shrinkage_GLM_max"=>options.L2shrinkage_GLM_max,
@@ -384,23 +349,30 @@ function dictionary(options::Options)
 			"resultspath"=>options.resultspath,
 			"scalechoiceLL"=>options.scalechoiceLL,
 			"tbf_accu_begins0"=>options.tbf_accu_begins0,
-			"tbf_accu_constantfunction"=>options.tbf_accu_constantfunction,
 			"tbf_accu_ends0"=>options.tbf_accu_ends0,
 			"tbf_accu_hz"=>options.tbf_accu_hz,
 			"tbf_accu_period"=>options.tbf_accu_period,
+			"tbf_accu_scalefactor"=>options.tbf_accu_scalefactor,
 			"tbf_accu_stretch"=>options.tbf_accu_stretch,
+			"tbf_hist_begins0"=>options.tbf_hist_begins0,
+			"tbf_hist_dur_s"=>options.tbf_hist_dur_s,
+			"tbf_hist_ends0"=>options.tbf_hist_ends0,
+			"tbf_hist_hz"=>options.tbf_hist_hz,
+			"tbf_hist_period"=>options.tbf_hist_period,
+			"tbf_hist_scalefactor"=>options.tbf_hist_scalefactor,
+			"tbf_hist_stretch"=>options.tbf_hist_stretch,
 			"tbf_move_begins0"=>options.tbf_move_begins0,
-			"tbf_move_constantfunction"=>options.tbf_move_constantfunction,
 			"tbf_move_dur_s"=>options.tbf_move_dur_s,
 			"tbf_move_ends0"=>options.tbf_move_ends0,
 			"tbf_move_hz"=>options.tbf_move_hz,
 			"tbf_move_period"=>options.tbf_move_period,
+			"tbf_move_scalefactor"=>options.tbf_move_scalefactor,
 			"tbf_move_stretch"=>options.tbf_move_stretch,
 			"tbf_time_begins0"=>options.tbf_time_begins0,
-			"tbf_time_constantfunction"=>options.tbf_time_constantfunction,
 			"tbf_time_ends0"=>options.tbf_time_ends0,
 			"tbf_time_hz"=>options.tbf_time_hz,
 			"tbf_time_period"=>options.tbf_time_period,
+			"tbf_time_scalefactor"=>options.tbf_time_scalefactor,
 			"tbf_time_stretch"=>options.tbf_time_stretch,
 			"tuning_state_dependent"=>options.tuning_state_dependent,
 			"updateDDtransformation"=>options.updateDDtransformation,
@@ -454,8 +426,8 @@ Convert into a dictionary a mixture of Poisson generalized linear model
 function dictionary(mpGLM::MixturePoissonGLM)
     Dict("dt"=>mpGLM.Δt,
 	     "dxi_dB"=>mpGLM.d𝛏_dB,
-		 "max_spikehistory_lag"=>mpGLM.max_spikehistory_lag,
          "Phiaccumulator"=>mpGLM.Φₐ,
+	     "Phihistory"=>mpGLM.Φₕ,
          "Phitime"=>mpGLM.Φₜ,
 		 "Phipremovement"=>mpGLM.Φₘ,
          "theta"=>dictionary(mpGLM.θ),
@@ -470,7 +442,12 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(θ::GLMθ)
-    Dict("g"=>θ.𝐠, "u"=>θ.𝐮, "v"=>θ.𝐯)
+    Dict("g"=>θ.𝐠,
+		"u"=>θ.𝐮,
+		"v"=>θ.𝐯,
+		"uindices_hist"=>collect(θ.𝐮indices_hist),
+		"uindices_move"=>collect(θ.𝐮indices_move),
+		"uindices_time"=>collect(θ.𝐮indices_time))
 end
 
 """
@@ -526,17 +503,6 @@ function dictionary(cvresults::CVResults)
 end
 
 """
-    GLMθ(dict)
-
-Convert a dictionary into an instance of `GLMθ`
-"""
-function GLMθ(θ::Dict)
-    GLMθ(𝐠=vec(mpGLM["g"]),
-		 𝐮=vec(mpGLM["u"]),
-         𝐯=vec(map(𝐯ₖ->vec(𝐯ₖ), mpGLM["v"])))
-end
-
-"""
     Latentθ(θ)
 
 Create an instance of `Latentθ` from a Dict
@@ -555,24 +521,6 @@ function Latentθ(θ::Dict)
 			σ²ᵢ=[θ["sigma2_i"]],
 			σ²ₛ=[θ["sigma2_s"]],
 			wₕ=[θ["w_h"]])
-end
-
-"""
-    MixturePoissonGLM(dict)
-
-Convert a dictionary into an instance of `MixturePoissonGLM`
-"""
-function MixturePoissonGLM(mpGLM::Dict)
-    MixturePoissonGLM(Δt=mpGLM["dt"],
-					d𝛏_dB=vec(mpGLM["dxi_dB"]),
-					max_spikehistory_lag=mpGLM["max_spikehistory_lag"],
-					Φₐ=mpGLM["Phiaccumulator"],
-					Φₘ=mpGLM["Phipremovement"],
-					Φₜ=mpGLM["Phitime"],
-                    θ=GLMθ(mpGLM["theta"]),
-					𝐕=mpGLM["𝐕"],
-					𝐗=mpGLM["𝐗"],
-                    𝐲=vec(mpGLM["y"]))
 end
 
 """
@@ -600,7 +548,7 @@ function Options(options::Dict)
 			fit_σ²ₛ = options["fit_sigma2_s"],
 			fit_wₕ = options["fit_w_h"],
 			gain_state_dependent = options["gain_state_dependent"],
-			glminputscaling = options["glminputscaling"],
+			g_tol = options["g_tol"],
 			L2flattening_GLM_max = options["L2flattening_GLM_max"],
 			L2flattening_GLM_min = options["L2flattening_GLM_min"],
 			L2shrinkage_GLM_max = options["L2shrinkage_GLM_max"],
@@ -626,23 +574,30 @@ function Options(options::Dict)
 			resultspath = options["resultspath"],
 			scalechoiceLL = options["scalechoiceLL"],
 			tbf_accu_begins0 = options["tbf_accu_begins0"],
-			tbf_accu_constantfunction = options["tbf_accu_constantfunction"],
 			tbf_accu_ends0 = options["tbf_accu_ends0"],
 			tbf_accu_hz = options["tbf_accu_hz"],
 			tbf_accu_period = options["tbf_accu_period"],
+			tbf_accu_scalefactor = options["tbf_accu_scalefactor"],
 			tbf_accu_stretch = options["tbf_accu_stretch"],
+			tbf_hist_begins0 = options["tbf_hist_begins0"],
+			tbf_hist_dur_s = options["tbf_hist_dur_s"],
+			tbf_hist_ends0 = options["tbf_hist_ends0"],
+			tbf_hist_hz = options["tbf_hist_hz"],
+			tbf_hist_period = options["tbf_hist_period"],
+			tbf_hist_scalefactor = options["tbf_hist_scalefactor"],
+			tbf_hist_stretch = options["tbf_hist_stretch"],
 			tbf_move_begins0 = options["tbf_move_begins0"],
-			tbf_move_constantfunction = options["tbf_move_constantfunction"],
 			tbf_move_dur_s = options["tbf_move_dur_s"],
 			tbf_move_ends0 = options["tbf_move_ends0"],
 			tbf_move_hz = options["tbf_move_hz"],
 			tbf_move_period = options["tbf_move_period"],
+			tbf_move_scalefactor = options["tbf_move_scalefactor"],
 			tbf_move_stretch = options["tbf_move_stretch"],
 			tbf_time_begins0 = options["tbf_time_begins0"],
-			tbf_time_constantfunction = options["tbf_time_constantfunction"],
 			tbf_time_ends0 = options["tbf_time_ends0"],
 			tbf_time_hz = options["tbf_time_hz"],
 			tbf_time_period = options["tbf_time_period"],
+			tbf_time_scalefactor = options["tbf_time_scalefactor"],
 			tbf_time_stretch = options["tbf_time_stretch"],
 			tuning_state_dependent = options["tuning_state_dependent"],
 			updateDDtransformation=options["updateDDtransformation"],

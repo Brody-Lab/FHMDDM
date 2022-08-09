@@ -42,7 +42,7 @@ function expectedemissions(model::Model; nsamples::Integer=100)
 				pchoice[i][m] += sampledtrials[m].choice
 			end
             for n in eachindex(trialsets[i].mpGLMs)
-				λΔt[i][n] .+= sampleemissions(options.glminputscaling, trialsets[i].mpGLMs[n], sampledtrials)
+				λΔt[i][n] .+= sampleemissions(trialsets[i].mpGLMs[n], sampledtrials)
             end
         end
     	pchoice[i] ./= nsamples
@@ -111,24 +111,25 @@ function sample!(memory::Memoryforgradient, P::Probabilityvector, θnative::Late
 end
 
 """
-	sampleemissions(glminputscaling, mpGLM, spikehistorylags)
+	sampleemissions(mpGLM, trials)
 
 Generate one sample from the mixture of Poisson generalized linear model (GLM) of a neuron
 
 ARGUMENT
--`glminputscaling`: scaling factor of the GLM inputs, used to lower the condition number of the hessian of the log-likelihood
 -`mpGLM`: the fitted mixture of Poisson GLM of a neuron
 -`trials`: a vector of structures, one of which contains the generated states of the accumulator and coupling variable of one trial
 
 RETURN
 -`𝐲̂`: a sample of the spike train response for each timestep
 """
-function sampleemissions(glminputscaling::AbstractFloat, mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
-	@unpack Δt, d𝛏_dB, max_spikehistory_lag, 𝐗, 𝐕, 𝐲 = mpGLM
+function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
+	@unpack Δt, d𝛏_dB, Φₕ, 𝐗, 𝐕, 𝐲 = mpGLM
 	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
-	𝐡 = 𝐮[1:max_spikehistory_lag]
-	𝐞 = 𝐮[max_spikehistory_lag+1:end]
-	𝐄 = @view 𝐗[:,3:2+length(𝐞)]
+	max_spikehistory_lag, n_spikehistory_parameters = size(Φₕ)
+	𝐡 = Φₕ*𝐮[1:n_spikehistory_parameters]
+	𝐞 = 𝐮[n_spikehistory_parameters+1:end]
+	indices_time_move_in_𝐗 = 1+n_spikehistory_parameters .+ (1:length(𝐞))
+	𝐄 = @view 𝐗[:,indices_time_move_in_𝐗]
 	𝐄𝐞 = 𝐄*𝐞
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
@@ -148,7 +149,9 @@ function sampleemissions(glminputscaling::AbstractFloat, mpGLM::MixturePoissonGL
 				L+= d𝛏_dB[j]*𝐕[τ,i]*𝐯ₖ[i]
 			end
 			for lag = 1:min(max_spikehistory_lag, t-1)
-				L += 𝐡[lag]*𝐲̂[τ-lag]*glminputscaling
+				if 𝐲̂[τ-lag] > 0
+					L += 𝐡[lag]*𝐲̂[τ-lag]
+				end
 			end
             λ = softplus(L)
             𝐲̂[τ] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
@@ -231,27 +234,28 @@ function sample_and_save(model::Model; datafilename::String="sample", nsamples::
 end
 
 """
-    sample(glminputscaling, mpGLM, sampledtrials)
+    sample(mpGLM, sampledtrials)
 
 Generate one sample from the mixture of Poisson generalized linear model (GLM) of a neuron
 
 ARGUMENT
--`glminputscaling`: scaling factor of the GLM inputs, used to lower the condition number of the hessian of the log-likelihood
 -`mpGLM`: the fitted mixture of Poisson GLM of a neuron
 -`sampledtrials`: a vector of structures, one of which contains the generated states of the accumulator and coupling variable of one trial
 
 RETURN
 -`mpGLM`: a sample of the mixture of Poisson GLM
 """
-function sample(glminputscaling::AbstractFloat, mpGLM::MixturePoissonGLM, sampledtrials::Vector{<:Trial})
-    𝐲̂ = sampleemissions(glminputscaling, mpGLM, sampledtrials)
+function sample(mpGLM::MixturePoissonGLM, sampledtrials::Vector{<:Trial})
+    𝐲̂ = sampleemissions(mpGLM, sampledtrials)
 	θ = GLMθ(𝐠 = copy(mpGLM.θ.𝐠),
 			𝐮 = copy(mpGLM.θ.𝐮),
 			𝐯 = map(𝐯ₖ->copy(𝐯ₖ), mpGLM.θ.𝐯))
     MixturePoissonGLM(Δt=mpGLM.Δt,
                       d𝛏_dB=mpGLM.d𝛏_dB,
-					  max_spikehistory_lag=mpGLM.max_spikehistory_lag,
-					  Φ=mpGLM.Φ,
+					  Φₐ=mpGLM.Φₐ,
+					  Φₕ=mpGLM.Φₕ,
+					  Φₘ=mpGLM.Φₘ,
+					  Φₜ=mpGLM.Φₜ,
 					  θ=θ,
                       𝐕=mpGLM.𝐕,
                       𝐗=mpGLM.𝐗,

@@ -1,20 +1,22 @@
 """
-	GLMθ(options, 𝐗, 𝐕)
+	GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_time, 𝐕)
 
 Randomly initiate the parameters for a mixture of Poisson generalized linear model
 
 ARGUMENT
 -`options`: settings of the model
--`𝐗`: constant input, time-varying inputs from spike history, time-varying inputs from trial events
+-`𝐮indices_hist`: indices in 𝐮 corresponding to the temporal basis functions of the postspike filter
+-`𝐮indices_move`: indices in 𝐮 corresponding to the temporal basis functions of the premovement filter
+-`𝐮indices_time`: indices in 𝐮 corresponding to the temporal basis functions of the time-in-trial filter
 -`𝐕`: constant and time-varying inputs from the accumulator
 
 OUTPUT
 -an instance of `GLMθ`
 """
-function GLMθ(options::Options, 𝐗::Matrix{<:AbstractFloat}, 𝐕::Matrix{<:AbstractFloat})
+function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
 	@unpack K, gain_state_dependent, tuning_state_dependent = options
 	n𝐯 =size(𝐕,2)
-	n𝐮 = size(𝐗,2)-size(𝐕,2)-1
+	n𝐮 = 𝐮indices_move[end]
 	𝐮 = 1.0 .- 2.0.*rand(n𝐮)
 	if K == 1
 		𝐠 = [0.0]
@@ -31,7 +33,12 @@ function GLMθ(options::Options, 𝐗::Matrix{<:AbstractFloat}, 𝐕::Matrix{<:A
 			𝐯 = [ones(n𝐯)]
 		end
 	end
-	GLMθ(𝐠 = 𝐠, 𝐮 = 𝐮, 𝐯 = 𝐯)
+	GLMθ(𝐠 = 𝐠,
+		𝐮 = 𝐮,
+		𝐯 = 𝐯,
+		𝐮indices_hist=𝐮indices_hist,
+		𝐮indices_move=𝐮indices_move,
+		𝐮indices_time=𝐮indices_time)
 end
 
 """
@@ -51,7 +58,10 @@ RETURN
 function GLMθ(glmθ::GLMθ, elementtype)
 	GLMθ(𝐠 = zeros(elementtype, length(glmθ.𝐠)),
 		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
-		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯))
+		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
+		𝐮indices_hist = glmθ.𝐮indices_hist,
+		𝐮indices_time = glmθ.𝐮indices_time,
+		𝐮indices_move = glmθ.𝐮indices_move)
 end
 
 """
@@ -72,8 +82,8 @@ function MixturePoissonGLM(concatenatedθ::Vector{T},
 						   offset=0) where {T<:Real}
 	mpGLM = MixturePoissonGLM(Δt=mpGLM.Δt,
 							d𝛏_dB=mpGLM.d𝛏_dB,
-							max_spikehistory_lag=mpGLM.max_spikehistory_lag,
 							Φₐ=mpGLM.Φₐ,
+                        	Φₕ=mpGLM.Φₕ,
 							Φₘ=mpGLM.Φₘ,
 							Φₜ=mpGLM.Φₜ,
 							θ=GLMθ(mpGLM.θ, T),

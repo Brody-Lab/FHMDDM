@@ -83,8 +83,8 @@ Model settings
 	fit_wₕ::TB=true
 	"whether the gain is state-dependent"
 	gain_state_dependent::TB=true
-	"scaling of the glm inputs"
-	glminputscaling::TF=10.0
+	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
+	g_tol::TF=1e-2
 	"maximum L2 flattening penalty for each group of GLM parameters"
 	L2flattening_GLM_max::TF=1e0
 	"maximum L2 flattening penalty for each group of GLM parameters"
@@ -138,21 +138,33 @@ Model settings
 	tuning_state_dependent::TB=true
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
 	tbf_accu_begins0::TB=false
-	"whether the temporal basis functions parametrizing the weight of the accumulator can parametrize a constant function"
-	tbf_accu_constantfunction::TB=true
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
 	tbf_accu_ends0::TB=false
 	"number of temporal basis functions parametrizing the weight of the accumulator per second"
 	tbf_accu_hz::TF=4
 	"period of each temporal basis functions parametrizing the weight of the accumulator, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
 	tbf_accu_period::TF=4
+	"scale factor of the temporal basis functions"
+	tbf_accu_scalefactor::TF=75.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_accu_stretch::TF=0.1
+	"whether the temporal basis functions parametrizing the post-spike filter is at the trough or at the peak in the beginning of the trial"
+	tbf_hist_begins0::TB=false
+	"duration, in seconds, of the post-spike filter"
+	tbf_hist_dur_s::TF=0.25
+	"whether the temporal basis functions parametrizing the post-spike filter is at the trough or at the peak in the end of the trial"
+	tbf_hist_ends0::TB=false
+	"number of temporal basis functions per second"
+	tbf_hist_hz::TF=12
+	"period of each temporal basis functions, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
+	tbf_hist_period::TF=4
+	"scale factor of the temporal basis functions"
+	tbf_hist_scalefactor::TF=10.0
+	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
+	tbf_hist_stretch::TF=1.0
 	"whether the temporal basis functions parametrizing the weight of time from movement is at the trough or at the peak in the beginning of the trial"
 	tbf_move_begins0::TB=true
-	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial can parametrize a constant function"
-	tbf_move_constantfunction::TB=false
-	""
+	"duration of kernel"
 	tbf_move_dur_s::TF=0.6
 	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the end of the trial"
 	tbf_move_ends0::TB=false
@@ -160,18 +172,20 @@ Model settings
 	tbf_move_hz::TF=2
 	"period of each temporal basis functions parametrizing the weight of time from movement, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
 	tbf_move_period::TF=4
+	"scale factor of the temporal basis functions"
+	tbf_move_scalefactor::TF=20.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_move_stretch::TF=0.001
 	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the beginning of the trial"
 	tbf_time_begins0::TB=false
-	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial can parametrize a constant function"
-	tbf_time_constantfunction::TB=true
 	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the end of the trial"
 	tbf_time_ends0::TB=false
 	"number of temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial per second"
 	tbf_time_hz::TF=4
 	"period of each temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
 	tbf_time_period::TF=4
+	"scale factor of the temporal basis functions"
+	tbf_time_scalefactor::TF=20.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_time_stretch::TF=1.0
 	"whether to update the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space, to be the value learned from maximizing the evidence of only the choices"
@@ -240,11 +254,17 @@ end
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{VR<:Vector{<:Real}, VVR<:Vector{<:Vector{<:Real}}}
+@with_kw struct GLMθ{VR<:Vector{<:Real}, UI<:UnitRange{<:Integer}, VVR<:Vector{<:Vector{<:Real}}}
     "state-dependent gain"
     𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
+	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the post-spike filter"
+	𝐮indices_hist::UI
+	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the input from time from the beginning the of the trial"
+	𝐮indices_time::UI
+	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the input from time before movement"
+	𝐮indices_move::UI
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
 end
@@ -255,7 +275,7 @@ end
 Mixture of Poisson generalized linear model
 """
 @with_kw struct MixturePoissonGLM{F<:AbstractFloat,
-								  TI<:Integer,
+								  UI<:UnitRange{<:Integer},
                                   VF<:Vector{<:AbstractFloat},
 								  VI<:Vector{<:Integer},
 								  Tθ<:GLMθ,
@@ -264,10 +284,10 @@ Mixture of Poisson generalized linear model
     Δt::F
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
-	"number of spike history lags"
-	max_spikehistory_lag::TI
 	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
 	Φₐ::MF
+	"Values of the smooth temporal basis functions used to parametrize the post-spike filter"
+	Φₕ::MF
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the animal leaving the center and the neuron's probability of spiking. The timing is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. The columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
 	Φₘ::MF
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
@@ -280,6 +300,16 @@ Mixture of Poisson generalized linear model
 	𝐗::MF
     "Poisson observations"
     𝐲::VI
+    "columns corresponding to the gain input"
+	𝐗columns_gain::UI = 1:1
+	"columns corresponding to the spike history input"
+	𝐗columns_hist::UI = 𝐗columns_gain[end] .+ (1:size(Φₕ,2))
+	"columns corresponding to the input from time from the beginning of the trial"
+	𝐗columns_time::UI = 𝐗columns_hist[end] .+ (1:size(Φₜ,2))
+	"columns corresponding to the input from time before mvoement"
+	𝐗columns_move::UI = 𝐗columns_time[end] .+ (1:size(Φₘ,2))
+	"columns corresponding to the input from the accumulator"
+	𝐗columns_accu::UI = 𝐗columns_move[end] .+ (1:size(Φₐ,2))
 end
 
 """

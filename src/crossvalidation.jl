@@ -469,8 +469,10 @@ OUTPUT
 function subsample(mpGLM::MixturePoissonGLM, timesteps::Vector{<:Integer})
     MixturePoissonGLM(Δt = mpGLM.Δt,
                         d𝛏_dB = mpGLM.d𝛏_dB,
-						max_spikehistory_lag = mpGLM.max_spikehistory_lag,
-						Φ = mpGLM.Φ,
+						Φₐ = mpGLM.Φₐ,
+						Φₕ = mpGLM.Φₕ,
+						Φₘ = mpGLM.Φₘ,
+						Φₜ = mpGLM.Φₜ,
 						θ = GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮)),
                         𝐕 = mpGLM.𝐕[timesteps, :],
                         𝐗 = mpGLM.𝐗[timesteps, :],

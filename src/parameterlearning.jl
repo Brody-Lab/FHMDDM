@@ -14,27 +14,21 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20e_test/T249_2020_02_12/data.mat")
-julia> learnparameters!(model)
-julia> λΔt, pchoice = expectedemissions(model;nsamples=10)
-julia> fbz = posterior_first_state(model)
-julia> save(model, fbz, λΔt, pchoice)
-julia>
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_20j_test/T224_2020_01_03/data.mat")
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08c_test/T176_2018_05_03/data.mat"
+julia> model = Model(datapath)
 julia> learnparameters!(model)
 julia>
 ```
 """
-function learnparameters!(model::Model; initialize::Bool=true)
+function learnparameters!(model::Model; initialize::Bool=true, iterations::Integer=500)
 	@unpack objective = model.options
 	initialize && initializeparameters!(model)
 	if objective == "evidence"
-		output = maximizeevidence!(model)
+		output = maximizeevidence!(model;iterations=iterations)
 	elseif objective == "posterior"
-		output = maximizeposterior!(model)
+		output = maximizeposterior!(model; iterations=iterations)
 	elseif objective == "likelihood"
-		output = maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()))
+		output = maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
 	else
 		error(objective, " is not a recognized objective.")
 	end
@@ -163,7 +157,6 @@ MODIFIED ARGUMENT
 OPTIONAL ARGUMENT
 -`extended_trace`: save additional information
 -`f_tol`: threshold for determining convergence in the objective value
--`g_tol`: threshold for determining convergence in the gradient
 -`iterations`: number of inner iterations that will be run before the optimizer gives up
 -`outer_iterations`: number of outer iterations that will be run before the optimizer gives up
 -`show_every`: trace output is printed every `show_every`th iteration.
@@ -179,27 +172,26 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_21_test/T176_2018_05_03/data.mat")
+julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08a_test/T176_2018_05_03/data.mat")
 julia> FHMDDM.initializeparameters!(model)
-julia> losses, gradientnorms, optimizationresults = maximizeposterior!(model)
+julia> optimizationresults, losses, gradientnorms = maximizeposterior!(model; store_trace = true)
 ```
 """
 function maximizeposterior!(model::Model;
 							extended_trace::Bool=false,
 							f_tol::AbstractFloat=0.0,
-							g_tol::AbstractFloat=1e-8,
-							iterations::Integer=1000,
+							iterations::Integer=500,
 							optimizer::Optim.FirstOrderOptimizer = LBFGS(linesearch = LineSearches.BackTracking()),
 							show_every::Integer=10,
 							show_trace::Bool=true,
-							store_trace::Bool=true,
+							store_trace::Bool=false,
 							x_tol::AbstractFloat=0.0)
 	memory = Memoryforgradient(model)
     f(concatenatedθ) = -logposterior!(model, memory, concatenatedθ)
 	g!(∇,concatenatedθ) = ∇negativelogposterior!(∇, model, memory, concatenatedθ)
     Optim_options = Optim.Options(extended_trace=extended_trace,
 								  f_tol=f_tol,
-                                  g_tol=g_tol,
+                                  g_tol=model.options.g_tol,
                                   iterations=iterations,
                                   show_every=show_every,
                                   show_trace=show_trace,
@@ -219,7 +211,7 @@ function maximizeposterior!(model::Model;
 			losses[i] = traces[i].value
 		end
 	end
-    return losses, gradientnorms, optimizationresults
+    return optimizationresults, losses, gradientnorms
 end
 
 """
