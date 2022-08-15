@@ -752,12 +752,12 @@ Scaling factor for the log-likelihood of behavioral choices
 """
 function scaling_factor_choiceLL(model::Model)
 	if model.options.scalechoiceLL
-		# ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
-		# ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
-		# ntimesteps_neurons/ntrials
-		ntimesteps = sum(collect(trialset.ntimesteps for trialset in model.trialsets))
+		ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
 		ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
-		ntimesteps/ntrials
+		ntimesteps_neurons/ntrials
+		# ntimesteps = sum(collect(trialset.ntimesteps for trialset in model.trialsets))
+		# ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
+		# ntimesteps/ntrials
 	else
 		1.0
 	end

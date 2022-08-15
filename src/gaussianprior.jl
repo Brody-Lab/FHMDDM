@@ -28,10 +28,16 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 		mpGLM = trialsets[i].mpGLMs[1]
 		𝐀_lv, index𝐀_lv = shrinkagematrices(indexθ.latentθ)
 		𝐀_glm, index𝐀_glm = shrinkagematrices(indexθ.glmθ[i], options)
-		𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.Φₐ, mpGLM.Φₜ)
-		𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm, 𝚪_glm)
-		index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm, index𝚪_glm)
-		𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
+		if !isnan(options.L2flattening_GLM_min) && !isnan(options.L2flattening_GLM_max)
+			𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.Φₐ, mpGLM.Φₜ)
+			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm, 𝚪_glm)
+			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm, index𝚪_glm)
+			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
+		else
+			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm)
+			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm)
+			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), 0)
+		end
 		𝛂min = vcat(𝛂min, 𝛂min_t)
 		𝛂max = vcat(𝛂max, 𝛂max_t)
 	end

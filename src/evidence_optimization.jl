@@ -25,7 +25,7 @@ julia>
 function maximizeevidence!(model::Model;
 						iterations::Int=500,
 						max_consecutive_failures::Int=2,
-						outer_iterations::Int=10,
+						outer_iterations::Int=5,
 						verbose::Bool=true,
 						x_reltol::Real=1e-1)
 	@unpack index𝚽, 𝛂min, 𝛂max = model.gaussianprior
