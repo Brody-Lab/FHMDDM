@@ -28,6 +28,9 @@ function sortparameters!(model::Model,
 		for n in eachindex(indexθ.glmθ[i])
 			@unpack θ = trialsets[i].mpGLMs[n]
 			index = indexθ.glmθ[i][n]
+			if length(θ.b) > 0
+				θ.b[1] = concatenatedθ[index.b[1]]
+			end
 			for k = 2:length(θ.𝐠)
 				θ.𝐠[k] = concatenatedθ[index.𝐠[k]]
 			end
@@ -310,6 +313,11 @@ function concatenate_glm_parameters(offset::Integer, trialsets::Vector{<:Trialse
 	for i in eachindex(trialsets)
         for n in eachindex(trialsets[i].mpGLMs)
 			@unpack θ = trialsets[i].mpGLMs[n]
+			if length(θ.b)>0
+				counter += 1
+				concatenatedθ[counter] = θ.b[1]
+				indexθ[i][n].b[1] = offset + counter
+			end
 			indexθ[i][n].𝐠[1] = 0
 			for k = 2:length(θ.𝐠)
 				counter += 1
@@ -345,9 +353,13 @@ RETURN
 -`concatenatedθ`: a vector concatenating the values of the parameters
 -`indexθ`: an instance of `GLMθ` indexing each parameter in the vector of concatenated values
 """
-function concatenateparameters(θ::GLMθ)
-	concatenatedθ = zeros(eltype(θ.𝐮), countparameters(θ))
+function concatenateparameters(θ::GLMθ; omitb::Bool=false)
+	concatenatedθ = zeros(eltype(θ.𝐮), countparameters(θ;omitb=omitb))
 	counter = 0
+	if (length(θ.b)>0) && (!omitb)
+		counter += 1
+		concatenatedθ[counter] = θ.b[1]
+	end
 	for k = 2:length(θ.𝐠)
 		counter += 1
 		concatenatedθ[counter] = θ.𝐠[k]
@@ -399,7 +411,6 @@ function concatenate_choice_related_parameters(model::Model)
 			getfield(indexθ, field)[1] = 0
 		end
 	end
-
 	index_glmθ = concatenate_glm_parameters(model, length(concatenatedθ))[2]
     return concatenatedθ, Indexθ(latentθ=indexθ, glmθ = index_glmθ)
 end
@@ -434,7 +445,7 @@ function Model(concatenatedθ::Vector{type},
 	real2native!(θnative, model.options, θreal)
 	trialsets = map(model.trialsets, indexθ.glmθ) do trialset, glmθindex
 					mpGLMs =map(trialset.mpGLMs, glmθindex) do mpGLM, glmθindex
-								MixturePoissonGLM(concatenatedθ, mpGLM; offset=glmθindex.𝐮[1]-length(glmθindex.𝐠))
+								MixturePoissonGLM(concatenatedθ, mpGLM; offset=firstindex(glmθindex)-1)
 							end
 					Trialset(mpGLMs=mpGLMs, trials=trialset.trials)
 				end
@@ -444,6 +455,30 @@ function Model(concatenatedθ::Vector{type},
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=trialsets)
+end
+
+"""
+	firstindex(glmθindex)
+
+Index of the first parameter for a mixture of Poisson GLM
+
+ARGUMENT
+-`glmθindex`: a structure indexing the parameters of a mixture of Poisson GLM
+
+RETURN
+-a positive integer
+"""
+function firstindex(glmθindex::GLMθ)
+	@unpack b, 𝐠, 𝐮 = glmθindex
+	if length(𝐠) == 1
+		if length(b) > 0
+			b[1]
+		else
+			𝐮[1]
+		end
+	else
+		𝐠[2]
+	end
 end
 
 """
@@ -517,6 +552,10 @@ function sortparameters!(θall::Vector{<:Real},
 						 index::GLMθ,
 						 θglm::Vector{<:Real})
 	counter = 0
+	if length(θ.b)>0
+		counter+=1
+		θall[index.b[1]] = θglm[counter]
+	end
 	for k = 2:length(θ.𝐠)
 		counter+=1
 		θall[index.𝐠[k]] = θglm[counter]
@@ -545,8 +584,12 @@ MODIFIED ARGUMENT
 UNMODIFIED ARGUMENT
 -`concatenatedθ`: a vector concatenating the parameters of a GLM
 """
-function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset=0)
+function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset::Integer=0, omitb::Bool=false)
 	counter = offset
+	if (length(θ.b)>0) && (!omitb)
+		counter+=1
+		θ.b[1] = concatenatedθ[counter]
+	end
 	for k = 2:length(θ.𝐠)
 		counter+=1
 		θ.𝐠[k] = concatenatedθ[counter]
@@ -575,10 +618,10 @@ ARGUMENT
 RETURN
 -number of parameters in the GLM
 """
-function countparameters(θ::GLMθ)
-	counter = 0
-	counter = length(θ.𝐮)
+function countparameters(θ::GLMθ; omitb::Bool=false)
+	counter = omitb ? 0 : length(θ.b)
 	counter += length(θ.𝐠)-1
+	counter += length(θ.𝐮)
 	for 𝐯ₖ in θ.𝐯
 		counter += length(𝐯ₖ)
 	end

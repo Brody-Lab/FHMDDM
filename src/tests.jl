@@ -34,7 +34,9 @@ function test(datapath::String)
     println("---------")
     println("testing gradient of log evidence")
     model = Model(datapath)
-    check_∇logevidence(model)
+    max_abs_norm_diff_∇𝐸, abs_norm_diff_𝐸 = FHMDDM.check_∇logevidence(model; simulate=false)
+    println("   max(|Δ𝐸|): ", abs_norm_diff_𝐸)
+    println("   max(|Δ∇𝐸|): ", max_abs_norm_diff_∇𝐸)
     println("---------")
     println("testing parameter learning")
     model = Model(datapath)
@@ -58,13 +60,13 @@ The function being checked is used in parameter initialization.
 function test_expectation_of_∇∇loglikelihood!(datapath::String)
     model = Model(datapath)
     mpGLM = model.trialsets[1].mpGLMs[1]
-    γ = randomposterior(mpGLM; rng=MersenneTwister(1234))
-    x₀ = concatenateparameters(mpGLM.θ)
+    γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+    x₀ = concatenateparameters(mpGLM.θ; omitb=true)
     nparameters = length(x₀)
     fhand, ghand, hhand = fill(NaN,1), fill(NaN,nparameters),
     fill(NaN,nparameters,nparameters)
-    expectation_of_∇∇loglikelihood!(fhand, ghand, hhand, γ, mpGLM)
-    f(x) = expectation_of_loglikelihood(γ, mpGLM, x);
+    FHMDDM.expectation_of_∇∇loglikelihood!(fhand, ghand, hhand, γ, mpGLM)
+    f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x; omitb=true);
     fauto = f(x₀);
     gauto = ForwardDiff.gradient(f, x₀);
     hauto = ForwardDiff.hessian(f, x₀);
@@ -83,12 +85,17 @@ The function being checked is used in computing the gradient of the log-likeliho
 function test_expectation_∇loglikelihood!(datapath::String)
     model = Model(datapath)
     mpGLM = model.trialsets[1].mpGLMs[1]
-    γ = randomposterior(mpGLM; rng=MersenneTwister(1234))
-    ∇Q = GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
-    expectation_∇loglikelihood!(∇Q, γ, mpGLM)
-    ghand = concatenateparameters(∇Q)
-    concatenatedθ = concatenateparameters(mpGLM.θ)
-    f(x) = expectation_of_loglikelihood(γ, mpGLM, x)
+    if length(mpGLM.θ.b) > 0
+        while abs(mpGLM.θ.b[1]) < 1e-4
+            mpGLM.θ.b[1] = 1 - 2rand()
+        end
+    end
+    γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
+    ∇Q = FHMDDM.GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
+    FHMDDM.expectation_∇loglikelihood!(∇Q, γ, mpGLM)
+    ghand = FHMDDM.concatenateparameters(∇Q)
+    concatenatedθ = FHMDDM.concatenateparameters(mpGLM.θ)
+    f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x)
     gauto = ForwardDiff.gradient(f, concatenatedθ)
     println("   max(|Δgradient|): ", maximum(abs.(gauto .- ghand)))
 end
@@ -100,11 +107,20 @@ Check the gradient of the negative of the log-likelihood of the model
 """
 function test_∇negativeloglikelihood!(datapath::String)
     model = Model(datapath)
+    for trialset in model.trialsets
+        for mpGLM in trialset.mpGLMs
+            if length(mpGLM.θ.b) > 0
+                while abs(mpGLM.θ.b[1]) < 1e-4
+                    mpGLM.θ.b[1] = 1 - 2rand()
+                end
+            end
+        end
+    end
     concatenatedθ, indexθ = concatenateparameters(model)
     ∇nℓ = similar(concatenatedθ)
-    memory = Memoryforgradient(model)
-    ∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
-    f(x) = -loglikelihood(x, indexθ, model)
+    memory = FHMDDM.Memoryforgradient(model)
+    FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
+    f(x) = -FHMDDM.loglikelihood(x, indexθ, model)
     ℓ_auto = f(concatenatedθ)
     ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
     println("   max(|Δloss|): ", abs(ℓ_auto + memory.ℓ[1]))
@@ -118,7 +134,16 @@ Check the computation of the hessian of the log-likelihood
 """
 function test_∇∇loglikelihood(datapath::String)
     model = Model(datapath)
-    absdiffℓ, absdiff∇, absdiff∇∇ = check_∇∇loglikelihood(model)
+    for trialset in model.trialsets
+        for mpGLM in trialset.mpGLMs
+            if length(mpGLM.θ.b) > 0
+                while abs(mpGLM.θ.b[1]) < 1e-4
+                    mpGLM.θ.b[1] = 1 - 2rand()
+                end
+            end
+        end
+    end
+    absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_∇∇loglikelihood(model)
     println("   max(|Δloss|): ", absdiffℓ)
     println("   max(|Δgradient|): ", maximum(absdiff∇))
     println("   max(|Δhessian|): ", maximum(absdiff∇∇))

@@ -306,12 +306,14 @@ Convert an instance of `Options` to a dictionary
 function dictionary(options::Options)
 	Dict(	"a_latency_s"=>options.a_latency_s,
 			"alpha0_choices"=>options.α₀_choices,
+			"b_scalefactor"=>options.b_scalefactor,
 			"choiceobjective"=>options.choiceobjective,
 			"datapath"=>options.datapath,
 			"dt"=>options.Δt,
 			"fit_Ac11"=>options.fit_Aᶜ₁₁,
 			"fit_Ac22"=>options.fit_Aᶜ₂₂,
 			"fit_B"=>options.fit_B,
+			"fit_b"=>options.fit_b,
 			"fit_k"=>options.fit_k,
 			"fit_lambda"=>options.fit_λ,
 			"fit_mu0"=>options.fit_μ₀,
@@ -442,7 +444,9 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(θ::GLMθ)
-    Dict("g"=>θ.𝐠,
+    Dict("b"=>θ.b,
+		"b_scalefactor"=>θ.b_scalefactor,
+    	"g"=>θ.𝐠,
 		"u"=>θ.𝐮,
 		"v"=>θ.𝐯,
 		"uindices_hist"=>collect(θ.𝐮indices_hist),
@@ -531,12 +535,14 @@ Create an instance of `Options` from a Dict
 function Options(options::Dict)
 	Options(a_latency_s = options["a_latency_s"],
 			α₀_choices=options["alpha0_choices"],
+			b_scalefactor = options["b_scalefactor"],
 			choiceobjective=options["choiceobjective"],
 			datapath = options["datapath"],
 			Δt = options["dt"],
 			fit_Aᶜ₁₁= options["fit_Ac11"],
 			fit_Aᶜ₂₂= options["fit_Ac22"],
 			fit_B = options["fit_B"],
+			fit_b = options["fit_b"],
 			fit_k = options["fit_k"],
 			fit_λ = options["fit_lambda"],
 			fit_μ₀ = options["fit_mu0"],

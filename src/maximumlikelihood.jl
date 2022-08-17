@@ -372,24 +372,7 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 		end
 	end
 	native2real!(∇nℓ, memory.indexθ.latentθ, model)
-	for ∇ℓglms in memory.∇ℓglm
-		for ∇ℓglm in ∇ℓglms
-			for k = 2:length(∇ℓglm.𝐠)
-				indexfit+=1
-				∇nℓ[indexfit] = -∇ℓglm.𝐠[k]
-			end
-			for u in ∇ℓglm.𝐮
-				indexfit+=1
-				∇nℓ[indexfit] = -u
-			end
-			for 𝐯ₖ in ∇ℓglm.𝐯
-				for v in 𝐯ₖ
-					indexfit+=1
-					∇nℓ[indexfit] = -v
-				end
-			end
-		end
-	end
+	∇negativeloglikelihood!(∇nℓ, memory.∇ℓglm, indexfit)
 	return nothing
 end
 
@@ -605,7 +588,7 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
 	∇ℓglm = map(model.trialsets) do trialset
 				map(trialset.mpGLMs) do mpGLM
-					GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
+					initialize(mpGLM.θ)
 				end
 			end
 	one_minus_Ξminpa = 1.0 - Ξ*minpa
@@ -755,9 +738,6 @@ function scaling_factor_choiceLL(model::Model)
 		ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
 		ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
 		ntimesteps_neurons/ntrials
-		# ntimesteps = sum(collect(trialset.ntimesteps for trialset in model.trialsets))
-		# ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
-		# ntimesteps/ntrials
 	else
 		1.0
 	end

@@ -65,42 +65,6 @@ function initializeparameters!(model::Model; verbose::Bool=true)
 end
 
 """
-	initialize_GLM_parameters!(model)
-
-Initialize the GLM parameters
-
-MODIFIED ARGUMENT
--`model`: an instance of the factorial hidden Markov drift-diffusion model
-"""
-function initialize_GLM_parameters!(model::Model)
-	memory = FHMDDM.Memoryforgradient(model)
-	choiceposteriors!(memory, model)
-	for i in eachindex(model.trialsets)
-	    for mpGLM in model.trialsets[i].mpGLMs
-	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
-	    end
-	end
-	if model.options.gain_state_dependent
-		for i in eachindex(model.trialsets)
-		    for mpGLM in model.trialsets[i].mpGLMs
-		        for k = 2:length(mpGLM.θ.𝐠)
-					mpGLM.θ.𝐠[k] = 1-2rand()
-				end
-		    end
-		end
-	end
-	if model.options.tuning_state_dependent
-		for i in eachindex(model.trialsets)
-			for mpGLM in model.trialsets[i].mpGLMs
-				vmean = mean(mpGLM.θ.𝐯)
-				mpGLM.θ.𝐯[1] .= 3.0.*vmean
-				mpGLM.θ.𝐯[2] .= -vmean
-			end
-		end
-	end
-end
-
-"""
 	initialize_for_stochastic_transition!(model)
 
 Initialize the parameters of the model such that the state transitions over time

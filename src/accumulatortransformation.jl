@@ -19,14 +19,12 @@ function transformaccumulator(b::Real, ξ::Real)
                 ξ == -1.0 ? -1.0 : 0.0
             else
                 -expm1(-b*ξ)/expm1(b)
-                # (exp(-b*ξ)-1.0)/(1.0-exp(b))
             end
         elseif ξ > 0
             if b > 709.0
                 ξ == 1.0 ? 1.0 : 0.0
             else
                 expm1(b*ξ)/expm1(b)
-                # (1.0-exp(b*ξ))/(1.0-exp(b))
             end
         else
             0.0

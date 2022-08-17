@@ -76,13 +76,13 @@ RETURN
 """
 function twopasshessian(model::Model)
 	@unpack trialsets = model
-	sameacrosstrials = Sameacrosstrials(model)
-	memoryforhessian = Memoryforhessian(model, sameacrosstrials)
+	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
+	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
 	@inbounds for trialsetindex in eachindex(trialsets)
-		𝐋 = linearpredictor(trialsets[trialsetindex].mpGLMs)
+		𝐋 = FHMDDM.linearpredictor(trialsets[trialsetindex].mpGLMs)
 		offset = 0
 		for trialindex in eachindex(trialsets[trialsetindex].trials)
-			twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
+			FHMDDM.twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
 			offset+=model.trialsets[trialsetindex].trials[trialindex].ntimesteps
 		end
 	end
@@ -120,9 +120,15 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, D, ∇D, ∇b = memoryforhessian
 	@unpack P, ∇pa₁, ∇∇pa₁, Aᵃinput, ∇Aᵃinput, ∇∇Aᵃinput = memoryforhessian
 	@unpack λ, ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
-	@unpack d𝛏_dB, Δt, K, Ξ = sameacrosstrials
-	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent, Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
-	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ,  nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
+	𝛚 = memoryforhessian.𝛚[trialsetindex]
+	d𝛚_db = memoryforhessian.d𝛚_db[trialsetindex]
+	d²𝛚_db² = memoryforhessian.d²𝛚_db²[trialsetindex]
+	@unpack Δt, K, Ξ = sameacrosstrials
+	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent = sameacrosstrials
+	@unpack Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
+	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ = sameacrosstrials
+	@unpack nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, nθ_ψ = sameacrosstrials
+	@unpack index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = sameacrosstrials
 	indexθ_py = sameacrosstrials.indexθ_py[trialsetindex]
 	nθ_py = sameacrosstrials.nθ_py[trialsetindex]
 	indexθ_pY = sameacrosstrials.indexθ_pY[trialsetindex]
@@ -133,7 +139,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	if length(clicks.time) > 0
 		adaptedclicks = ∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
-	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset)
+	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
@@ -494,17 +500,20 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 						𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
 						mpGLMs::Vector{<:MixturePoissonGLM},
 						ntimesteps::Integer,
-						offset::Integer)
+						offset::Integer,
+						𝛚::Vector{<:Vector{<:Real}},
+						d𝛚_db::Vector{<:Vector{<:Real}},
+						d²𝛚_db²::Vector{<:Vector{<:Real}})
 	dL_d𝐯 = zeros(length(mpGLMs[1].θ.𝐯[1]))
 	@inbounds for n in eachindex(mpGLMs)
 		conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
 		for t = 1:ntimesteps
 			τ = t + offset
-			∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], τ)
+			∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], 𝛚[n], d𝛚_db[n], d²𝛚_db²[n], τ)
 		end
 	end
 	nneurons = length(mpGLMs)
-	Ξ = length(mpGLMs[1].d𝛏_dB)
+	Ξ = length(𝛚[1])
 	K = max(length(mpGLMs[1].θ.𝐠), length(mpGLMs[1].θ.𝐯))
 	@inbounds for t = 1:ntimesteps
 		τ = t + offset
@@ -599,161 +608,101 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										𝐋::Matrix{<:Vector{<:Real}},
 										λ::Matrix{<:Real},
 										mpGLM::MixturePoissonGLM,
+										𝛚::Vector{<:Real},
+										d𝛚_db::Vector{<:Real},
+										d²𝛚_db²::Vector{<:Real},
 										τ::Integer)
-	@unpack d𝛏_dB, 𝐗, 𝐕, 𝐲 = mpGLM
-	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	@unpack 𝐗, 𝐕, 𝐲 = mpGLM
+	@unpack b, 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	nb = length(b)
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
 	K = max(K𝐠, K𝐯)
 	n𝐮 = length(𝐮)
-	offset𝐮 = K𝐠-1
+	offset𝐠 = nb
+	offset𝐮 = nb + K𝐠-1
 	n𝐠𝐮 = n𝐮 + offset𝐮
 	n𝐯 = length(𝐯[1])
-	Ξ = length(d𝛏_dB)
+	Ξ = length(𝛚)
+	if nb > 0
+		Vₜᵀ𝐯 = zeros(K𝐯)
+		for j = 1:K
+			for q=1:n𝐯
+				Vₜᵀ𝐯[j] += 𝐕[τ,q]*𝐯[j][q]
+			end
+		end
+	end
 	for i = 1:Ξ
 		for q=1:n𝐯
-			dL_d𝐯[q] = 𝐕[τ,q]*d𝛏_dB[i]
+			dL_d𝐯[q] = 𝐕[τ,q]*𝛚[i]
 		end
 		for j = 1:K
-			dlogp_dL, d²logp_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
+			d²ℓ_dL², dℓ_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
 			offset𝐯 = n𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
-			if j > 1 && K𝐠 > 1
-				∇logpy[j-1][i,j] = dlogp_dL
-			end
-			for q=1:n𝐮
-				s = offset𝐮+q
-				∇logpy[s][i,j] = dlogp_dL*𝐗[τ,1+q]
-			end
-			for q=1:n𝐯
-				s = offset𝐯 + q
-				∇logpy[s][i,j] = dlogp_dL*dL_d𝐯[q]
-			end
-			if j > 1 && K𝐠 > 1
-				∇∇logpy[j-1,j-1][i,j] = d²logp_dL
+			if nb > 0
+				dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
+				d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
+				∇logpy[1][i,j] = dℓ_dL*dL_db
+				∇∇logpy[1,1][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
+				if j > 1 && K𝐠 > 1
+					s = offset𝐠 + j - 1
+					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_db
+				end
 				for q=1:n𝐮
-					s = offset𝐮 + q
-					∇∇logpy[j-1,s][i,j] = d²logp_dL*𝐗[τ,1+q]
+					s = offset𝐮+q
+					∇∇logpy[1,s][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_db
 				end
 				for q=1:n𝐯
 					s = offset𝐯 + q
-					∇∇logpy[j-1,s][i,j] = d²logp_dL*dL_d𝐯[q]
+					d²L_dvdb = 𝐕[τ,q]*d𝛚_db[i]
+					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_d𝐯[q]*dL_db + dℓ_dL*d²L_dvdb
+				end
+			end
+			if j > 1 && K𝐠 > 1
+				s = offset𝐠 + j - 1
+				∇logpy[s][i,j] = dℓ_dL
+			end
+			for q=1:n𝐮
+				s = offset𝐮+q
+				∇logpy[s][i,j] = dℓ_dL*𝐗[τ,1+q]
+			end
+			for q=1:n𝐯
+				s = offset𝐯 + q
+				∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
+			end
+			if j > 1 && K𝐠 > 1
+				s = offset𝐠 + j - 1
+				∇∇logpy[s,s][i,j] = d²ℓ_dL²
+				for r=1:n𝐮
+					t = offset𝐮 + r
+					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+r]
+				end
+				for r=1:n𝐯
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
 				end
 			end
 			for q=1:n𝐮
 				s = offset𝐮 + q
 				for r=q:n𝐮
 					t = offset𝐮 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,1+q]*𝐗[τ,1+r]
+					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*𝐗[τ,1+r]
 				end
 				for r=1:n𝐯
 					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL*𝐗[τ,1+q]*dL_d𝐯[r]
+					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
 				end
 			end
 			for q=1:n𝐯
 				for r=q:n𝐯
 					s = offset𝐯 + q
 					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²logp_dL * dL_d𝐯[q] * dL_d𝐯[r]
+					∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
 				end
 			end
 		end
 	end
 	return nothing
-end
-
-"""
-    differentiate_twice_loglikelihood_wrt_linearpredictor
-
-Differentiate the log-likelihood of a Poisson GLM with respect to the linear predictor
-
-The Poisson GLM is assumed to have a a softplus nonlinearity
-
-ARGUMENT
--`Δt`: duration of time step
--`L`: linear predictor at one time step
--`λ`: Poisson rate
--`y`: observation at that time step
-
-RETURN
--the first derivative with respect to the linear predictor
--the second derivative with respect to the linear predictor
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff, LogExpFunctions
-julia> Δt = 0.01
-julia> y = 2
-julia> f(x) = let λΔt = softplus(x[1])*Δt; y*log(λΔt)-λΔt+log(factorial(y)); end
-julia> x = rand(1)
-julia> d1auto = ForwardDiff.gradient(f, x)
-julia> d2auto = ForwardDiff.hessian(f, x)
-julia> d1hand, d2hand = FHMDDM.differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, x[1], softplus(x[1]), y)
-julia> abs(d1hand - d1auto[1])
-julia> abs(d2hand - d2auto[1])
-```
-"""
-function differentiate_twice_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, λ::Real, y::Integer)
-	dλ_dL = logistic(L)
-	d²λ_dLdL = dλ_dL*(1-dλ_dL)
-    if y > 0
-        if L > -100.0
-            dℓ_dL = dλ_dL*(y/λ - Δt)
-        else
-            dℓ_dL = y - dλ_dL*Δt  # the limit of `dλ_dL/λ` as x goes to -∞ is 1
-        end
-		if L > -50.0
-			d²ℓ_dLdL = y*(λ*d²λ_dLdL - dλ_dL^2)/λ^2 - d²λ_dLdL*Δt # the limit of first second term is 0 as L goes to -∞
-		else
-			d²ℓ_dLdL = -d²λ_dLdL*Δt
-		end
-    else
-        dℓ_dL = -dλ_dL*Δt
-		d²ℓ_dLdL = -d²λ_dLdL*Δt
-    end
-	return dℓ_dL, d²ℓ_dLdL
-end
-
-"""
-    differentiate_loglikelihood_wrt_linearpredictor
-
-Differentiate the log-likelihood of a Poisson GLM with respect to the linear predictor
-
-The Poisson GLM is assumed to have a a softplus nonlinearity
-
-ARGUMENT
--`Δt`: duration of time step
--`L`: linear predictor at one time step
--`λ`: Poisson rate
--`y`: observation at that time step
-
-RETURN
--the first derivative with respect to the linear predictor
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff, LogExpFunctions
-julia> Δt = 0.01
-julia> y = 2
-julia> f(x) = let λΔt = softplus(x[1])*Δt; y*log(λΔt)-λΔt+log(factorial(y)); end
-julia> x = rand(1)
-julia> d1auto = ForwardDiff.gradient(f, x)
-julia> d1hand = FHMDDM.differentiate_loglikelihood_wrt_linearpredictor(Δt, x[1], softplus(x[1]), y)
-julia> abs(d1hand - d1auto[1])
-```
-"""
-function differentiate_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, λ::Real, y::Integer)
-	dλ_dL = logistic(L)
-    if y > 0
-        if L > -100.0
-            dℓ_dL = dλ_dL*(y/λ - Δt)
-        else
-            dℓ_dL = y - dλ_dL*Δt  # the limit of `dλ_dL/λ` as x goes to -∞ is 1
-        end
-    else
-        dℓ_dL = -dλ_dL*Δt
-    end
-	return dℓ_dL
 end
 
 """
@@ -991,7 +940,7 @@ function Sameacrosstrials(model::Model)
 	counter = 13
 	indexθ_py = map(trialsets) do trialset
 					map(trialset.mpGLMs) do mpGLM
-						q = length(mpGLM.θ.𝐠)-1 + length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
+						q = length(mpGLM.θ.b) + length(mpGLM.θ.𝐠)-1 + length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
 						zeros(Int,q)
 					end
 				end
@@ -1095,6 +1044,21 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 			end
 	pY = collect(zeros(Ξ,K) for t=1:maxtimesteps)
 	∇pY = collect(collect(zeros(Ξ,K) for q=1:max_nθ_pY) for t=1:maxtimesteps)
+	𝛚 = map(model.trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				transformaccumulator(mpGLM)
+			end
+		end
+	d𝛚_db = map(model.trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				dtransformaccumulator(mpGLM)
+			end
+		end
+	d²𝛚_db² = map(model.trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				d²transformaccumulator(mpGLM)
+			end
+		end
 	Memoryforhessian(Aᵃinput=Aᵃinput,
 					∇Aᵃinput=∇Aᵃinput,
 					∇∇Aᵃinput=∇∇Aᵃinput,
@@ -1109,6 +1073,9 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					λ=λ,
 					∇logpy=∇logpy,
 					∇∇logpy=∇∇logpy,
+					𝛚 = 𝛚,
+					d𝛚_db = d𝛚_db,
+					d²𝛚_db² = d²𝛚_db²,
 					P = Probabilityvector(Δt, minpa, θnative, Ξ),
 					∇pa₁=∇pa₁,
 					∇∇pa₁=∇∇pa₁,

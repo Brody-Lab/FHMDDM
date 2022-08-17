@@ -182,6 +182,7 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	nbasestime = length(𝐮indices_time)
 	nbasesmove = length(𝐮indices_move)
 	nbasesaccu = length(indexθglm[1].𝐯[1])
+	Anonl = ones(1,1)*options.b_scalefactor^2
 	Again = ones(1,1)
 	Ahist = zeros(nbaseshist,nbaseshist) + options.tbf_hist_scalefactor^2*I # computations with `Diagonal` are slower
 	Atime = zeros(nbasestime,nbasestime) + options.tbf_time_scalefactor^2*I
@@ -190,6 +191,10 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
 	for indexᵢₙ in indexθglm
+		if length(indexᵢₙ.b) > 0
+			𝐀 = vcat(𝐀, [Anonl])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
+		end
 		for k = 2:length(indexᵢₙ.𝐠)
 			𝐀 = vcat(𝐀, [Again])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])

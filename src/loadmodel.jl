@@ -187,7 +187,7 @@ function Trialset(options::Options, trialset::Dict)
 	Ttrialset = sum(𝐓)
     @assert all(length.(𝐘) .== Ttrialset)
 	@unpack K, Ξ = options
-	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-2)
+	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1)
 	𝐆 = ones(Ttrialset)
 	Φₕ = FHMDDM.spikehistorybases(options)
 	𝐔ₕ = map(𝐲->FHMDDM.spikehistorybases(Φₕ, 𝐓, 𝐲), 𝐘)

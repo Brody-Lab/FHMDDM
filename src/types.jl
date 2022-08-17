@@ -49,6 +49,8 @@ Model settings
     a_latency_s::TF=1e-2
 	"initial coefficient for L2 regularization for the ddm parameters"
 	α₀_choices::TF=0.0
+	"scale factor for the accumulator transformation parameter"
+	b_scalefactor::TF=10.0
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
 	"full path of the data"
@@ -61,6 +63,8 @@ Model settings
 	fit_Aᶜ₂₂::TB=true
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
+	"whether to fit the parameter for transforming the accumulator"
+	fit_b::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=true
 	"whether to fit the parameter specifying leak or instability"
@@ -254,7 +258,11 @@ end
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{VR<:Vector{<:Real}, UI<:UnitRange{<:Integer}, VVR<:Vector{<:Vector{<:Real}}}
+@with_kw struct GLMθ{R<:Real, VR<:Vector{<:Real}, UI<:UnitRange{<:Integer}, VVR<:Vector{<:Vector{<:Real}}}
+    "nonlinearity in accumulator transformation"
+	b::VR
+	"scale factor for the nonlinearity of accumulator transformation"
+	b_scalefactor::R
     "state-dependent gain"
     𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
@@ -805,8 +813,6 @@ Quantities that are same across trials and used in each trial
 							x[indices] .= 1:length(indices)
 							x
 						 end
-	"discrete values of the accumulator, un-normalized"
-	d𝛏_dB::VR = (2collect(1:Ξ) .- Ξ .- 1)/(Ξ-2)
 end
 
 """
@@ -819,6 +825,7 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 								VVR<:Vector{<:Vector{<:Real}},
 								VMR<:Vector{<:Matrix{<:Real}},
 								MVR<:Matrix{<:Vector{<:Real}},
+								VVVR<:Vector{<:Vector{<:Vector{<:Real}}},
 								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
 								VMMR<:Vector{<:Matrix{<:Matrix{<:Real}}},
 								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
@@ -858,6 +865,12 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 	∇pa₁::VVR
 	"second-order partial derivatives of the prior probability of the accumulator. Element `∇∇pa₁[q,r][i]` corresponds to the q-th and r-th parameter among the parameters that govern prior probability and i-th accumulator state"
 	∇∇pa₁::MVR
+	"transformed values of accumulated evidence. Element `𝛚[i][n][j]` corresponds to the transformation of the j-th discrete value of accumulated for the n-th neuron in the i-th trialset."
+	𝛚::VVVR
+	"first-order derivative of the transformed values of accumulated evidence"
+	d𝛚_db::VVVR
+	"second-order derivative of the transformed values of accumulated evidence"
+	d²𝛚_db²::VVVR
 	"condition likelihood of all emissions at a time step. Element `pY[t][i,j]` corresponds to the t-th time step in a trial, i-th accumulator state, and j-th coupling state"
 	pY::VMR
 	"first-order partial derivatives condition likelihood of all emissions at a time step. Element `∇pY[t][q][i,j]` corresponds to the t-th time step in a trial, q-th parameter among all parameters of all GLM's in a trialset (not including the lapse), i-th accumulator state, and j-th coupling state"
