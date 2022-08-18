@@ -93,6 +93,10 @@ Model settings
 	L2flattening_GLM_max::TF=1e0
 	"maximum L2 flattening penalty for each group of GLM parameters"
 	L2flattening_GLM_min::TF=1e-4
+	"maximum L2 shrinkage penalty for the accumulator transformation parameter"
+	L2shrinkage_AT_max::TF=1e2
+	"maximum L2 shrinkage penalty for the accumulator transformation parameter"
+	L2shrinkage_AT_min::TF=1e-2
 	"maximum L2 shrinkage penalty for each group of GLM parameters"
 	L2shrinkage_GLM_max::TF=1e1
 	"maximum L2 shrinkage penalty for each group of GLM parameters"

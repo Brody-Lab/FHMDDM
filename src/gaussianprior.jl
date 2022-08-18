@@ -27,16 +27,17 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 	for i = 1:length(trialsets)
 		mpGLM = trialsets[i].mpGLMs[1]
 		𝐀_lv, index𝐀_lv = shrinkagematrices(indexθ.latentθ)
+		𝐀_at, index𝐀_at = shrinkagematrices(indexθ.glmθ[i], options.b_scalefactor)
 		𝐀_glm, index𝐀_glm = shrinkagematrices(indexθ.glmθ[i], options)
 		if !isnan(options.L2flattening_GLM_min) && !isnan(options.L2flattening_GLM_max)
 			𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.Φₐ, mpGLM.Φₜ)
-			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm, 𝚪_glm)
-			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm, index𝚪_glm)
-			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), length(index𝚪_glm))
+			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_at, 𝐀_glm, 𝚪_glm)
+			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_at, index𝐀_glm, index𝚪_glm)
+			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_at), length(index𝐀_glm), length(index𝚪_glm))
 		else
-			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_glm)
-			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_glm)
-			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_glm), 0)
+			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_at, 𝐀_glm)
+			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_at, index𝐀_glm)
+			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_at), length(index𝐀_glm), 0)
 		end
 		𝛂min = vcat(𝛂min, 𝛂min_t)
 		𝛂max = vcat(𝛂max, 𝛂max_t)
@@ -182,7 +183,6 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	nbasestime = length(𝐮indices_time)
 	nbasesmove = length(𝐮indices_move)
 	nbasesaccu = length(indexθglm[1].𝐯[1])
-	Anonl = ones(1,1)*options.b_scalefactor^2
 	Again = ones(1,1)
 	Ahist = zeros(nbaseshist,nbaseshist) + options.tbf_hist_scalefactor^2*I # computations with `Diagonal` are slower
 	Atime = zeros(nbasestime,nbasestime) + options.tbf_time_scalefactor^2*I
@@ -191,10 +191,6 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
 	for indexᵢₙ in indexθglm
-		if length(indexᵢₙ.b) > 0
-			𝐀 = vcat(𝐀, [Anonl])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
-		end
 		for k = 2:length(indexᵢₙ.𝐠)
 			𝐀 = vcat(𝐀, [Again])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])
@@ -216,6 +212,32 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 				𝐀 = vcat(𝐀, [Aaccu])
 				index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
 			end
+		end
+	end
+	return 𝐀, index𝐀
+end
+
+"""
+	shrinkagematrices(indexθ)
+
+Matrices that compute the L2 penalty for the nonlinearity parameter in accumulator transformations
+
+ARGUMENT
+-`indexθ`: structure indicating the order of each parameter if all parameters were concatenated into a vector
+-`b_scalefactor`: scale factor of the nonlinearity parameter
+
+RETURN
+-`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
+-`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
+"""
+function shrinkagematrices(indexθglm::Vector{<:GLMθ}, b_scalefactor::Real)
+	A = ones(1,1)*b_scalefactor^2
+	𝐀 = Matrix{typeof(1.0)}[]
+	index𝐀 = Vector{typeof(1)}[]
+	for indexᵢₙ in indexθglm
+		if length(indexᵢₙ.b) > 0
+			𝐀 = vcat(𝐀, [A])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
 		end
 	end
 	return 𝐀, index𝐀
@@ -282,11 +304,13 @@ OUTPUT
 -`𝛂min`: vector of the minimum of the coefficient of each L2 penalty being learned
 -`𝛂max`: vector of the maximum of the coefficient of each L2 penalty being learned
 """
-function L2penalty_coeffcients_limits(options::Options, N_shrinkage_LV::Integer, N_shrinkage_GLM::Integer, N_flattening_GLM::Integer)
+function L2penalty_coeffcients_limits(options::Options, N_shrinkage_LV::Integer, N_shrinkage_AT::Integer, N_shrinkage_GLM::Integer, N_flattening_GLM::Integer)
 	𝛂min = vcat(options.L2shrinkage_LV_min	.*ones(N_shrinkage_LV),
+				options.L2shrinkage_AT_min	.*ones(N_shrinkage_AT),
 				options.L2shrinkage_GLM_min	.*ones(N_shrinkage_GLM),
 				options.L2flattening_GLM_min.*ones(N_flattening_GLM))
 	𝛂max = vcat(options.L2shrinkage_LV_max .*ones(N_shrinkage_LV),
+				options.L2shrinkage_AT_max .*ones(N_shrinkage_AT),
 				options.L2shrinkage_GLM_max	.*ones(N_shrinkage_GLM),
  				options.L2flattening_GLM_max.*ones(N_flattening_GLM))
 	return 𝛂min, 𝛂max
