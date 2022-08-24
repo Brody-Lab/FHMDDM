@@ -206,7 +206,7 @@ function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
 	gₖ = 𝐠[min(length(𝐠), k)]
 	𝐯ₖ = 𝐯[min(length(𝐯), k)]
 	if length(b) > 0
-		transformedξ = transformaccumulator(b[1], b_scalefactor, d𝛏_dB[j])
+		transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
 	else
 		transformedξ = d𝛏_dB[j]
 	end
@@ -428,22 +428,26 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	end
 	𝐔 = @view 𝐗[:, 2:1+length(∇Q.𝐮)]
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
-	mul!(∇Q.𝐮, 𝐔', ∑ᵢₖ_dQᵢₖ_dLᵢₖ)
+    ∇Q.𝐮 .= 𝐔' * ∑ᵢₖ_dQᵢₖ_dLᵢₖ
 	@inbounds for k = 2:length(∇Q.𝐠)
 		∇Q.𝐠[k] = sum(∑ᵢ_dQᵢₖ_dLᵢₖ[k])
 	end
 	if length(∇Q.𝐯) == K
-		dQ_db = 0.0
 		@inbounds for k = 1:K
-			dQ_db += ∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k]' * 𝐕 * 𝐯[k]
-			mul!(∇Q.𝐯[k], 𝐕', ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+			∇Q.𝐯[k] .=  𝐕'*∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k]
 		end
 	else
-		dQ_db = sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db)' * 𝐕 * 𝐯[k]
-		mul!(∇Q.𝐯[1], 𝐕', sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ))
+		∇Q.𝐯[1] .= 𝐕' * sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ)
 	end
 	if length(∇Q.b) > 0
-		∇Q.b[1] = dQ_db
+		if length(∇Q.𝐯) == K
+			∇Q.b[1] = 0.0
+			@inbounds for k = 1:K
+				∇Q.b[1] += dot(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k], 𝐕, 𝐯[k])
+			end
+		else
+			∇Q.b[1] = dot(sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db), 𝐕, 𝐯[k])
+		end
 	end
 	return nothing
 end

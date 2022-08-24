@@ -45,8 +45,8 @@ function test(datapath::String)
     println("---------")
     println("testing saving model parameters, hessian, and predictions in `test.mat`")
     ∇∇ℓ = ∇∇loglikelihood(model)[3]
-    λΔt, pchoice = expectedemissions(model)
-    save(∇∇ℓ, λΔt, model, pchoice; filename="test.mat")
+    predictions = Predictions(model)
+    save(∇∇ℓ, model, predictions; filename="test.mat")
     return nothing
 end
 

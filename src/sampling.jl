@@ -1,4 +1,329 @@
 """
+	Predictions(model)
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of the model
+
+RETURN
+-a structure containing the predictions of the model
+"""
+function Predictions(model::Model; nsamples::Integer=100)
+    @unpack trialsets, options, θnative = model
+	@unpack Ξ, K = options
+    λΔt = map(trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				zeros(trialset.ntimesteps)
+			end
+		  end
+	λΔt_𝑑 = deepcopy(λΔt)
+	p𝐚 = map(trialsets) do trialset
+			map(trialset.trials) do trial
+				collect(zeros(Ξ) for t=1:trial.ntimesteps)
+			end
+		  end
+	p𝐜_𝐘𝑑 = map(trialsets) do trialset
+			map(trialset.trials) do trial
+				collect(zeros(K) for t=1:trial.ntimesteps)
+			end
+		  end
+	p𝐚_𝑑, p𝐚_𝐘𝑑 = deepcopy(p𝐚), deepcopy(p𝐚)
+	p𝑑 = collect(zeros(trialset.ntrials) for trialset in trialsets)
+	memory = Memoryforgradient(model)
+	P = FHMDDM.update!(memory, model, concatenateparameters(model)[1])
+	@unpack Aᵃinput, Aᵃsilent, Aᶜ, p𝐚₁, πᶜ = memory
+	f⨀b = memory.f
+	p𝑑_𝐚 = ones(Ξ)
+	maxtimesteps = length(f⨀b)
+	a = zeros(Int, maxtimesteps)
+	c = zeros(Int, maxtimesteps)
+	𝐄𝐞_𝐡_𝛚 = map(trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				@unpack Δt, Φₕ, 𝐗,  = mpGLM
+				@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
+				𝛚 = transformaccumulator(mpGLM)
+				n_spikehistory_parameters = size(Φₕ,2)
+				𝐡 = Φₕ*𝐮[1:n_spikehistory_parameters]
+				𝐞 = 𝐮[n_spikehistory_parameters+1:end]
+				indices_time_move_in_𝐗 = 1+n_spikehistory_parameters .+ (1:length(𝐞))
+				𝐄 = @view 𝐗[:,indices_time_move_in_𝐗]
+				𝐄𝐞 = 𝐄*𝐞
+				return 𝐄𝐞, 𝐡, 𝛚
+			end
+		end
+    for trialset in trialsets
+		for trial in trialset.trials
+			i = trial.trialsetindex
+			m = trial.index_in_trialset
+			𝛕 = trial.τ₀ .+ (1:trial.ntimesteps)
+			forward!(memory, P, θnative, trial)
+			backward!(memory, P, trial)
+			accumulatorprobability!(p𝐚[i][m], p𝐚₁, Aᵃinput, Aᵃsilent, trial)
+			accumulator_probability_given_choice!(p𝐚_𝑑[i][m], p𝑑_𝐚, Aᵃinput, Aᵃsilent, p𝐚[i][m], θnative.ψ[1], trial)
+			for t = 1:trial.ntimesteps
+				p𝐚_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=2), dims=2)
+				p𝐜_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=1), dims=1)
+			end
+			for s = 1:nsamples
+				samplecoupling!(c, Aᶜ, trial.ntimesteps, πᶜ)
+				sampleaccumulator!(a, Aᵃinput, Aᵃsilent, p𝐚₁, trial)
+				p𝑑[i][m] += sample(a[trial.ntimesteps], θnative.ψ[1], Ξ)/nsamples
+				for (𝐄𝐞_𝐡_𝛚, λΔt, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt[i], trialset.mpGLMs)
+					λΔt[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
+				end
+				sample_accumulator_given_choice!(a, Aᵃinput, Aᵃsilent, p𝐚[i][m], p𝐚_𝑑[i][m][trial.ntimesteps], trial)
+				for (𝐄𝐞_𝐡_𝛚, λΔt_𝑑, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt_𝑑[i], trialset.mpGLMs)
+					λΔt_𝑑[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
+				end
+			end
+		end
+	end
+    return Predictions(	p𝐚 = p𝐚,
+						p𝐚_𝑑 = p𝐚_𝑑,
+						p𝐚_𝐘𝑑 = p𝐚_𝐘𝑑,
+						p𝐜_𝐘𝑑 = p𝐜_𝐘𝑑,
+						p𝑑 = p𝑑,
+						λΔt = λΔt,
+						λΔt_𝑑 = λΔt_𝑑,
+						nsamples = nsamples)
+end
+
+"""
+	accumulatorprobability!(Aᵃinput, P, p𝐚, Aᵃsilent, θnative, trial)
+
+Probability of the accumulator at each time step
+
+MODIFIED ARGUMENT
+-`Aᵃinput`: vector of matrices used as memory for computing the transition probability of the accumulator on time steps with stimulus input
+-`p𝐚`: a vector whose element p𝐚[t][i] represents p(a[t] = ξ[i])
+
+UNMODIFIED ARGUMENT
+-`Aᵃsilent`: transition probability of the accumulator on timesteps without stimulus input
+-`p𝐚₁`: prior distribution of the accumulator
+-`trial`: structure containing information on a trial
+
+"""
+function accumulatorprobability!(p𝐚::Vector{<:Vector{<:AbstractFloat}},
+								p𝐚₁::Vector{<:AbstractFloat},
+ 								Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
+ 								Aᵃsilent::Matrix{<:AbstractFloat},
+								trial::Trial)
+	p𝐚[1] .= p𝐚₁
+	@inbounds for t=2:trial.ntimesteps
+		if isempty(trial.clicks.inputindex[t])
+			Aᵃ = Aᵃsilent
+		else
+			Aᵃ = Aᵃinput[trial.clicks.inputindex[t][1]]
+		end
+		p𝐚[t] = Aᵃ * p𝐚[t-1]
+	end
+	return nothing
+end
+
+"""
+	accumulator_probability_given_choice!(p, choice, p𝐚_end, ψ)
+
+Conditional distribution of the accumulator variable given the behavioral choice
+
+MODIFIED ARGUMENT
+-`p`: a vector serving as memory
+
+UNMODIFIED ARGUMENT
+-`Aᵃinput`: memory for computing the transition matrix during a timestep with stimulus input
+-`Aᵃsilent`: transition matrix during a timestep without stimulus input
+-`p𝐚`: distribution of the accumulator at the each time step of the trial
+-`ψ`: lapse rate
+-`trial`: a structure containing information on the trial being considered
+
+"""
+function accumulator_probability_given_choice!(p𝐚_𝑑::Vector{<:Vector{<:AbstractFloat}},
+											p𝑑_𝐚::Vector{<:AbstractFloat},
+											Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
+											Aᵃsilent::Matrix{<:AbstractFloat},
+											p𝐚::Vector{<:Vector{<:AbstractFloat}},
+											ψ::AbstractFloat,
+											trial::Trial)
+	choicelikelihood!(p𝑑_𝐚, trial.choice, ψ) # `p𝐚_𝑑[ntimesteps]` now reprsents p(𝑑 ∣ a)
+	p𝐚_𝑑[trial.ntimesteps] .= p𝑑_𝐚.*p𝐚[trial.ntimesteps] # `p𝐚_𝑑[ntimesteps]` now reprsents p(𝑑, a)
+	D = sum(p𝐚_𝑑[trial.ntimesteps])
+	p𝐚_𝑑[trial.ntimesteps] ./= D # `p𝐚_𝑑[ntimesteps]` now reprsents p(a ∣ 𝑑)
+	b = ones(length(p𝑑_𝐚))
+	for t = trial.ntimesteps-1:-1:1
+		inputindex = trial.clicks.inputindex[t+1]
+		if isempty(inputindex)
+			Aᵃ = Aᵃsilent
+		else
+			Aᵃ = Aᵃinput[inputindex[1]]
+		end
+		if t+1 == trial.ntimesteps
+			b = Aᵃ' * (p𝑑_𝐚.*b./D)
+		else
+			b = Aᵃ' * b
+		end
+		p𝐚_𝑑[t] = p𝐚[t] .* b
+	end
+	return nothing
+end
+
+"""
+	sampleaccumulator!(a, Aᵃinput, Aᵃsilent, p𝐚₁, trial)
+
+Sample the values of the accumulator variable in one trial
+
+MODIFIED ARGUMENT
+-`a`: a vector containing the sample value of the coupling variable in each time step
+
+UNMODIFIED ARGUMENT
+-`Aᵃinput`: memory for computing the transition matrix during a timestep with stimulus input
+-`Aᵃsilent`: transition matrix during a timestep without stimulus input
+-`p𝐚₁`: prior distribution of the accumulator
+-`trial`: a structure containing information on the trial being considered
+"""
+function sampleaccumulator!(a::Vector{<:Integer}, Aᵃinput::Vector{<:Matrix{<:Real}}, Aᵃsilent::Matrix{<:Real}, p𝐚₁::Vector{<:AbstractFloat}, trial::Trial)
+	a[1] = findfirst(rand() .< cumsum(p𝐚₁))
+	for t = 2:trial.ntimesteps
+		if isempty(trial.clicks.inputindex[t])
+			Aᵃ = Aᵃsilent
+		else
+			Aᵃ = Aᵃinput[trial.clicks.inputindex[t][1]]
+		end
+		p𝐚ₜ_aₜ₋₁ = Aᵃ[:,a[t-1]]
+		a[t] = findfirst(rand() .< cumsum(p𝐚ₜ_aₜ₋₁))
+	end
+	return nothing
+end
+
+"""
+	sample_accumulator_given_choice!(a, Aᵃinput, Aᵃsilent, p𝐚_𝑑, trial)
+
+A sample of the accumulator in one trial conditioned on the behavioral choice
+
+MODIFIED ARGUMENT
+-`a`: a vector representing the value of the accumulator at each time step of the trial
+
+UNMODIFIED ARGUMENT
+-`Aᵃinput`: vector of matrices used as memory for computing the transition probability of the accumulator on time steps with stimulus input
+-`Aᵃsilent`: transition probability of the accumulator on timesteps without stimulus input
+-`p𝐚`: probability of the accumulator at each time step of the trial
+-`p𝐚_end_𝑑`: posterior probability of the accumulator, given the choice, at the last time step. The i-th element represents p(a=ξᵢ ∣ 𝑑)
+-`trial`: structure containing information on a trial
+"""
+function sample_accumulator_given_choice!(a::Vector{<:Integer},
+										Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
+ 										Aᵃsilent::Matrix{<:AbstractFloat},
+										p𝐚::Vector{<:Vector{<:AbstractFloat}},
+										p𝐚_end_𝑑::Vector{<:AbstractFloat},
+										trial::Trial)
+	a[trial.ntimesteps] = findfirst(rand() .< cumsum(p𝐚_end_𝑑))
+	for t = trial.ntimesteps-1:-1:1
+		inputindex = trial.clicks.inputindex[t+1]
+		if isempty(inputindex)
+			Aᵃ = Aᵃsilent
+		else
+			Aᵃ = Aᵃinput[inputindex[1]]
+		end
+		p_𝐚ₜ_aₜ₊₁ = Aᵃ[a[t+1],:] .* p𝐚[t] ./ p𝐚[t+1][a[t+1]]
+		a[t] = findfirst(rand() .< cumsum(p_𝐚ₜ_aₜ₊₁))
+	end
+	return nothing
+end
+
+"""
+	samplecoupling!(c, Aᶜ, ntimesteps, πᶜ)
+
+Sample the values of the coupling variable in one trial
+
+MODIFIED ARGUMENT
+-`c`: a vector containing the sample value of the coupling variable in each time step
+
+ARGUMENT
+-`Aᶜ`: transition matrix of the coupling variable
+-`ntimesteps`: number of time steps in the trial
+-`πᶜ`: prior probability of the coupling variable
+"""
+function samplecoupling!(c::Vector{<:Integer}, Aᶜ::Matrix{<:Real}, ntimesteps::Integer, πᶜ::Vector{<:Real})
+	if length(πᶜ) == 1
+		c .= 1
+	else
+		cumulativep𝐜 = cumsum(πᶜ)
+	    c[1] = findfirst(rand() .< cumulativep𝐜)
+		cumulativeAᶜ = cumsum(Aᶜ, dims=1)
+	    for t = 2:ntimesteps
+	        cumulativep𝐜 = cumulativeAᶜ[:,c[t-1]]
+	        c[t] = findfirst(rand() .< cumulativep𝐜)
+	    end
+	end
+	return nothing
+end
+
+"""
+	sample(a_end, ψ, Ξ)
+
+Sample a choice on a trial
+
+ARGUMENT
+-`a_end`: state of the accumulator at the last time step of the trial
+-`ψ`: lapse rate
+-`Ξ`: number of states that the accumulator can take
+"""
+function sample(a_end::Integer, ψ::AbstractFloat, Ξ::Integer)
+	zeroindex = cld(Ξ,2)
+	if a_end < zeroindex
+		p_right_choice = ψ/2
+	elseif a_end > zeroindex
+		p_right_choice = 1-ψ/2
+	else a_end == zeroindex
+		p_right_choice = 0.5
+	end
+	choice = rand() < p_right_choice
+end
+
+"""
+	sample(a, c, 𝛕, mpGLM)
+
+Generate a sample of spiking response on each time step of one trial
+
+ARGUMENT
+-`a`: a vector representing the state of the accumulator at each time step of a trial. Note that length(a) >= length(𝛕).
+-`c`: a vector representing the state of the coupling variable at each time step. Note that length(c) >= length(𝛕).
+-`𝐄𝐞`: input from events
+-`𝐡`: weight of post-spikefilter at each time lag
+-`mpGLM`: a structure containing information on the mixture of Poisson GLM of a neuron
+-`𝛚`: transformed values of the accumulator
+-`𝛕`: time steps in the trialset. The number of time steps in the trial corresponds to the length of 𝛕.
+
+RETURN
+-`𝐲̂`: a vector representing the sampled spiking response at each time step
+"""
+function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer}, )
+	@unpack Δt, Φₕ, 𝐕, 𝐲 = mpGLM
+	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	max_spikehistory_lag = size(Φₕ,1)
+	K𝐠 = length(𝐠)
+	K𝐯 = length(𝐯)
+	max_spikes_per_step = floor(1000Δt)
+    𝐲̂ = zeros(Int, length(𝛕))
+    for t = 1:length(𝛕)
+        τ = 𝛕[t]
+        j = a[t]
+        k = c[t]
+		gₖ = 𝐠[min(k, K𝐠)]
+		𝐯ₖ = 𝐯[min(k, K𝐯)]
+		L = gₖ + 𝐄𝐞[τ]
+		for i in eachindex(𝐯ₖ)
+			L+= 𝛚[j]*𝐕[τ,i]*𝐯ₖ[i]
+		end
+		for lag = 1:min(max_spikehistory_lag, t-1)
+			if 𝐲̂[t-lag] > 0
+				L += 𝐡[lag]*𝐲̂[t-lag]
+			end
+		end
+        λ = softplus(L)
+        𝐲̂[t] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
+    end
+	return 𝐲̂
+end
+
+"""
     expectedemissions(model; nsamples=100)
 
 Compute the probability of a right choice and the expected spike rate
@@ -66,32 +391,9 @@ RETURN
 -an instance of `Trial` containing the generated behavioral choice as well as the sequence of latent variables
 """
 function sample!(memory::Memoryforgradient, P::Probabilityvector, θnative::Latentθ, trial::Trial)
-    @unpack Aᵃinput, Aᵃsilent, Aᶜ, Δt, πᶜ, Ξ = memory
-    @unpack clicks = trial
-	@unpack inputtimesteps, inputindex = clicks
-    a = zeros(Int, trial.ntimesteps)
-    c = zeros(Int, trial.ntimesteps)
-	priorprobability!(P, trial.previousanswer)
-	p𝐚 = P.𝛑
-	p𝐜 = πᶜ
-    a[1] = findfirst(rand() .< cumsum(p𝐚))
-    c[1] = findfirst(rand() .< cumsum(p𝐜))
-	if length(clicks.time) > 0
-		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	end
-    for t = 2:trial.ntimesteps
-        if isempty(clicks.inputindex[t])
-			Aᵃ = Aᵃsilent
-		else
-			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
-			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-			transitionmatrix!(Aᵃ, P)
-		end
-		p𝐚 = Aᵃ[:,a[t-1]]
-        p𝐜 = Aᶜ[:,c[t-1]]
-        a[t] = findfirst(rand() .< cumsum(p𝐚))
-        c[t] = findfirst(rand() .< cumsum(p𝐜))
-    end
+    @unpack Aᵃinput, Aᵃsilent, Aᶜ, πᶜ, Ξ = memory
+	c = samplecoupling(Aᶜ, trial.ntimesteps, πᶜ)
+    a = sampleaccumulator(Aᵃinput, Aᵃsilent, P, θnative, trial)
 	zeroindex = cld(Ξ,2)
 	if a[end] < zeroindex
 		p_right_choice = θnative.ψ[1]/2
@@ -111,6 +413,72 @@ function sample!(memory::Memoryforgradient, P::Probabilityvector, θnative::Late
 end
 
 """
+	sampleaccumulator(Aᵃinput, Aᵃsilent, P, θnative, trial)
+
+Sample the values of the accumulator variable in one trial
+
+ARGUMENT
+-`Aᵃinput`: memory for computing the transition matrix during a timestep with stimulus input
+-`Aᵃsilent`: transition matrix during a timestep without stimulus input
+-`P`: memory for computing the prior probability or transition matrix
+-`θnative`: parameters controlling the latent variables in native space
+-`trial`: a structure containing information on the trial being considered
+
+RETURN
+-`a`: a vector containing the sample value of the coupling variable in each time step
+"""
+function sampleaccumulator(Aᵃinput::Vector{<:Matrix{<:Real}}, Aᵃsilent::Matrix{<:Real}, P::Probabilityvector, θnative::Latentθ, trial::Trial)
+	@unpack clicks, ntimesteps, previousanswer,
+	a = zeros(Int, ntimesteps)
+	priorprobability!(P, previousanswer)
+	a[1] = findfirst(rand() .< cumsum(P.𝛑))
+	if length(clicks.time) > 0
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	end
+	for t = 2:ntimesteps
+		if isempty(clicks.inputindex[t])
+			Aᵃ = Aᵃsilent
+		else
+			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
+			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
+			transitionmatrix!(Aᵃ, P)
+		end
+		p𝐚 = Aᵃ[:,a[t-1]]
+		a[t] = findfirst(rand() .< cumsum(p𝐚))
+	end
+	return a
+end
+
+"""
+	samplecoupling(Aᶜ, ntimesteps, πᶜ)
+
+Sample the values of the coupling variable in one trial
+
+ARGUMENT
+-`Aᶜ`: transition matrix of the coupling variable
+-`ntimesteps`: number of time steps in the trial
+-`πᶜ`: prior probability of the coupling variable
+
+RETURN
+-`c`: a vector containing the sample value of the coupling variable in each time step
+"""
+function samplecoupling(Aᶜ::Matrix{<:Real}, ntimesteps::Integer, πᶜ::Vector{<:Real})
+	if length(πᶜ) == 1
+		return ones(Int, ntimesteps)
+	else
+		c = zeros(Int, ntimesteps)
+		cumulativep𝐜 = cumsum(πᶜ)
+	    c[1] = findfirst(rand() .< cumulativep𝐜)
+		cumulativeAᶜ = cumsum(Aᶜ, dims=1)
+	    for t = 2:ntimesteps
+	        cumulativep𝐜 = cumulativeAᶜ[:,c[t-1]]
+	        c[t] = findfirst(rand() .< cumulativep𝐜)
+	    end
+		return c
+	end
+end
+
+"""
 	sampleemissions(mpGLM, trials)
 
 Generate one sample from the mixture of Poisson generalized linear model (GLM) of a neuron
@@ -123,8 +491,9 @@ RETURN
 -`𝐲̂`: a sample of the spike train response for each timestep
 """
 function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
-	@unpack Δt, d𝛏_dB, Φₕ, 𝐗, 𝐕, 𝐲 = mpGLM
+	@unpack Δt, Φₕ, 𝐗, 𝐕, 𝐲 = mpGLM
 	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	𝛚 = transformaccumulator(mpGLM)
 	max_spikehistory_lag, n_spikehistory_parameters = size(Φₕ)
 	𝐡 = Φₕ*𝐮[1:n_spikehistory_parameters]
 	𝐞 = 𝐮[n_spikehistory_parameters+1:end]
@@ -133,7 +502,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
 	𝐄𝐞 = 𝐄*𝐞
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
-	Ξ = length(d𝛏_dB)
+	Ξ = length(𝛚)
 	max_spikes_per_step = floor(1000Δt)
     𝐲̂ = similar(𝐲)
     τ = 0
@@ -146,7 +515,7 @@ function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
 			𝐯ₖ = 𝐯[min(k, K𝐯)]
 			L = gₖ + 𝐄𝐞[τ]
 			for i in eachindex(𝐯ₖ)
-				L+= d𝛏_dB[j]*𝐕[τ,i]*𝐯ₖ[i]
+				L+= 𝛚[j]*𝐕[τ,i]*𝐯ₖ[i]
 			end
 			for lag = 1:min(max_spikehistory_lag, t-1)
 				if 𝐲̂[τ-lag] > 0
@@ -247,7 +616,9 @@ RETURN
 """
 function sample(mpGLM::MixturePoissonGLM, sampledtrials::Vector{<:Trial})
     𝐲̂ = sampleemissions(mpGLM, sampledtrials)
-	θ = GLMθ(𝐠 = copy(mpGLM.θ.𝐠),
+	θ = GLMθ(b = copy(mpGLM.θ.b),
+			b_scalefactor = mpGLM.θ.b_scalefactor,
+			𝐠 = copy(mpGLM.θ.𝐠),
 			𝐮 = copy(mpGLM.θ.𝐮),
 			𝐯 = map(𝐯ₖ->copy(𝐯ₖ), mpGLM.θ.𝐯))
     MixturePoissonGLM(Δt=mpGLM.Δt,

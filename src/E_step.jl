@@ -89,69 +89,64 @@ julia> γ = posteriors(model)
 """
 function posteriors(model::Model)
 	memory = Memoryforgradient(model)
-	posteriors!(memory, model)
+	P = update!(memory, model, concatenateparameters(model)[1])
+	posteriors!(memory, P, model)
 	return memory.γ
 end
 
 """
 	posteriors!(memory, model)
 
-Compute the joint posteriors of the latent variables at each time step.
+Compute the posterior distribution of the latent variables
 
-ARGUMENT
--`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion mode
-```
+MODIFIED ARGUMENT
+-`memory`: structure containing the memory for computing the gradient of the log-likelihood of the model
+
+UNMODIFIED ARGUMENT
+-`model`: structure containing the parameters, data, and hyperparameters
 """
-function posteriors!(memory::Memoryforgradient, model::Model)
-	P = update!(memory, model, concatenateparameters(model)[1])
-	memory.ℓ .= 0.0
-	@inbounds for s in eachindex(model.trialsets)
-		for m in eachindex(model.trialsets[s].trials)
-			posteriors!(memory, P, model, s, m)
+function posteriors!(memory::Memoryforgradient, P::Probabilityvector, model::Model)
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			forward!(memory, P, model.θnative, trial)
+			backward!(memory, P, trial)
 		end
 	end
 	return nothing
 end
 
 """
-	posteriors!(memory, model, P, s, m)
+	forward!(memory, P, θnative, trial)
 
-Update the posteriors of a single trial
-
-Update the gradient
+Compute the forward terms and the log-likelihood
 
 MODIFIED ARGUMENT
 -`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
 -`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
 
 UNMODIFIED ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters of the model
--`s`: index of the trialset
--`m`: index of the trial
+-`i`: triaset index
+-`m`: trial index
+-`model`: structure containing the parameters, hyperparameters, and settings of the model
 """
-function posteriors!(memory::Memoryforgradient,
-					P::Probabilityvector,
-					model::Model,
-					s::Integer,
-					m::Integer)
-	trial = model.trialsets[s].trials[m]
-	p𝐘𝑑 = memory.p𝐘𝑑[s][m]
-	@unpack θnative = model
-	@unpack clicks = trial
-	@unpack inputtimesteps, inputindex = clicks
-	@unpack Aᵃinput, Aᵃsilent, Aᶜ, Aᶜᵀ, D, f, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, ℓ, ∇ℓlatent, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, ∇pa₁, πᶜ, ∇πᶜ, Ξ = memory
+function forward!(memory::Memoryforgradient, P::Probabilityvector, θnative::Latentθ, trial::Trial)
+	@unpack clicks, index_in_trialset, τ₀, trialsetindex = trial
+	@unpack Aᵃinput, Aᵃsilent, Aᶜᵀ, D, f, K, ℓ, p𝐚₁, πᶜ, Ξ = memory
+	γ = memory.γ[trialsetindex]
+	p𝐘𝑑 = memory.p𝐘𝑑[trialsetindex][index_in_trialset]
 	t = 1
 	priorprobability!(P, trial.previousanswer)
+	p𝐚₁ .= P.𝛑
 	@inbounds for j=1:Ξ
 		for k = 1:K
-			f[t][j,k] = p𝐘𝑑[t][j,k] * P.𝛑[j] * πᶜ[k]
+			f[t][j,k] = p𝐘𝑑[t][j,k] * p𝐚₁[j] * πᶜ[k]
 		end
 	end
 	D[t] = sum(f[t])
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
-	if length(trial.clicks.time) > 0
-		adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
@@ -167,8 +162,31 @@ function posteriors!(memory::Memoryforgradient,
 		f[t] ./= D[t]
 		ℓ[1] += log(D[t])
 	end
+	return nothing
+end
+
+"""
+	backward!(memory, P, trial)
+
+Compute the posterior probability of the latent variables
+
+MODIFIED ARGUMENT
+-`γ`: posterior probability of the latent variables on each timestep in a trialset. Element `γ[i,j][τ]` corresponds to the posterior probability of the accumulator in the i-th state and the coupling variable in the j-th state in the τ-th timestep in the trialset.
+-`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
+-`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
+
+UNMODIFIED ARGUMENT
+-`p𝐘𝑑`: conditional likelihood of the emissions in one trial. Element `p𝐘𝑑[t][i,j]` corresponds to t-th time step of the trial, i-th accumulator state, and j-th coupling state
+-`τ₀`: number of time steps summed across all preceding trials in the trialset
+-`trial`: structure containing information regarding one trial
+"""
+function backward!(memory::Memoryforgradient, P::Probabilityvector, trial::Trial)
+	@unpack clicks, index_in_trialset, τ₀, trialsetindex = trial
+	@unpack Aᵃinput, Aᵃsilent, Aᶜ, D, K, Ξ = memory
+	γ = memory.γ[trialsetindex]
+	p𝐘𝑑 = memory.p𝐘𝑑[trialsetindex][index_in_trialset]
+	f⨀b = memory.f # reuse memory
 	b = ones(Ξ,K)
-	f⨀b = f # reuse memory
 	@inbounds for t = trial.ntimesteps-1:-1:1
 		if t+1 ∈ clicks.inputtimesteps
 			clickindex = clicks.inputindex[t+1][1]
@@ -179,15 +197,11 @@ function posteriors!(memory::Memoryforgradient,
 		b = transpose(Aᵃₜ₊₁) * (b.*p𝐘𝑑[t+1]./D[t+1]) * Aᶜ
 		f⨀b[t] .*= b
 	end
-	offset = 0
-	for i = 1:m-1
-		offset += model.trialsets[s].trials[i].ntimesteps
-	end
 	for t = 1:trial.ntimesteps
-		τ = offset+t
+		τ = τ₀+t
 		for i = 1:Ξ
-			for k = 1:K
-				memory.γ[s][i,k][τ] = f⨀b[t][i,k]
+			for j = 1:K
+				γ[i,j][τ] = f⨀b[t][i,j]
 			end
 		end
 	end
@@ -259,8 +273,8 @@ function joint_posteriors_of_coupling!(memory::Memoryforgradient,
 	D[t] = sum(f[t])
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
-	if length(trial.clicks.time) > 0
-		adaptedclicks = adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
+	if length(clicks.time) > 0
+		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
@@ -365,13 +379,8 @@ julia> γ = FHMDDM.choiceposteriors(model)
 ```
 """
 function choiceposteriors!(memory::Memoryforgradient, model::Model)
-	θ = concatenateparameters(model)[1]
 	P = update_for_choice_posteriors!(memory, model)
-	@inbounds for s in eachindex(model.trialsets)
-		for m in eachindex(model.trialsets[s].trials)
-			posteriors!(memory, P, model, s, m)
-		end
-	end
+	posteriors!(memory, P, model)
 	return nothing
 end
 

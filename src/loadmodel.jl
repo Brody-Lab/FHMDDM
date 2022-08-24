@@ -60,9 +60,7 @@ ARGUMENT
 RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function Model(options::Options,
-		 		resultspath::String,
-		 		trialsets::Vector{<:Trialset})
+function Model(options::Options, resultspath::String, trialsets::Vector{<:Trialset})
     resultsMAT = matopen(resultspath)
 	glmθ = read(resultsMAT, "thetaglm")
 	for i in eachindex(trialsets)
@@ -76,8 +74,9 @@ function Model(options::Options,
 			end
 		end
 	end
-	𝛂 = vec(read(resultsMAT, "penaltycoefficients"))
-	gaussianprior = GaussianPrior(options, trialsets, 𝛂)
+	gaussianprior = GaussianPrior(options, trialsets)
+	gaussianprior.𝛂 .= vec(read(resultsMAT, "penaltycoefficients"))
+    precisionmatrix!(gaussianprior)
 	Model(options=options,
 		   gaussianprior=gaussianprior,
 		   θnative=Latentθ(read(resultsMAT, "theta_native")),
@@ -178,10 +177,12 @@ OUTPUT
 -an instance of `trialsetdata`
 """
 function Trialset(options::Options, trialset::Dict)
+	inttype = typeof(1)
+	floattype = typeof(1.0)
     rawtrials = vec(trialset["trials"])
 	movementtimes_s = map(x->x["movementtimes_s"], rawtrials)
 	@assert all(movementtimes_s.>0)
-    𝐓 = map(x->convert(Int64, x["ntimesteps"]), rawtrials)
+    𝐓 = map(x->convert(inttype, x["ntimesteps"]), rawtrials)
 	units = vec(trialset["units"])
     𝐘 = map(x->convert.(typeof(1), vec(x["y"])), units)
 	Ttrialset = sum(𝐓)
@@ -221,15 +222,21 @@ function Trialset(options::Options, trialset::Dict)
 			rightclicks = x["R"]
 			typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
 		end
-	@assert typeof(trialset["lagged"]["lag"])==Float64  && trialset["lagged"]["lag"] == -1.0
-    previousanswer = vec(convert.(Int64, trialset["lagged"]["answer"]))
+	@assert typeof(trialset["lagged"]["lag"])==floattype  && trialset["lagged"]["lag"] == -1.0
+    previousanswer = vec(convert.(inttype, trialset["lagged"]["answer"]))
     clicks = map((L,R,T)->Clicks(options.a_latency_s, options.Δt,L,T,R), L, R, 𝐓)
-    trials = map(clicks, rawtrials, movementtimes_s, 𝐓, previousanswer) do clicks, rawtrial, movementtime_s, T, previousanswer
+	preceding_timesteps = vcat(0, cumsum(𝐓[1:end-1]))
+	indices_in_trialset = 1:length(𝐓)
+    trialsetindex = haskey(trialset, "index") ? convert(inttype, trialset["index"]) : 1
+    trials = map(clicks, indices_in_trialset, rawtrials, movementtimes_s, 𝐓, preceding_timesteps, previousanswer) do clicks, index_in_trialset, rawtrial, movementtime_s, T, preceding_timesteps, previousanswer
                 Trial(clicks=clicks,
                       choice=rawtrial["choice"],
 					  movementtime_s=movementtime_s,
                       ntimesteps=T,
-                      previousanswer=previousanswer)
+                      previousanswer=previousanswer,
+					  index_in_trialset = index_in_trialset,
+					  τ₀ = preceding_timesteps,
+					  trialsetindex = trialsetindex)
              end
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end

@@ -299,6 +299,26 @@ function differentiate_native_wrt_real(r::Real, l::Real, u::Real)
 end
 
 """
+	dictionary(model)
+
+Package a subset of the fields of the model into a dictionary
+"""
+function dictionary(model::Model)
+	Dict("theta_native"=> dictionary(model.θnative),
+        "theta_real"=> dictionary(model.θreal),
+        "theta0_native" => dictionary(model.θ₀native),
+        "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
+        "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φₐ,
+        "Phihistory"=>model.trialsets[1].mpGLMs[1].Φₕ,
+        "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φₘ,
+        "Phitime"=>model.trialsets[1].mpGLMs[1].Φₜ,
+        "penaltycoefficients"=>model.gaussianprior.𝛂,
+        "penaltymatrices"=>model.gaussianprior.𝐀,
+        "penaltymatrixindices"=>model.gaussianprior.index𝐀,
+        "precisionmatrix"=>model.gaussianprior.𝚲)
+end
+
+"""
     dictionary(options)
 
 Convert an instance of `Options` to a dictionary
@@ -401,9 +421,12 @@ Convert an instance of `trialdata` into a `Dict`
 function dictionary(trial::Trial)
     Dict("choice" => trial.choice,
          "clicks" => dictionary(trial.clicks),
+		 "index_in_trialset" => trial.index_in_trialset,
 		 "movementtime_s"=> trial.movementtime_s,
 		 "ntimesteps"=> trial.ntimesteps,
 		 "previousanswer" => trial.previousanswer,
+		 "tau_0" => trial.τ₀,
+		 "trialsetindex" => trial.trialsetindex,
          "a"=>trial.a,
          "c"=>trial.c)
 end
@@ -475,6 +498,22 @@ function dictionary(θ::Latentθ)
 		"sigma2_i"=>θ.σ²ᵢ[1],
 		"sigma2_s"=>θ.σ²ₛ[1],
 		"w_h"=>θ.wₕ[1])
+end
+
+"""
+	dictionary(predictions)
+
+Package an instance `Predictions` as a dictionary
+"""
+function dictionary(predictions::Predictions)
+	Dict("pa" => predictions.p𝐚,
+        "pa_d" => predictions.p𝐚_𝑑,
+        "pa_Yd" => predictions.p𝐚_𝐘𝑑,
+        "pc_Yd" => predictions.p𝐜_𝐘𝑑,
+        "pd" => predictions.p𝑑,
+        "lambdaDeltat" => predictions.λΔt,
+        "lambdaDeltat_d" => predictions.λΔt_𝑑,
+		"nsamples" => predictions.nsamples)
 end
 
 """

@@ -245,12 +245,18 @@ Spike trains are not included. In sampled data, the generatives values of the la
     clicks::TC
     "behavioral choice"
     choice::TB
+	"index of the trial in the trialset"
+	index_in_trialset::TI
 	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
 	movementtime_s::TF
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
+	"number of timesteps in the trialset preceding this trial"
+	τ₀::TI
+    "index of the trialset to which this trial belongs"
+	trialsetindex::TI
     "generative values of the accumulator index variable (𝐚). This is nonempty only in sampled data"
     a::VI=Vector{Int}(undef,0)
     "generative values of the coupling variable (𝐜). This is nonempty only in sampled data"
@@ -981,6 +987,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	Ξ::TI
 	"condition likelihood of a behavioral choice"
 	p𝑑_a::VVVR
+	"prior distribution of the accumulator"
+	p𝐚₁::VR=zeros(eltype(Aᵃsilent),Ξ)
 end
 
 """
@@ -1059,4 +1067,29 @@ end
 	p𝑑::VR=zeros(Ξ)
 	"derivative of the conditional likelihood of a choice with respect to the lapse parameter ψ. Element `∂p𝑑_∂ψ[i]` corresponds to the i-th accumulator state"
 	∂p𝑑_∂ψ::VR=zeros(Ξ)
+end
+
+"""
+	Expected output of the model and conditional probabilities of the mdoel
+"""
+@with_kw struct Predictions{TI<:Integer,
+							VVF<:Vector{<:Vector{<:AbstractFloat}},
+							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}},
+							VVVVF<:Vector{<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}}}
+	"probability of the accumulator variable"
+	p𝐚::VVVVF
+	"posterior probability of the accumulator variable conditioned on the behavioral choice"
+	p𝐚_𝑑::VVVVF
+	"posterior probability of the accumulator variable conditioned on both the behavioral choice and the spiking"
+	p𝐚_𝐘𝑑::VVVVF
+	"posterior probability of the coupling variable conditioned on both the behavioral choice and the spiking"
+	p𝐜_𝐘𝑑::VVVVF
+	"expected probability of a right choice, estimated as the mean across samples"
+	p𝑑::VVF
+	"expected spike response, estimated as the mean across samples"
+	λΔt::VVVF
+	"expected spike response conditioned on the observed behavioral choice. This is computed by first calculating the conditional probability of the accumulator at the last time step, given the observed choice, and then generating values of the accumulator backward in time."
+	λΔt_𝑑::VVVF
+	"number of samples used to compute the predictions"
+	nsamples::TI
 end
