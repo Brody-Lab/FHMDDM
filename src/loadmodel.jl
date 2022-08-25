@@ -65,6 +65,7 @@ function Model(options::Options, resultspath::String, trialsets::Vector{<:Trials
 	glmθ = read(resultsMAT, "thetaglm")
 	for i in eachindex(trialsets)
 		for n in eachindex(trialsets[i].mpGLMs)
+			trialsets[i].mpGLMs[n].θ.b .= glmθ[i][n]["b"]
 			trialsets[i].mpGLMs[n].θ.𝐮 .= glmθ[i][n]["u"]
         	for k in eachindex(glmθ[i][n]["g"])
 				trialsets[i].mpGLMs[n].θ.𝐠[k] = glmθ[i][n]["g"][k]

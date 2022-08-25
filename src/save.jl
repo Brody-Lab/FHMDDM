@@ -1,41 +1,79 @@
 """
+    analyzeandsave(model)
+
+Perform analyses on the model and save the analyses and the model
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and settings
+
+OPTIONAL ARGUMENT
+-`prefix`: prefix to the name of the files to be saved
+"""
+function analyzeandsave(model::Model; prefix="results")
+    save(model::Model, prefix)
+    folderpath = dirname(model.options.resultspath)
+    save(Predictions(model), folderpath, prefix)
+    save(∇∇loglikelihood(model)[3], folderpath, prefix)
+end
+
+"""
     save(model)
 
 Save the results of a model into file compatible with both MATLAB and Julia
+
+Saved as `model.options.resultspath/<prefix>.mat`
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and settings
+-`prefix`: name of the file to be saved
 """
-function save(model::Model; filename="results.mat")
+function save(model::Model, prefix::String)
     dict = dictionary(model)
-    path = joinpath(dirname(model.options.resultspath), filename)
+    path = joinpath(dirname(model.options.resultspath), prefix*".mat")
     matwrite(path, dict)
     return nothing
 end
 
 """
-    save(model, predictions)
+    save(predictions, folderpath, prefix)
 
-Save the model parameters and the expectation of the emissions
+Save predictions of the model:
+-accumulator distribution: `folderpath/<prefix>_pa.mat`
+-choice-conditioned accumulator distribution: `folderpath/<prefix>_pa_d.mat`
+-choice- and spikes-conditioned accumulator distribution: `folderpath/<prefix>_pa_Yd.mat`
+-choice- and spikes-conditioned coupling distribution: `folderpath/<prefix>_pc_Yd.mat`
+-probability choosing right: `folderpath/<prefix>_pd.mat`
+-spike counts: `folderpath/<prefix>_lambdaDeltat.mat`
+-choice-conditioned spike counts: `folderpath/<prefix>_lambdaDeltat_d.mat`
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and settings
+-'folderpath': full path of the folder
+-`prefix`: name of the file to be saved
 """
-function save(model::Model, predictions::Predictions; filename="results.mat")
-    modeldict = dictionary(model)
-    predictionsdict = dictionary(predictions)
-    dict = merge(modeldict, predictionsdict)
-    path = joinpath(dirname(model.options.resultspath), filename)
-    matwrite(path, dict)
+function save(predictions::Predictions, folderpath::String, prefix::String)
+    matwrite(joinpath(folderpath, prefix*"_pa"*".mat"), Dict("pa" => predictions.p𝐚))
+    matwrite(joinpath(folderpath, prefix*"_pa_d"*".mat"), Dict("pa_d" => predictions.p𝐚_𝑑))
+    matwrite(joinpath(folderpath, prefix*"_pa_Yd"*".mat"), Dict("pa_Yd" => predictions.p𝐚_𝐘𝑑))
+    matwrite(joinpath(folderpath, prefix*"_pc_Yd"*".mat"), Dict("pc_Yd" => predictions.p𝐜_𝐘𝑑))
+    matwrite(joinpath(folderpath, prefix*"_pd"*".mat"), Dict("pd" => predictions.p𝑑))
+    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat"*".mat"), Dict("lambdaDeltat" => predictions.λΔt))
+    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat_d"*".mat"), Dict("lambdaDeltat_d" => predictions.λΔt_𝑑))
     return nothing
 end
 
 """
-    save(hessian_loglikelihood, model, predictions)
+    save(hessian_loglikelihood, folderpath, prefix)
 
-Save the model parameters, predictions, and hessian of the log-likelihood
+Save the hessian of the log-likelihood as `folderpath/<prefix>_hessian_loglikelihood.mat`
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and settings
+-'folderpath': full path of the folder
+-`prefix`: name of the file to be saved
 """
-function save(hessian_loglikelihood::Matrix{<:AbstractFloat}, model::Model, predictions::Predictions; filename="results.mat")
-    modeldict = dictionary(model)
-    predictionsdict = dictionary(predictions)
-    hessiandict = Dict("hessian_loglikelihood"=>hessian_loglikelihood)
-    dict = merge(modeldict, predictionsdict, hessiandict)
-    path = joinpath(dirname(model.options.resultspath), filename)
-    matwrite(path, dict)
+function save(hessian_loglikelihood::Matrix{<:AbstractFloat}, folderpath::String, prefix::String)
+    matwrite(joinpath(folderpath, prefix*"_hessian_loglikelihood"*".mat"), Dict("hessian_loglikelihood"=>hessian_loglikelihood))
     return nothing
 end
 

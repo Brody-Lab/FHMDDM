@@ -11,7 +11,8 @@ using   Distributed,
         SpecialFunctions,
         StatsFuns
 import  Flux
-export  concatenateparameters,
+export  analyzeandsave,
+        concatenateparameters,
         crossvalidate,
         expectedemissions,
         initializeparameters!,
