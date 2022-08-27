@@ -14,7 +14,7 @@ OUTPUT
 -an instance of `GLMθ`
 """
 function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
-	@unpack K, gain_state_dependent, tuning_state_dependent = options
+	@unpack fit_b, K, gain_state_dependent, tuning_state_dependent = options
 	n𝐯 =size(𝐕,2)
 	n𝐮 = 𝐮indices_move[end]
 	𝐮 = 1.0 .- 2.0.*rand(n𝐮)
@@ -33,8 +33,9 @@ function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮ind
 			𝐯 = [ones(n𝐯)]
 		end
 	end
-	GLMθ(b = options.fit_b ? zeros(1) : zeros(0),
+	GLMθ(b = zeros(1),
 		b_scalefactor = options.b_scalefactor,
+		fit_b = options.fit_b,
 		𝐠 = 𝐠,
 		𝐮 = 𝐮,
 		𝐮indices_hist=𝐮indices_hist,
@@ -60,6 +61,7 @@ RETURN
 function GLMθ(glmθ::GLMθ, elementtype)
 	GLMθ(b = zeros(elementtype, length(glmθ.b)),
 		b_scalefactor = glmθ.b_scalefactor,
+		fit_b = glmθ.fit_b,
 		𝐠 = zeros(elementtype, length(glmθ.𝐠)),
 		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
 		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
@@ -69,7 +71,7 @@ function GLMθ(glmθ::GLMθ, elementtype)
 end
 
 """
-	GLMθ(glmθ)
+	initialize(glmθ)
 
 Create an uninitialized instance of `GLMθ`
 """
@@ -98,11 +100,10 @@ function MixturePoissonGLM(concatenatedθ::Vector{T},
                         	Φₕ=mpGLM.Φₕ,
 							Φₘ=mpGLM.Φₘ,
 							Φₜ=mpGLM.Φₜ,
-							θ=GLMθ(mpGLM.θ, T),
+							θ=GLMθ(mpGLM.θ, concatenatedθ; offset=offset, omitb=omitb),
 							𝐕=mpGLM.𝐕,
 							𝐗=mpGLM.𝐗,
 							𝐲=mpGLM.𝐲)
-	sortparameters!(mpGLM.θ, concatenatedθ; offset=offset, omitb=omitb)
 	return mpGLM
 end
 
@@ -205,11 +206,7 @@ function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯 = mpGLM.θ
 	gₖ = 𝐠[min(length(𝐠), k)]
 	𝐯ₖ = 𝐯[min(length(𝐯), k)]
-	if length(b) > 0
-		transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-	else
-		transformedξ = d𝛏_dB[j]
-	end
+	transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
 	𝐗*vcat(gₖ, 𝐮, 𝐯ₖ.*transformedξ)
 end
 
@@ -406,7 +403,7 @@ julia> maximum(abs.(gauto .- ghand))
 ```
 """
 function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
-	@unpack Δt, d𝛏_dB, 𝐕, 𝐗, 𝐲 = mpGLM
+	@unpack Δt, 𝐕, 𝐗, 𝐲 = mpGLM
 	@unpack 𝐯 = mpGLM.θ
 	𝛚 = transformaccumulator(mpGLM)
 	d𝛚_db = dtransformaccumulator(mpGLM)
@@ -414,7 +411,9 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	T = length(𝐲)
 	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
 	∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
-	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
+	if ∇Q.fit_b
+		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
+	end
 	@inbounds for i = 1:Ξ
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
@@ -422,7 +421,9 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
 				∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
-				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k][t] += dQᵢₖ_dLᵢₖ*d𝛚_db[i]
+				if ∇Q.fit_b
+					∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k][t] += dQᵢₖ_dLᵢₖ*d𝛚_db[i]
+				end
 			end
 		end
 	end
@@ -434,12 +435,12 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	end
 	if length(∇Q.𝐯) == K
 		@inbounds for k = 1:K
-			∇Q.𝐯[k] .=  𝐕'*∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k]
+			mul!(∇Q.𝐯[k], 𝐕', ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 		end
 	else
-		∇Q.𝐯[1] .= 𝐕' * sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ)
+		mul!(∇Q.𝐯[1], 𝐕', sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ))
 	end
-	if length(∇Q.b) > 0
+	if ∇Q.fit_b
 		if length(∇Q.𝐯) == K
 			∇Q.b[1] = 0.0
 			@inbounds for k = 1:K
@@ -503,7 +504,7 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real}, ∇ℓglm::Vector{<:
 	counter = offset
 	for ∇ℓglm in ∇ℓglm
 		for ∇ℓglm in ∇ℓglm
-			for b in ∇ℓglm.b
+			if ∇ℓglm.fit_b
 				counter+=1
 				∇nℓ[counter] = -b
 			end

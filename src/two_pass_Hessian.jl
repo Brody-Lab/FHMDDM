@@ -1,41 +1,4 @@
 """
-	check_∇∇loglikelihood(model)
-
-Compare the automatically computed and hand-coded gradients and hessians with respect to the parameters being fitted in their real space
-
-ARGUMENT
--`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
-
-RETURN
--`absdiffℓ`: absolute difference in the log-likelihood evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
--`absdiff∇`: absolute difference in the gradients
--`absdiff∇∇`: absolute difference in the hessians
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat"
-julia> model = Model(datapath)
-julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_∇∇loglikelihood(model)
-julia> println("")
-julia> println(datapath)
-julia> println("   max(|Δloss|): ", absdiffℓ)
-julia> println("   max(|Δgradient|): ", maximum(absdiff∇))
-julia> println("   max(|Δhessian|): ", maximum(absdiff∇∇))
-julia>
-```
-"""
-function check_∇∇loglikelihood(model::Model)
-	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood(model)
-	f(x) = FHMDDM.loglikelihood(x, indexθ, model)
-	ℓauto = f(concatenatedθ)
-	∇auto = ForwardDiff.gradient(f, concatenatedθ)
-	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
-	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand), abs.(∇∇auto .- ∇∇hand)
-end
-
-"""
     ∇∇loglikelihood(model)
 
 Hessian of the log-likelihood of the data
@@ -49,14 +12,18 @@ RETURN
 -`∇∇ℓ`: Hessian matrix of the log-likelihood with respect to the fitted parameters in real space
 """
 function ∇∇loglikelihood(model::Model)
-	indexθ = concatenateparameters(model)[2]
 	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
 	native2real!(∇ℓ, ∇∇ℓ, model)
 	if model.options.scalechoiceLL
 		∇∇scalechoiceLL!(ℓ, ∇ℓ, ∇∇ℓ, model)
 	end
-	∇ℓ = sortparameters(indexθ.latentθ, ∇ℓ)
-	∇∇ℓ = sortparameters(indexθ.latentθ, ∇∇ℓ)
+	indexθ = concatenateparameters(model)[2]
+	concatenatedindices = concatenate(indexθ)
+	isfitted = concatenatedindices .> 0
+	if !all(isfitted)
+		∇ℓ = ∇ℓ[isfitted]
+		∇∇ℓ = ∇∇ℓ[isfitted, isfitted]
+	end
 	return ℓ[1], ∇ℓ, ∇∇ℓ
 end
 
@@ -614,22 +581,18 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										τ::Integer)
 	@unpack 𝐗, 𝐕, 𝐲 = mpGLM
 	@unpack b, 𝐠, 𝐮, 𝐯 = mpGLM.θ
-	nb = length(b)
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
 	K = max(K𝐠, K𝐯)
 	n𝐮 = length(𝐮)
-	offset𝐠 = nb
-	offset𝐮 = nb + K𝐠-1
+	offset𝐮 = K𝐠
 	n𝐠𝐮 = n𝐮 + offset𝐮
 	n𝐯 = length(𝐯[1])
 	Ξ = length(𝛚)
-	if nb > 0
-		Vₜᵀ𝐯 = zeros(K𝐯)
-		for j = 1:K
-			for q=1:n𝐯
-				Vₜᵀ𝐯[j] += 𝐕[τ,q]*𝐯[j][q]
-			end
+	Vₜᵀ𝐯 = zeros(K𝐯)
+	for j = 1:K
+		for q=1:n𝐯
+			Vₜᵀ𝐯[j] += 𝐕[τ,q]*𝐯[j][q]
 		end
 	end
 	for i = 1:Ξ
@@ -639,28 +602,24 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 		for j = 1:K
 			d²ℓ_dL², dℓ_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
 			offset𝐯 = n𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
-			if nb > 0
-				dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
-				d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
-				∇logpy[1][i,j] = dℓ_dL*dL_db
-				∇∇logpy[1,1][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
-				if j > 1 && K𝐠 > 1
-					s = offset𝐠 + j - 1
-					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_db
-				end
-				for q=1:n𝐮
-					s = offset𝐮+q
-					∇∇logpy[1,s][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_db
-				end
-				for q=1:n𝐯
-					s = offset𝐯 + q
-					d²L_dvdb = 𝐕[τ,q]*d𝛚_db[i]
-					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_d𝐯[q]*dL_db + dℓ_dL*d²L_dvdb
-				end
+			dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
+			d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
+			∇logpy[1][i,j] = dℓ_dL*dL_db
+			∇∇logpy[1,1][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
+			if j > 1 && K𝐠 > 1
+				∇∇logpy[1,j][i,j] = d²ℓ_dL²*dL_db
+			end
+			for q=1:n𝐮
+				s = offset𝐮+q
+				∇∇logpy[1,s][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_db
+			end
+			for q=1:n𝐯
+				s = offset𝐯 + q
+				d²L_dvdb = 𝐕[τ,q]*d𝛚_db[i]
+				∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_d𝐯[q]*dL_db + dℓ_dL*d²L_dvdb
 			end
 			if j > 1 && K𝐠 > 1
-				s = offset𝐠 + j - 1
-				∇logpy[s][i,j] = dℓ_dL
+				∇logpy[j][i,j] = dℓ_dL
 			end
 			for q=1:n𝐮
 				s = offset𝐮+q
@@ -671,8 +630,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 				∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
 			end
 			if j > 1 && K𝐠 > 1
-				s = offset𝐠 + j - 1
-				∇∇logpy[s,s][i,j] = d²ℓ_dL²
+				∇∇logpy[j,j][i,j] = d²ℓ_dL²
 				for r=1:n𝐮
 					t = offset𝐮 + r
 					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+r]

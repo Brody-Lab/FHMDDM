@@ -268,11 +268,13 @@ end
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{R<:Real, VR<:Vector{<:Real}, UI<:UnitRange{<:Integer}, VVR<:Vector{<:Vector{<:Real}}}
+@with_kw struct GLMθ{B<:Bool, R<:Real, VR<:Vector{<:Real}, UI<:UnitRange{<:Integer}, VVR<:Vector{<:Vector{<:Real}}}
     "nonlinearity in accumulator transformation"
 	b::VR
 	"scale factor for the nonlinearity of accumulator transformation"
 	b_scalefactor::R
+	"whether the nonlinearity parameter is fit"
+	fit_b::B
     "state-dependent gain"
     𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"

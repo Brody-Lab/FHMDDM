@@ -235,7 +235,7 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, b_scalefactor::Real)
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
 	for indexᵢₙ in indexθglm
-		if length(indexᵢₙ.b) > 0
+		if indexᵢₙ.b[1] > 0
 			𝐀 = vcat(𝐀, [A])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
 		end

@@ -6,12 +6,12 @@ Initialize the GLM parameters
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
 """
-function initialize_GLM_parameters!(model::Model)
+function initialize_GLM_parameters!(model::Model; show_trace::Bool=true)
 	memory = FHMDDM.Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)
 	    for mpGLM in model.trialsets[i].mpGLMs
-	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i])
+	        maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i]; show_trace=show_trace)
 	    end
 	end
 	if model.options.gain_state_dependent
@@ -191,9 +191,10 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 										∇∇Q::Matrix{<:Real},
 										γ::Matrix{<:Vector{<:Real}},
 										mpGLM::MixturePoissonGLM)
-    @unpack Δt, 𝐕, 𝐗, d𝛏_dB, 𝐲 = mpGLM
+    @unpack Δt, 𝐕, 𝐗, 𝐲 = mpGLM
 	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
-	d𝛏_dB² = d𝛏_dB.^2
+	𝛚 = transformaccumulator(mpGLM)
+	𝛚² = 𝛚.^2
 	Ξ,K = size(γ)
 	T = length(𝐲)
 	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
@@ -212,11 +213,11 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 				Q[1] += γ[i,k][t]*ℓ
 				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
 				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
 				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*𝛚[i]
+				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*𝛚²[i]
 			end
 		end
 	end

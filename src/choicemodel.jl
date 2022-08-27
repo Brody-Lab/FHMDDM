@@ -9,15 +9,15 @@ MODIFIED ARGUMENT
 RETURN
 -`𝛂`: the precisions that maximize evidence
 """
-function fitonlychoices!(model::Model)
+function fitonlychoices!(model::Model; show_trace::Bool=true)
 	@unpack choiceobjective = model.options
 	if choiceobjective == "evidence"
-		𝛂 = maximize_evidence_choices!(model)
+		𝛂 = maximize_evidence_choices!(model; show_trace=show_trace)
 	elseif choiceobjective == "posterior"
-		maximize_choice_posterior!(model)
+		maximize_choice_posterior!(model; show_trace=show_trace)
 		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
 	elseif choiceobjective == "likelihood"
-		output = maximizechoiceLL!(model)
+		output = maximizechoiceLL!(model; show_trace=show_trace)
 		𝛂 = fill(NaN, length(concatenate_choice_related_parameters(model)[1]))
 	else
 		error(choiceobjective, " is not a recognized objective.")
@@ -80,6 +80,7 @@ function maximize_evidence_choices!(model::Model;
 								iterations::Int = 500,
 								max_consecutive_failures::Int=2,
 								outer_iterations::Int=10,
+								show_trace::Bool=true,
 								verbose::Bool=true,
 								g_tol::Real=1e-4,
 								x_reltol::Real=1e-1)
@@ -91,7 +92,7 @@ function maximize_evidence_choices!(model::Model;
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-	    results = maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, g_tol=g_tol)
+	    results = maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, g_tol=g_tol, show_trace=show_trace)
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
 				new_α = min(maximum(αrange), 10geomean(𝛂))
@@ -133,7 +134,7 @@ function maximize_evidence_choices!(model::Model;
 				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-			𝛂, normΔ = maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀; αrange=αrange)
+			𝛂, normΔ = maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀; αrange=αrange, show_trace=show_trace)
 			if verbose
 				println("Outer iteration ", i, ": new 𝛂 → ", 𝛂)
 			end
@@ -209,7 +210,7 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 						𝐇::Matrix{<:Real},
 						𝐰₀::Vector{<:Real};
 						αrange::Vector{<:Real}=[1e-8, 1e1],
-						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
+						show_trace::Bool=true,
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
 	𝚽 = Diagonal(𝛂₀)
 	𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
@@ -239,6 +240,7 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 		end
 		return nothing
 	end
+	optimizationoptions = Optim.Options(iterations=15, show_trace=show_trace, show_every=1)
 	optimizationresults = Optim.optimize(f, g!, 𝐱₀, optimizer, optimizationoptions)
 	𝐱̂ = Optim.minimizer(optimizationresults)
 	normΔ = 0.0
@@ -906,40 +908,6 @@ function update_drift_diffusion_transformation(model::Model)
 		θreal = model.θreal,
 		θ₀native = model.θ₀native,
 		trialsets = model.trialsets)
-end
-
-"""
-	check_∇∇choiceLL(model)
-
-Compare the automatically computed and hand-coded gradients and hessians with respect to the parameters being fitted in their real space
-
-ARGUMENT
--`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
-
-RETURN
--`absdiffℓ`: absolute difference in the log-likelihood evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
--`absdiff∇`: absolute difference in the gradients
--`absdiff∇∇`: absolute difference in the hessians
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
-julia> absdiffℓ, absdiff∇, absdiff∇∇ = FHMDDM.check_∇∇choiceLL(model)
-julia> println("   max(|Δloss|): ", absdiffℓ)
-julia> println("   max(|Δgradient|): ", maximum(absdiff∇))
-julia> println("   max(|Δhessian|): ", maximum(absdiff∇∇))
-julia>
-```
-"""
-function check_∇∇choiceLL(model::Model)
-	concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
-	ℓhand, ∇hand, ∇∇hand = ∇∇choiceLL(model)
-	f(x) = choiceLL(x, indexθ.latentθ, model)
-	ℓauto = f(concatenatedθ)
-	∇auto = ForwardDiff.gradient(f, concatenatedθ)
-	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
-	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand), abs.(∇∇auto .- ∇∇hand)
 end
 
 """

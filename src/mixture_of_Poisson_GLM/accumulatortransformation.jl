@@ -19,11 +19,7 @@ RETURN
 function transformaccumulator(mpGLM::MixturePoissonGLM)
 	@unpack d𝛏_dB = mpGLM
 	@unpack b, b_scalefactor = mpGLM.θ
-	if length(b) > 0
-		map(dξᵢ_dB->transformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
-	else
-		d𝛏_dB
-	end
+	map(dξᵢ_dB->transformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
 end
 
 """
@@ -40,11 +36,7 @@ RETURN
 function dtransformaccumulator(mpGLM::MixturePoissonGLM)
 	@unpack d𝛏_dB = mpGLM
 	@unpack b, b_scalefactor = mpGLM.θ
-	if length(b) > 0
 		d𝛚_db = map(dξᵢ_dB->dtransformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
-	else
-		d𝛚_db = map(dξᵢ_dB->dtransformaccumulator(0.0, dξᵢ_dB), d𝛏_dB)
-	end
 end
 
 """
@@ -61,9 +53,5 @@ RETURN
 function d²transformaccumulator(mpGLM::MixturePoissonGLM)
 	@unpack d𝛏_dB = mpGLM
 	@unpack b, b_scalefactor = mpGLM.θ
-	if length(b) > 0
-		d²𝛚_db² = map(dξᵢ_dB->d²transformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
-	else
-		d²𝛚_db² = map(dξᵢ_dB->d²transformaccumulator(0.0, dξᵢ_dB), d𝛏_dB)
-	end
+	d²𝛚_db² = map(dξᵢ_dB->d²transformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
 end

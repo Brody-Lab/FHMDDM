@@ -28,7 +28,7 @@ function sortparameters!(model::Model,
 		for n in eachindex(indexθ.glmθ[i])
 			@unpack θ = trialsets[i].mpGLMs[n]
 			index = indexθ.glmθ[i][n]
-			if length(θ.b) > 0
+			if θ.fit_b > 0
 				θ.b[1] = concatenatedθ[index.b[1]]
 			end
 			for k = 2:length(θ.𝐠)
@@ -71,61 +71,44 @@ function sortparameters!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::
 end
 
 """
-	sortparameters(latentθindex,∇ℓ)
+	concatenate(indexθ)
 
-Return the subset of first-order partial derivatives associated with parameters being fitted
-
-ARGUMENT
--`latentθindex`: index of each latent parameter in the gradient
--`∇ℓ`: gradient of the log-likelihood
-
-RETURN
--gradient of the log-likelihood with respect to only the parameters being fitted
+Concatenate the index of each parameter into a vector
 """
-function sortparameters(latentθindex::Latentθ, ∇ℓ::Vector{<:Real})
-	isfitted = trues(length(∇ℓ))
-	latentparameternames = fieldnames(FHMDDM.Latentθ)
-	isfitted[1:length(latentparameternames)] .= false
-	for j = 1:length(latentparameternames)
-		i = getfield(latentθindex, latentparameternames[j])[1]
-		if i > 0
-			isfitted[j] = true
+function concatenate(indexθ::Indexθ)
+	latentθnames = fieldnames(FHMDDM.Latentθ)
+	nθ = length(latentθnames)
+	for glmθindex in indexθ.glmθ
+		for glmθindex in glmθindex
+			nθ += 1 + length(glmθindex.𝐠)-1 + length(glmθindex.𝐮)
+			for 𝐯ₖ in glmθindex.𝐯
+				nθ += length(𝐯ₖ)
+			end
 		end
 	end
-	if any(isfitted .== false)
-		return ∇ℓ[isfitted]
-	else
-		return ∇ℓ
+	indices = zeros(Int, nθ)
+	counter = 0
+	latentθnames = fieldnames(FHMDDM.Latentθ)
+	for latentθname in latentθnames
+		indices[counter+=1] = getfield(indexθ.latentθ, latentθname)[1]
 	end
-end
-
-"""
-	sortparameters(latentθindex,∇∇ℓ)
-
-Return the subset of second-order partial derivatives associated with parameters being fitted
-
-ARGUMENT
--`latentθindex`: index of each latent parameter in the hessian
--`∇∇ℓ`: hessian of the log-likelihood
-
-RETURN
--hessian of the log-likelihood with respect to only the parameters being fitted
-"""
-function sortparameters(latentθindex::Latentθ, ∇∇ℓ::Matrix{<:Real})
-	isfitted = trues(size(∇∇ℓ,1))
-	latentparameternames = fieldnames(Latentθ)
-	isfitted[1:length(latentparameternames)] .= false
-	for j = 1:length(latentparameternames)
-		i = getfield(latentθindex, latentparameternames[j])[1]
-		if i > 0
-			isfitted[j] = true
+	for glmθindex in indexθ.glmθ
+		for glmθindex in glmθindex
+			indices[counter+=1] = glmθindex.b[1]
+			for k = 2:length(glmθindex.𝐠)
+				indices[counter+=1] = glmθindex.𝐠[k]
+			end
+			for q in glmθindex.𝐮
+				indices[counter+=1] = q
+			end
+			for 𝐯ₖ in glmθindex.𝐯
+				for q in 𝐯ₖ
+					indices[counter+=1] = q
+				end
+			end
 		end
 	end
-	if any(isfitted .== false)
-		return ∇∇ℓ[isfitted, isfitted]
-	else
-		return ∇∇ℓ
-	end
+	return indices
 end
 
 """
@@ -313,7 +296,7 @@ function concatenate_glm_parameters(offset::Integer, trialsets::Vector{<:Trialse
 	for i in eachindex(trialsets)
         for n in eachindex(trialsets[i].mpGLMs)
 			@unpack θ = trialsets[i].mpGLMs[n]
-			if length(θ.b)>0
+			if θ.fit_b
 				counter += 1
 				concatenatedθ[counter] = θ.b[1]
 				indexθ[i][n].b[1] = offset + counter
@@ -356,7 +339,7 @@ RETURN
 function concatenateparameters(θ::GLMθ; omitb::Bool=false)
 	concatenatedθ = zeros(eltype(θ.𝐮), countparameters(θ;omitb=omitb))
 	counter = 0
-	if (length(θ.b)>0) && (!omitb)
+	if θ.fit_b && !omitb
 		counter += 1
 		concatenatedθ[counter] = θ.b[1]
 	end
@@ -471,7 +454,7 @@ RETURN
 function firstindex(glmθindex::GLMθ)
 	@unpack b, 𝐠, 𝐮 = glmθindex
 	if length(𝐠) == 1
-		if length(b) > 0
+		if b[1] > 0
 			b[1]
 		else
 			𝐮[1]
@@ -552,7 +535,7 @@ function sortparameters!(θall::Vector{<:Real},
 						 index::GLMθ,
 						 θglm::Vector{<:Real})
 	counter = 0
-	if length(θ.b)>0
+	if θ.fit_b
 		counter+=1
 		θall[index.b[1]] = θglm[counter]
 	end
@@ -586,7 +569,7 @@ UNMODIFIED ARGUMENT
 """
 function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset::Integer=0, omitb::Bool=false)
 	counter = offset
-	if (length(θ.b)>0) && (!omitb)
+	if θ.fit_b && !omitb
 		counter+=1
 		θ.b[1] = concatenatedθ[counter]
 	end
@@ -608,6 +591,45 @@ function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset::Inte
 end
 
 """
+	GLMθ(θ, concatenatedθ)
+
+Create an instance of `GLMθ` by updating a pre-existing instance with new concatenated parameters
+
+ARGUMENT
+-`θ`: pre-existing instance of `GLMθ`
+-`concatenatedθ`: values of the parameters being fitted, concatenated into a vector
+
+OPTION ARGUMENT
+-`offset`: the number of unrelated parameters in `concatenatedθ` preceding the relevant parameters
+-`omitb`: whether to purposefully ignore the nonlinearity parameteter
+"""
+function GLMθ(θ::GLMθ, concatenatedθ::Vector{T}; offset::Integer, omitb::Bool=false) where {T<:Real}
+	θnew = GLMθ(θ, T)
+	counter = offset
+	if θnew.fit_b && !omitb
+		counter+=1
+		θnew.b[1] = concatenatedθ[counter]
+	else
+		θnew.b[1] = θ.b[1]
+	end
+	for k = 2:length(θ.𝐠)
+		counter+=1
+		θnew.𝐠[k] = concatenatedθ[counter]
+	end
+	for q in eachindex(θ.𝐮)
+		counter+=1
+		θnew.𝐮[q] = concatenatedθ[counter]
+	end
+	for k in eachindex(θ.𝐯)
+		for q in eachindex(θ.𝐯[k])
+			counter+=1
+			θnew.𝐯[k][q] = concatenatedθ[counter]
+		end
+	end
+	return θnew
+end
+
+"""
 	countparameters(θ)
 
 Count the number of parameters in the Poisson mixture GLM of one neuron
@@ -619,7 +641,7 @@ RETURN
 -number of parameters in the GLM
 """
 function countparameters(θ::GLMθ; omitb::Bool=false)
-	counter = omitb ? 0 : length(θ.b)
+	counter = omitb ? 0 : Int(θ.fit_b)
 	counter += length(θ.𝐠)-1
 	counter += length(θ.𝐮)
 	for 𝐯ₖ in θ.𝐯

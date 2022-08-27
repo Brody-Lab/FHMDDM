@@ -53,13 +53,13 @@ julia> model = Model(datapath)
 julia> FHMDDM.initializeparameters!(model)
 ```
 """
-function initializeparameters!(model::Model; verbose::Bool=true)
-	fitonlychoices!(model)
+function initializeparameters!(model::Model; show_trace::Bool=true, verbose::Bool=true)
+	fitonlychoices!(model; show_trace=show_trace)
 	if model.options.updateDDtransformation
 		model = update_drift_diffusion_transformation(model)
 	end
 	verbose && println("Initializing GLM parameters")
-	stats = @timed initialize_GLM_parameters!(model)
+	stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
 	verbose && println("Initializing the GLM parameters took ", stats.time, " seconds")
 	return nothing
 end
