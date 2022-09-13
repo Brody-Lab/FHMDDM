@@ -101,7 +101,7 @@ RETURN
 function Model(options::Options, trialsets::Vector{<:Trialset})
 	gaussianprior=GaussianPrior(options, trialsets)
 	θnative = randomize_latent_parameters(options)
-	θ₀native = Latentθ(([getfield(θnative, f)...] for f in fieldnames(typeof(θnative)))...) # making a deep copy
+	θ₀native = FHMDDM.copy(θnative)
 	Model(options=options,
 		   gaussianprior=gaussianprior,
 		   θnative=θnative,
@@ -109,6 +109,13 @@ function Model(options::Options, trialsets::Vector{<:Trialset})
 		   θ₀native=θ₀native,
 		   trialsets=trialsets)
 end
+
+"""
+	copy(latentθ)
+
+Make a copy of an instance of `Latentθ`
+"""
+FHMDDM.copy(latentθ::Latentθ) = Latentθ(([getfield(latentθ, f)...] for f in fieldnames(Latentθ))...)
 
 """
     Clicks(a_latency_s, L, R, Δt, ntimesteps)

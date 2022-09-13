@@ -71,6 +71,23 @@ function GLMθ(glmθ::GLMθ, elementtype)
 end
 
 """
+	FHMDDM.copy(glmθ)
+
+Make a copy of a structure containing the parameters of a mixture of Poisson GLM
+"""
+function FHMDDM.copy(glmθ::GLMθ)
+	GLMθ(b = copy(glmθ.b),
+		b_scalefactor = glmθ.b_scalefactor,
+		fit_b = glmθ.fit_b,
+		𝐠 = copy(glmθ.𝐠),
+		𝐮 = copy(glmθ.𝐮),
+		𝐯 = collect(copy(𝐯ₖ) for 𝐯ₖ in glmθ.𝐯),
+		𝐮indices_hist = copy(glmθ.𝐮indices_hist),
+		𝐮indices_time = copy(glmθ.𝐮indices_time),
+		𝐮indices_move = copy(glmθ.𝐮indices_move))
+end
+
+"""
 	initialize(glmθ)
 
 Create an uninitialized instance of `GLMθ`

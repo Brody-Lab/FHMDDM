@@ -6,7 +6,7 @@ Initialize the GLM parameters
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
 """
-function initialize_GLM_parameters!(model::Model; show_trace::Bool=true)
+function initialize_GLM_parameters!(model::Model; show_trace::Bool=false)
 	memory = FHMDDM.Memoryforgradient(model)
 	choiceposteriors!(memory, model)
 	for i in eachindex(model.trialsets)

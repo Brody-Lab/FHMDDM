@@ -171,7 +171,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 						model::Model,
 						𝐇::Matrix{<:Real},
 						𝛉₀::Vector{<:Real};
-						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=true, show_every=1),
+						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=false, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
 	@unpack gaussianprior = model
 	@unpack 𝛂min, 𝛂max, index𝚽, 𝚽 = gaussianprior

@@ -59,7 +59,7 @@ function initializeparameters!(model::Model; show_trace::Bool=true, verbose::Boo
 		model = update_drift_diffusion_transformation(model)
 	end
 	verbose && println("Initializing GLM parameters")
-	stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
+	stats = @timed initialize_GLM_parameters!(model; show_trace=false)
 	verbose && println("Initializing the GLM parameters took ", stats.time, " seconds")
 	return nothing
 end

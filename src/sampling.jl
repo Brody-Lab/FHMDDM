@@ -324,6 +324,52 @@ function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:A
 end
 
 """
+    sample(model)
+
+Generate latent and emission variables for all trials of all trialsets
+
+ARGUMENT
+-`model`: an instance of the factorial-hidden Markov drift-diffusion model
+
+OUTPUT
+-a structure with data sampled from the parameters of the model
+"""
+function sample(model::Model)
+	predictions = Predictions(model; nsamples=1)
+	newtrialsets = 	map(model.trialsets, predictions.p𝑑, predictions.λΔt) do trialset, p𝑑, λΔt
+						newtrials =	map(trialset.trials, p𝑑) do oldtrial, p𝑑
+										Trial(clicks=oldtrial.clicks,
+						                      choice=Bool(p𝑑),
+											  movementtime_s=oldtrial.movementtime_s,
+						                      ntimesteps=oldtrial.ntimesteps,
+						                      previousanswer=oldtrial.previousanswer,
+											  index_in_trialset=oldtrial.index_in_trialset,
+											  τ₀=oldtrial.τ₀,
+											  trialsetindex=oldtrial.trialsetindex)
+									end
+						new_mpGLMs = map(trialset.mpGLMs, λΔt) do old_mpGLM, λΔt
+										MixturePoissonGLM(Δt=old_mpGLM.Δt,
+						  								d𝛏_dB=old_mpGLM.d𝛏_dB,
+														Φₐ=old_mpGLM.Φₐ,
+														Φₕ=old_mpGLM.Φₕ,
+														Φₘ=old_mpGLM.Φₘ,
+														Φₜ=old_mpGLM.Φₜ,
+														θ=FHMDDM.copy(old_mpGLM.θ),
+														𝐕=old_mpGLM.𝐕,
+														𝐗=old_mpGLM.𝐗,
+														𝐲=convert.(Int,λΔt))
+									end
+						Trialset(trials=newtrials, mpGLMs=new_mpGLMs)
+					end
+		Model(options=model.options,
+			gaussianprior=GaussianPrior(model.options, newtrialsets),
+			θnative=FHMDDM.copy(model.θnative),
+			θreal=FHMDDM.copy(model.θreal),
+			θ₀native=FHMDDM.copy(model.θ₀native),
+			trialsets=newtrialsets)
+end
+
+"""
     expectedemissions(model; nsamples=100)
 
 Compute the probability of a right choice and the expected spike rate
@@ -527,27 +573,6 @@ function sampleemissions(mpGLM::MixturePoissonGLM, trials::Vector{<:Trial})
         end
     end
 	return 𝐲̂
-end
-
-"""
-    sample(model)
-
-Generate latent and emission variables for all trials of all trialsets
-
-ARGUMENT
--`model`: an instance of the factorial-hidden Markov drift-diffusion model
-
-OUTPUT
--`trialsets`: data sampled from the parameters of the model
-"""
-function sample(model::Model)
-	memory = Memoryforgradient(model)
-	P = update!(memory, model, concatenateparameters(model)[1])
-	map(model.trialsets) do trialset
-		sampledtrials =	map(trial->sample!(memory, P, model.θnative, trial), trialset.trials)
-		sampledmpGLMs =map(mpGLM->sample(mpGLM, sampledtrials), trialset.mpGLMs)
-		Trialset(mpGLMs=sampledmpGLMs, trials=sampledtrials)
-	end
 end
 
 """
