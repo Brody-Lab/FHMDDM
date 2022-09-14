@@ -188,7 +188,7 @@ function Trialset(options::Options, trialset::Dict)
 	inttype = typeof(1)
 	floattype = typeof(1.0)
     rawtrials = vec(trialset["trials"])
-	movementtimes_s = map(x->x["movementtimes_s"], rawtrials)
+	movementtimes_s = map(x->x["movementtime_s"], rawtrials)
 	@assert all(movementtimes_s.>0)
     𝐓 = map(x->convert(inttype, x["ntimesteps"]), rawtrials)
 	units = vec(trialset["units"])
@@ -230,18 +230,16 @@ function Trialset(options::Options, trialset::Dict)
 			rightclicks = x["R"]
 			typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
 		end
-	@assert typeof(trialset["lagged"]["lag"])==floattype  && trialset["lagged"]["lag"] == -1.0
-    previousanswer = vec(convert.(inttype, trialset["lagged"]["answer"]))
     clicks = map((L,R,T)->Clicks(options.a_latency_s, options.Δt,L,T,R), L, R, 𝐓)
 	preceding_timesteps = vcat(0, cumsum(𝐓[1:end-1]))
 	indices_in_trialset = 1:length(𝐓)
-    trialsetindex = haskey(trialset, "index") ? convert(inttype, trialset["index"]) : 1
-    trials = map(clicks, indices_in_trialset, rawtrials, movementtimes_s, 𝐓, preceding_timesteps, previousanswer) do clicks, index_in_trialset, rawtrial, movementtime_s, T, preceding_timesteps, previousanswer
+    trialsetindex = convert(inttype, trialset["index"])
+    trials = map(clicks, indices_in_trialset, rawtrials, preceding_timesteps) do clicks, index_in_trialset, rawtrial, preceding_timesteps
                 Trial(clicks=clicks,
                       choice=rawtrial["choice"],
-					  movementtime_s=movementtime_s,
-                      ntimesteps=T,
-                      previousanswer=previousanswer,
+					  movementtime_s=rawtrial["movementtime_s"],
+                      ntimesteps=convert(inttype, rawtrial["ntimesteps"]),
+                      previousanswer=convert(inttype, rawtrial["previousanswer"]),
 					  index_in_trialset = index_in_trialset,
 					  τ₀ = preceding_timesteps,
 					  trialsetindex = trialsetindex)

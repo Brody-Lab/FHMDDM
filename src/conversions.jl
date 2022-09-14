@@ -404,66 +404,6 @@ function dictionary(options::Options)
 end
 
 """
-    dictionary(trialset)
-
-Convert an instance of `trialsetdata` into a `Dict`
-"""
-function dictionary(trialset::Trialset)
-    Dict("mpGLMs" => map(mpGLM->dictionary(mpGLM), trialset.mpGLMs),
-         "trials" => map(trial->dictionary(trial), trialset.trials))
-end
-
-"""
-    dictionary(trial)
-
-Convert an instance of `trialdata` into a `Dict`
-"""
-function dictionary(trial::Trial)
-    Dict("choice" => trial.choice,
-         "clicks" => dictionary(trial.clicks),
-		 "index_in_trialset" => trial.index_in_trialset,
-		 "movementtime_s"=> trial.movementtime_s,
-		 "ntimesteps"=> trial.ntimesteps,
-		 "previousanswer" => trial.previousanswer,
-		 "tau_0" => trial.τ₀,
-		 "trialsetindex" => trial.trialsetindex,
-         "a"=>trial.a,
-         "c"=>trial.c)
-end
-
-"""
-    dictionary(clicks)
-
-Convert an instance of `Clicks` into a `Dict`
-"""
-function dictionary(clicks::Clicks)
-    Dict("time" => 		clicks.time,
-		 "inputtimesteps" => clicks.inputtimesteps,
-		 "inputindex" => clicks.inputindex,
-		 "source" => 	clicks.source,
-         "left" => 		clicks.left,
-         "right" =>		clicks.right)
-end
-
-"""
-    dictionary(mpGLM::MixturePoissonGLM)
-
-Convert into a dictionary a mixture of Poisson generalized linear model
-"""
-function dictionary(mpGLM::MixturePoissonGLM)
-    Dict("dt"=>mpGLM.Δt,
-	     "dxi_dB"=>mpGLM.d𝛏_dB,
-         "Phiaccumulator"=>mpGLM.Φₐ,
-	     "Phihistory"=>mpGLM.Φₕ,
-         "Phitime"=>mpGLM.Φₜ,
-		 "Phipremovement"=>mpGLM.Φₘ,
-         "theta"=>dictionary(mpGLM.θ),
-		 "V"=>mpGLM.𝐕,
-		 "X"=>mpGLM.𝐗,
-         "y"=>mpGLM.𝐲)
-end
-
-"""
     dictionary(θ::GLMθ)
 
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model

@@ -167,3 +167,68 @@ function save(options::Dict, trialsets::Vector{<:Trialset})
     matwrite(options["datapath"], dict)
     return nothing
 end
+
+"""
+    savedata(model)
+
+Save the data used to fit a model.
+
+This function is typically used when the data is sampled
+
+ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters used to fit a factorial hidden Markov drift-diffusion mdoel
+
+OPTIONAL ARGUMENT
+-`filename`: the data will be saved at the path `joinpath(dirname(model.options.datapath), filename*".mat")`
+"""
+function savedata(model::Model; filename::String="sample")
+    data =  map(model.trialsets, 1:length(model.trialsets)) do trialset, index
+                Dict("trials"=>map(trial->packagedata(trial, model.options.a_latency_s), trialset.trials),
+                     "units"=>map(mpGLM->packagedata(mpGLM), trialset.mpGLMs),
+                     "index"=>index)
+            end
+    dict = Dict("data"=>data, "options"=>dictionary(model.options))
+    path = joinpath(dirname(model.options.datapath), filename*".mat")
+    matwrite(path, dict)
+end
+
+"""
+	packagedata(trial, a_latency_s)
+
+Package the data in one trial into a Dict for saving
+
+ARGUMENT
+-`trial`: structure containing the data of one trial
+-`a_latency_s`: latency of the accumulator responding to the clicks
+"""
+function packagedata(trial::Trial, a_latency_s::AbstractFloat)
+	Dict("choice" => trial.choice,
+         "clicktimes" => packagedata(trial.clicks, a_latency_s),
+		 "movementtime_s"=> trial.movementtime_s,
+		 "ntimesteps"=> trial.ntimesteps,
+		 "previousanswer" => trial.previousanswer)
+end
+
+"""
+    packagedata(clicks, a_latency_s)
+
+Package the click times in one trial into a Dict for saving
+
+ARGUMENT
+-`clicks`: structure containing the data of the click times in one trial
+-`a_latency_s`: latency of the accumulator responding to the clicks
+"""
+function packagedata(clicks::Clicks, a_latency_s::AbstractFloat)
+	leftclicktimes = clicks.time[clicks.source .== 0] .- a_latency_s
+	rightclicktimes = clicks.time[clicks.source .== 1] .- a_latency_s
+    Dict("L" => vcat(0.0, leftclicktimes) , "R" => vcat(0.0, rightclicktimes))
+end
+
+"""
+	packagedata(mpGLM)
+
+Package the data of one neuron into a Dict for saving
+"""
+function packagedata(mpGLM::MixturePoissonGLM)
+	Dict("y"=>mpGLM.𝐲)
+end
