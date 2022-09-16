@@ -334,7 +334,7 @@ ARGUMENT
 OUTPUT
 -a structure with data sampled from the parameters of the model
 """
-function sample(model::Model)
+function sample(model::Model; folderpath::String = dirname(model.options.datapath))
 	predictions = Predictions(model; nsamples=1)
 	newtrialsets = 	map(model.trialsets, predictions.p𝑑, predictions.λΔt) do trialset, p𝑑, λΔt
 						newtrials =	map(trialset.trials, p𝑑) do oldtrial, p𝑑
@@ -361,7 +361,10 @@ function sample(model::Model)
 									end
 						Trialset(trials=newtrials, mpGLMs=new_mpGLMs)
 					end
-		Model(options=model.options,
+		options = dictionary(model.options)
+		options["datapath"] = joinpath(folderpath,"data.mat")
+		options["resultspath"] = joinpath(folderpath,"results.mat")
+		Model(options=Options(model.options.nunits, options),
 			gaussianprior=GaussianPrior(model.options, newtrialsets),
 			θnative=FHMDDM.copy(model.θnative),
 			θreal=FHMDDM.copy(model.θreal),

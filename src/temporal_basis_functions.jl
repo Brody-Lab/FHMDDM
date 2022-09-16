@@ -8,7 +8,6 @@ ARGUMENT
 -`𝐓`: number of timesteps
 
 RETURN
--`𝐔`: A matrix whose element 𝐔[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
 function accumulatorbases(options::Options, 𝐓::Vector{<:Integer})
@@ -44,6 +43,62 @@ function timebases(options::Options, 𝐓::Vector{<:Integer})
                             options.tbf_time_scalefactor,
                             options.tbf_time_stretch,
                             𝐓)
+end
+
+"""
+	temporal_bases_values(begins0, ends0, hz, period, scalefactor, stretch, 𝐓)
+
+Value of each temporal basis at each time bin in a trialset
+
+INPUT
+-`begins0`: whether the basis begins at zero
+-`Δt`: time bin, in seconds
+-`ends0`: whether the basis end at zero
+-`hz`: number of temporal basis functions per second
+-`period`: width of each temporal basis function, in terms of the inter-center distance
+-`scalefactor`: scaling
+-`stretch`: nonlinear stretching of time
+-`𝐓`: vector of the number of timesteps in each trial
+
+RETURN
+-`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
+"""
+function temporal_bases_values(begins0::Bool, Δt::AbstractFloat, ends0::Bool, hz::Real, period::Real, scalefactor::Real, stretch::Real, 𝐓::Vector{<:Integer})
+	Tmax = maximum(𝐓)
+	nbases = max(1, ceil(Int, hz*(Tmax*Δt)))
+    if nbases == 1
+		x = scalefactor/sqrt(Tmax)
+        Φ = fill(x,Tmax,1)
+    else
+        Φ = unitarybases(begins0, ends0, nbases, Tmax, period, stretch).*scalefactor
+    end
+    return Φ
+end
+
+"""
+	temporal_bases_values(Φ, 𝐓)
+
+Value of each temporal basis at each time bin in a trialset
+
+INPUT
+-`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
+-`𝐓`: vector of the number of timesteps in each trial
+
+RETURN
+-`𝐕`: A matrix whose element 𝐕[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
+"""
+function temporal_bases_values(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
+    Tmax = maximum(𝐓)
+    nbases = size(Φ,2)
+    𝐕 = zeros(sum(𝐓), nbases)
+    k = 0
+    for T in 𝐓
+        for t = 1:T
+            k = k + 1;
+            𝐕[k,:] = Φ[t,:]
+        end
+    end
+    return 𝐕
 end
 
 """
@@ -162,40 +217,6 @@ function spikehistorybases(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer},
 		τ = τ + T;
 	end
 	return 𝐔
-end
-
-"""
-    temporal_bases_values(begins0, ends0, hz, period, scalefactor, stretch, 𝐓)
-
-Value of each temporal basis at each time bin in a trialset
-
-INPUT
--`options`: model settings
--`𝐓`: vector of the number of timesteps in each trial
-
-RETURN
--`𝐕`: A matrix whose element 𝐕[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
--`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
-"""
-function temporal_bases_values(begins0::Bool, Δt::AbstractFloat, ends0::Bool, hz::Real, period::Real, scalefactor::Real, stretch::Real, 𝐓::Vector{<:Integer})
-    Tmax = maximum(𝐓)
-    nbases = max(1, ceil(Int, hz*(Tmax*Δt)))
-    if nbases == 1
-		x = scalefactor/sqrt(Tmax)
-        Φ = fill(x,Tmax)
-        𝐕 = fill(x, sum(𝐓), 1)
-    else
-        Φ = unitarybases(begins0, ends0, nbases, Tmax, period, stretch).*scalefactor
-        𝐕 = zeros(sum(𝐓), nbases)
-        k = 0
-        for T in 𝐓
-            for t = 1:T
-                k = k + 1;
-                𝐕[k,:] = Φ[t,:]
-            end
-        end
-    end
-    return 𝐕, Φ
 end
 
 """

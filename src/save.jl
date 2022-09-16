@@ -123,7 +123,7 @@ Save the model parameters and the expectation of the emissions and a hessian
 function save(hessian_loglikelihood::Matrix{<:AbstractFloat},
               λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
               model::Model,
-              pchoice::Vector{<:Vector{<:AbstractFloat}}; filename="results.mat")
+              pchoice::Vector{<:Vector{<:AbstractFloat}}; filename=basename(model.options.resultspath))
     dict = Dict("theta_native"=> dictionary(model.θnative),
                 "theta_real"=> dictionary(model.θreal),
                 "theta0_native" => dictionary(model.θ₀native),
@@ -179,16 +179,16 @@ ARGUMENT
 -`model`: structure containing the data, parameters, and hyperparameters used to fit a factorial hidden Markov drift-diffusion mdoel
 
 OPTIONAL ARGUMENT
--`filename`: the data will be saved at the path `joinpath(dirname(model.options.datapath), filename*".mat")`
+-`filename`: the data will be saved at the path `joinpath(dirname(model.options.datapath), filename)`
 """
-function savedata(model::Model; filename::String="sample")
+function savedata(model::Model; filename::String=basename(model.options.datapath))
     data =  map(model.trialsets, 1:length(model.trialsets)) do trialset, index
                 Dict("trials"=>map(trial->packagedata(trial, model.options.a_latency_s), trialset.trials),
                      "units"=>map(mpGLM->packagedata(mpGLM), trialset.mpGLMs),
                      "index"=>index)
             end
     dict = Dict("data"=>data, "options"=>dictionary(model.options))
-    path = joinpath(dirname(model.options.datapath), filename*".mat")
+    path = joinpath(dirname(model.options.datapath), filename)
     matwrite(path, dict)
 end
 

@@ -14,34 +14,46 @@ OUTPUT
 -an instance of `GLMθ`
 """
 function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
-	@unpack fit_b, K, gain_state_dependent, tuning_state_dependent = options
-	n𝐯 =size(𝐕,2)
 	n𝐮 = 𝐮indices_move[end]
-	𝐮 = 1.0 .- 2.0.*rand(n𝐮)
-	if K == 1
-		𝐠 = [0.0]
-		𝐯 = [ones(n𝐯)]
-	else
-		if gain_state_dependent
-			𝐠 = vcat(0.0, 1 .- 2rand(K-1))
-		else
-			𝐠 = [0.0]
-		end
-		if tuning_state_dependent
-			𝐯 = collect(i*ones(n𝐯) for i = -1:2/(K-1):1)
-		else
-			𝐯 = [ones(n𝐯)]
-		end
+	n𝐯 =size(𝐕,2)
+	K𝐠 = options.gain_state_dependent ? options.K : 1
+	K𝐯 = options.tuning_state_dependent ? options.K : 1
+	θ = GLMθ(b = fill(NaN,1),
+			b_scalefactor = options.b_scalefactor,
+			fit_b = options.fit_b,
+			𝐠 = fill(NaN, K𝐠),
+			𝐮 = fill(NaN, n𝐮),
+			𝐮indices_hist=𝐮indices_hist,
+			𝐮indices_move=𝐮indices_move,
+			𝐮indices_time=𝐮indices_time,
+			𝐯 = collect(fill(NaN,n𝐯) for k=1:K𝐯))
+	randomizeparameters!(θ)
+	return θ
+end
+
+"""
+	randomizeparameters!(θ)
+
+Randomly initialize parameters of a mixture of Poisson GLM
+"""
+function randomizeparameters!(θ::GLMθ)
+	θ.b[1] = 0.0
+	for i in eachindex(θ.𝐮)
+		θ.𝐮[i] = 1.0 .- 2rand()
 	end
-	GLMθ(b = zeros(1),
-		b_scalefactor = options.b_scalefactor,
-		fit_b = options.fit_b,
-		𝐠 = 𝐠,
-		𝐮 = 𝐮,
-		𝐮indices_hist=𝐮indices_hist,
-		𝐮indices_move=𝐮indices_move,
-		𝐮indices_time=𝐮indices_time,
-		𝐯 = 𝐯)
+	θ.𝐠[1] = 0.0
+	for k = 2:length(θ.𝐠)
+		θ.𝐠[k] = 1.0 .- 2rand()
+	end
+	if length(θ.𝐯) > 1
+		K = length(θ.𝐯)
+		𝐯₀ = -1:2/(K-1):1
+		for k = 1:K
+			θ.𝐯[k] .= 𝐯₀[k]
+		end
+	else
+		θ.𝐯[1] .= 1.0
+	end
 end
 
 """
@@ -523,7 +535,7 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real}, ∇ℓglm::Vector{<:
 		for ∇ℓglm in ∇ℓglm
 			if ∇ℓglm.fit_b
 				counter+=1
-				∇nℓ[counter] = -b
+				∇nℓ[counter] = -∇ℓglm.b[1]
 			end
 			for k = 2:length(∇ℓglm.𝐠)
 				counter+=1

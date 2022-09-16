@@ -136,6 +136,8 @@ Model settings
 	minpa::TF=1e-8
 	"number of temporal basis functions in the kernel corresponding to each trial event"
 	nbases_each_event::TVI
+	"total number of units across all trialsets"
+	nunits::TI
 	"value to maximized to learn the parameters"
 	objective::String; @assert any(objective .== ["evidence", "posterior", "likelihood"])
 	"where the results of the model fitting are to be saved"

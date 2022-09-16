@@ -22,24 +22,12 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_1
 """
 function Model(datapath::String)
     dataMAT = read(matopen(datapath))
-    options = Options(dataMAT["options"])
-	if haskey(dataMAT, "data")
-	    trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
-	else
-		trialsets = map(trialset->Trialset(trialset), vec(dataMAT["trialsets"]))
-		for trialset in trialsets
-			for mpGLM in trialset.mpGLMs
-				mpGLM.θ.𝐠[1] = 0
-				for k = 2:length(mpGLM.θ.𝐠)
-					mpGLM.θ.𝐠[k] = 1-2rand()
-				end
-				mpGLM.θ.𝐮 .= 1.0 .- 2.0.*rand(length(mpGLM.θ.𝐮))
-				for 𝐯ₖ in mpGLM.θ.𝐯
-					𝐯ₖ .= 1.0 .- 2.0.*rand(length(𝐯ₖ))
-				end
-			end
-		end
+	nunits = 0
+	for rawtrialset in dataMAT["data"]
+		nunits += length(rawtrialset["units"])
 	end
+    options = Options(nunits, dataMAT["options"])
+	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
     if isfile(options.resultspath)
         Model(options, options.resultspath, trialsets)
     else
@@ -198,12 +186,14 @@ function Trialset(options::Options, trialset::Dict)
 	@unpack K, Ξ = options
 	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1)
 	𝐆 = ones(Ttrialset)
-	Φₕ = FHMDDM.spikehistorybases(options)
-	𝐔ₕ = map(𝐲->FHMDDM.spikehistorybases(Φₕ, 𝐓, 𝐲), 𝐘)
-	𝐔ₜ, Φₜ = FHMDDM.timebases(options, 𝐓)
-	Φₘ = FHMDDM.premovementbases(options)
-	𝐔ₘ = FHMDDM.premovementbases(movementtimes_s, options, Φₘ, 𝐓)
-	𝐕, Φₐ = FHMDDM.accumulatorbases(options, 𝐓)
+	Φₕ = spikehistorybases(options)
+	𝐔ₕ = map(𝐲->spikehistorybases(Φₕ, 𝐓, 𝐲), 𝐘)
+	Φₘ = premovementbases(options)
+	𝐔ₘ = premovementbases(movementtimes_s, options, Φₘ, 𝐓)
+	Φₜ = timebases(options, 𝐓)
+	𝐔ₜ = temporal_bases_values(Φₜ, 𝐓)
+	Φₐ = accumulatorbases(options, 𝐓)
+	𝐕 = temporal_bases_values(Φₐ, 𝐓)
 	𝐮indices_hist = 1:size(Φₕ,2)
 	𝐮indices_time = 𝐮indices_hist[end] .+ (1:size(Φₜ,2))
 	𝐮indices_move = 𝐮indices_time[end] .+ (1:size(Φₘ,2))
@@ -363,4 +353,18 @@ function randomize_latent_parameters!(θnative::Latentθ, options::Options)
 		getfield(θnative, field)[1] = fit ? l + (u-l)*rand() : q
 	end
 	return nothing
+end
+
+"""
+	randomizeparameters!(model)
+
+Randomize the parameters of the model
+"""
+function randomizeparameters!(model::Model)
+	randomize_latent_parameters!(model::Model)
+	for trialset in model.trialsets
+		for mpGLM in trialset.mpGLMs
+			randomizeparameters!(mpGLM.θ)
+		end
+	end
 end
