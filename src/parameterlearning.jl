@@ -54,9 +54,11 @@ julia> FHMDDM.initializeparameters!(model)
 ```
 """
 function initializeparameters!(model::Model; show_trace::Bool=true, verbose::Bool=true)
-	fitonlychoices!(model; show_trace=show_trace)
-	if model.options.updateDDtransformation
-		model = update_drift_diffusion_transformation(model)
+	if !isempty(concatenate_latent_parameters(model)[1])
+		fitonlychoices!(model; show_trace=show_trace)
+		if model.options.updateDDtransformation
+			model = update_drift_diffusion_transformation(model)
+		end
 	end
 	verbose && println("Initializing GLM parameters")
 	stats = @timed initialize_GLM_parameters!(model; show_trace=false)

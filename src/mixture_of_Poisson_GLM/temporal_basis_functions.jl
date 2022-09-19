@@ -113,7 +113,7 @@ RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
 function premovementbases(options::Options)
-	nbases = ceil(Int, options.tbf_move_dur_s*options.tbf_move_hz)
+	nbases = max(1, ceil(Int, options.tbf_move_dur_s*options.tbf_move_hz))
 	nbins = ceil(Int, options.tbf_move_dur_s/options.Δt)
 	Φ = unitarybases(options.tbf_move_begins0, options.tbf_move_ends0, nbases, nbins, options.tbf_move_period, options.tbf_move_stretch)
 	Φ .*= options.tbf_move_scalefactor
@@ -178,7 +178,7 @@ julia>
 ```
 """
 function spikehistorybases(options::Options)
-	nbases = ceil(Int, options.tbf_hist_dur_s*options.tbf_hist_hz)
+	nbases = max(1, ceil(Int, options.tbf_hist_dur_s*options.tbf_hist_hz))
 	nbins = ceil(Int, options.tbf_hist_dur_s/options.Δt)
 	Φ = unitarybases(options.tbf_hist_begins0, options.tbf_hist_ends0, nbases, nbins, options.tbf_hist_period, options.tbf_hist_stretch)
 	Φ .*= options.tbf_hist_scalefactor
@@ -247,7 +247,7 @@ julia> maximum(abs.(Φ'*Φ - I))
 """
 function unitarybases(begins0::Bool, ends0::Bool, nbases::Integer, nbins::Integer, period::Real, stretch::Real)
 	if nbases == 1
-		fill(1/√nbins, nbins)
+		fill(1/√nbins, nbins, 1)
 	else
 		Φ = raisedcosines(begins0, ends0, nbases, nbins, period, stretch)
 		F = svd(Φ)
