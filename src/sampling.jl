@@ -373,6 +373,31 @@ function sample(model::Model; folderpath::String = dirname(model.options.datapat
 end
 
 """
+	samples(model, nsamples)
+
+Generate and save samples of the data
+
+ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+-`nsamples`: number of samples to make
+"""
+function samples(model::Model, nsamples::Integer)
+	@assert nsamples > 0
+	pad = ceil(Int, log10(nsamples))
+	open(joinpath(dirname(model.options.datapath), "samplepaths.txt"), "w") do io
+	    for i=1:nsamples
+	        folderpath = joinpath(dirname(model.options.datapath),"sample"*string(i;pad=pad))
+	        !isdir(folderpath) && mkdir(folderpath)
+	        filepath = joinpath(folderpath, "data.mat")
+	        println(io, filepath)
+	        sampledmodel = sample(model; folderpath=folderpath)
+	        savedata(sampledmodel)
+	    end
+	end
+	return nothing
+end
+
+"""
     expectedemissions(model; nsamples=100)
 
 Compute the probability of a right choice and the expected spike rate

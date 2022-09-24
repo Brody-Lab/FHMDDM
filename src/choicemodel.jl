@@ -76,13 +76,13 @@ julia>
 ```
 """
 function maximize_evidence_choices!(model::Model;
-								αrange::Vector{<:Real}=[1e-8, 1e1],
+								αrange::Vector{<:Real}=[1e-3, 1e1],
 								iterations::Int = 500,
 								max_consecutive_failures::Int=2,
 								outer_iterations::Int=10,
 								show_trace::Bool=true,
 								verbose::Bool=true,
-								g_tol::Real=1e-4,
+								g_tol::Real=1e-5,
 								x_reltol::Real=1e-1)
 	memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
 	best𝛉, index𝛉 = FHMDDM.concatenate_choice_related_parameters(model)

@@ -26,6 +26,7 @@ export  analyzeandsave,
         posterior_first_state,
         Predictions,
         sample,
+        samples,
         save,
         savedata,
         test
