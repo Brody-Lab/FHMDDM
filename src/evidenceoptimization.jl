@@ -29,7 +29,7 @@ function maximizeevidence!(model::Model;
 						verbose::Bool=true,
 						x_reltol::Real=1e-1)
 	@unpack index𝚽, 𝛂min, 𝛂max = model.gaussianprior
-	memory = Memoryforgradient(model)
+	memory = FHMDDM.Memoryforgradient(model)
 	best𝛉, index𝛉 = concatenateparameters(model)
 	best𝐸 = -Inf
 	best𝛂 = copy(model.gaussianprior.𝛂)

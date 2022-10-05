@@ -1,4 +1,112 @@
 """
+	GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_time, 𝐕)
+
+Randomly initiate the parameters for a mixture of Poisson generalized linear model
+
+ARGUMENT
+-`options`: settings of the model
+-`𝐮indices_hist`: indices in 𝐮 corresponding to the temporal basis functions of the postspike filter
+-`𝐮indices_move`: indices in 𝐮 corresponding to the temporal basis functions of the premovement filter
+-`𝐮indices_time`: indices in 𝐮 corresponding to the temporal basis functions of the time-in-trial filter
+-`𝐕`: constant and time-varying inputs from the accumulator
+
+OUTPUT
+-an instance of `GLMθ`
+"""
+function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
+	n𝐮 = 𝐮indices_move[end]
+	n𝐯 =size(𝐕,2)
+	K𝐠 = options.gain_state_dependent ? options.K : 1
+	K𝐯 = options.tuning_state_dependent ? options.K : 1
+	θ = GLMθ(b = fill(NaN,1),
+			b_scalefactor = options.b_scalefactor,
+			fit_b = options.fit_b,
+			𝐠 = fill(NaN, K𝐠),
+			𝐮 = fill(NaN, n𝐮),
+			𝐮indices_hist=𝐮indices_hist,
+			𝐮indices_move=𝐮indices_move,
+			𝐮indices_time=𝐮indices_time,
+			𝐯 = collect(fill(NaN,n𝐯) for k=1:K𝐯))
+	randomizeparameters!(θ)
+	return θ
+end
+
+"""
+	randomizeparameters!(θ)
+
+Randomly initialize parameters of a mixture of Poisson GLM
+"""
+function randomizeparameters!(θ::GLMθ)
+	θ.b[1] = 0.0
+	for i in eachindex(θ.𝐮)
+		θ.𝐮[i] = 1.0 .- 2rand()
+	end
+	θ.𝐠[1] = 0.0
+	for k = 2:length(θ.𝐠)
+		θ.𝐠[k] = 1.0 .- 2rand()
+	end
+	if length(θ.𝐯) > 1
+		K = length(θ.𝐯)
+		𝐯₀ = -0.01:0.02/(K-1):0.01
+		for k = 1:K
+			θ.𝐯[k] .= 𝐯₀[k]
+		end
+	else
+		θ.𝐯[1] .= 0.01
+	end
+end
+
+"""
+	GLMθ(glmθ, elementtype)
+
+Create an uninitialized instance of `GLMθ` with the given element type.
+
+This is for using ForwardDiff
+
+ARGUMENT
+-`glmθ`: an instance of GLMθ
+-`elementtype`: type of the element in each field of GLMθ
+
+RETURN
+-an instance of GLMθ
+"""
+function GLMθ(glmθ::GLMθ, elementtype)
+	GLMθ(b = zeros(elementtype, length(glmθ.b)),
+		b_scalefactor = glmθ.b_scalefactor,
+		fit_b = glmθ.fit_b,
+		𝐠 = zeros(elementtype, length(glmθ.𝐠)),
+		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
+		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
+		𝐮indices_hist = glmθ.𝐮indices_hist,
+		𝐮indices_time = glmθ.𝐮indices_time,
+		𝐮indices_move = glmθ.𝐮indices_move)
+end
+
+"""
+	FHMDDM.copy(glmθ)
+
+Make a copy of a structure containing the parameters of a mixture of Poisson GLM
+"""
+function FHMDDM.copy(glmθ::GLMθ)
+	GLMθ(b = copy(glmθ.b),
+		b_scalefactor = glmθ.b_scalefactor,
+		fit_b = glmθ.fit_b,
+		𝐠 = copy(glmθ.𝐠),
+		𝐮 = copy(glmθ.𝐮),
+		𝐯 = collect(copy(𝐯ₖ) for 𝐯ₖ in glmθ.𝐯),
+		𝐮indices_hist = copy(glmθ.𝐮indices_hist),
+		𝐮indices_time = copy(glmθ.𝐮indices_time),
+		𝐮indices_move = copy(glmθ.𝐮indices_move))
+end
+
+"""
+	initialize(glmθ)
+
+Create an uninitialized instance of `GLMθ`
+"""
+initialize(glmθ::GLMθ) = GLMθ(glmθ, eltype(glmθ.𝐮))
+
+"""
 	initialize_GLM_parameters!(model)
 
 Initialize the GLM parameters

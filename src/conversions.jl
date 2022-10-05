@@ -325,7 +325,6 @@ Convert an instance of `Options` to a dictionary
 """
 function dictionary(options::Options)
 	Dict(	"a_latency_s"=>options.a_latency_s,
-			"alpha0_choices"=>options.α₀_choices,
 			"b_scalefactor"=>options.b_scalefactor/options.nunits,
 			"choiceobjective"=>options.choiceobjective,
 			"datapath"=>options.datapath,
@@ -350,6 +349,8 @@ function dictionary(options::Options)
 			"L2flattening_GLM_min"=>options.L2flattening_GLM_min,
 			"L2shrinkage_AT_max"=>options.L2shrinkage_AT_max,
 			"L2shrinkage_AT_min"=>options.L2shrinkage_AT_min,
+			"L2shrinkage_choices_max"=>options.L2shrinkage_choices_max,
+			"L2shrinkage_choices_min"=>options.L2shrinkage_choices_min,
 			"L2shrinkage_GLM_max"=>options.L2shrinkage_GLM_max,
 			"L2shrinkage_GLM_min"=>options.L2shrinkage_GLM_min,
 			"L2shrinkage_LV_max"=>options.L2shrinkage_LV_max,
@@ -515,7 +516,6 @@ Create an instance of `Options` from a Dict
 """
 function Options(nunits::Integer, options::Dict)
 	Options(a_latency_s = options["a_latency_s"],
-			α₀_choices=options["alpha0_choices"],
 			b_scalefactor = options["b_scalefactor"]*nunits,
 			choiceobjective=options["choiceobjective"],
 			datapath = options["datapath"],
@@ -540,6 +540,8 @@ function Options(nunits::Integer, options::Dict)
 			L2flattening_GLM_min = options["L2flattening_GLM_min"],
 			L2shrinkage_AT_max = options["L2shrinkage_AT_max"],
 			L2shrinkage_AT_min = options["L2shrinkage_AT_min"],
+			L2shrinkage_choices_max = options["L2shrinkage_choices_max"],
+			L2shrinkage_choices_min = options["L2shrinkage_choices_min"],
 			L2shrinkage_GLM_max = options["L2shrinkage_GLM_max"],
 			L2shrinkage_GLM_min = options["L2shrinkage_GLM_min"],
 			L2shrinkage_LV_max = options["L2shrinkage_LV_max"],

@@ -1,112 +1,4 @@
 """
-	GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_time, 𝐕)
-
-Randomly initiate the parameters for a mixture of Poisson generalized linear model
-
-ARGUMENT
--`options`: settings of the model
--`𝐮indices_hist`: indices in 𝐮 corresponding to the temporal basis functions of the postspike filter
--`𝐮indices_move`: indices in 𝐮 corresponding to the temporal basis functions of the premovement filter
--`𝐮indices_time`: indices in 𝐮 corresponding to the temporal basis functions of the time-in-trial filter
--`𝐕`: constant and time-varying inputs from the accumulator
-
-OUTPUT
--an instance of `GLMθ`
-"""
-function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
-	n𝐮 = 𝐮indices_move[end]
-	n𝐯 =size(𝐕,2)
-	K𝐠 = options.gain_state_dependent ? options.K : 1
-	K𝐯 = options.tuning_state_dependent ? options.K : 1
-	θ = GLMθ(b = fill(NaN,1),
-			b_scalefactor = options.b_scalefactor,
-			fit_b = options.fit_b,
-			𝐠 = fill(NaN, K𝐠),
-			𝐮 = fill(NaN, n𝐮),
-			𝐮indices_hist=𝐮indices_hist,
-			𝐮indices_move=𝐮indices_move,
-			𝐮indices_time=𝐮indices_time,
-			𝐯 = collect(fill(NaN,n𝐯) for k=1:K𝐯))
-	randomizeparameters!(θ)
-	return θ
-end
-
-"""
-	randomizeparameters!(θ)
-
-Randomly initialize parameters of a mixture of Poisson GLM
-"""
-function randomizeparameters!(θ::GLMθ)
-	θ.b[1] = 0.0
-	for i in eachindex(θ.𝐮)
-		θ.𝐮[i] = 1.0 .- 2rand()
-	end
-	θ.𝐠[1] = 0.0
-	for k = 2:length(θ.𝐠)
-		θ.𝐠[k] = 1.0 .- 2rand()
-	end
-	if length(θ.𝐯) > 1
-		K = length(θ.𝐯)
-		𝐯₀ = -1:2/(K-1):1
-		for k = 1:K
-			θ.𝐯[k] .= 𝐯₀[k]
-		end
-	else
-		θ.𝐯[1] .= 1.0
-	end
-end
-
-"""
-	GLMθ(glmθ, elementtype)
-
-Create an uninitialized instance of `GLMθ` with the given element type.
-
-This is for using ForwardDiff
-
-ARGUMENT
--`glmθ`: an instance of GLMθ
--`elementtype`: type of the element in each field of GLMθ
-
-RETURN
--an instance of GLMθ
-"""
-function GLMθ(glmθ::GLMθ, elementtype)
-	GLMθ(b = zeros(elementtype, length(glmθ.b)),
-		b_scalefactor = glmθ.b_scalefactor,
-		fit_b = glmθ.fit_b,
-		𝐠 = zeros(elementtype, length(glmθ.𝐠)),
-		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
-		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
-		𝐮indices_hist = glmθ.𝐮indices_hist,
-		𝐮indices_time = glmθ.𝐮indices_time,
-		𝐮indices_move = glmθ.𝐮indices_move)
-end
-
-"""
-	FHMDDM.copy(glmθ)
-
-Make a copy of a structure containing the parameters of a mixture of Poisson GLM
-"""
-function FHMDDM.copy(glmθ::GLMθ)
-	GLMθ(b = copy(glmθ.b),
-		b_scalefactor = glmθ.b_scalefactor,
-		fit_b = glmθ.fit_b,
-		𝐠 = copy(glmθ.𝐠),
-		𝐮 = copy(glmθ.𝐮),
-		𝐯 = collect(copy(𝐯ₖ) for 𝐯ₖ in glmθ.𝐯),
-		𝐮indices_hist = copy(glmθ.𝐮indices_hist),
-		𝐮indices_time = copy(glmθ.𝐮indices_time),
-		𝐮indices_move = copy(glmθ.𝐮indices_move))
-end
-
-"""
-	initialize(glmθ)
-
-Create an uninitialized instance of `GLMθ`
-"""
-initialize(glmθ::GLMθ) = GLMθ(glmθ, eltype(glmθ.𝐮))
-
-"""
 	MixturePoissonGLM(concatenatedθ, glmθindex, mpGLM)
 
 Create a structure for a mixture of Poisson GLM with updated parameters
@@ -137,7 +29,7 @@ function MixturePoissonGLM(concatenatedθ::Vector{T},
 end
 
 """
-    likelihood(mpGLM, j, k)
+    scaledlikelihood(mpGLM, j, k, s)
 
 Conditional likelihood of the spike train, given the index of the state of the accumulator `j` and the state of the coupling `k`, and also by the prior likelihood of the regression weights
 
@@ -149,18 +41,18 @@ UNMODIFIED ARGUMENT
 RETURN
 -`𝐩`: a vector by which the conditional likelihood of the spike train and the prior likelihood of the regression weights are multiplied against
 """
-function likelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
+function scaledlikelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer, s::Real)
     @unpack Δt, 𝐲 = mpGLM
     𝐋 = linearpredictor(mpGLM, j, k)
     𝐩 = 𝐋 # reuse memory
     @inbounds for i=1:length(𝐩)
-        𝐩[i] = poissonlikelihood(Δt, 𝐋[i], 𝐲[i])
+        𝐩[i] = scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
     end
     return 𝐩
 end
 
 """
-    likelihood!(𝐩, mpGLM, j, k)
+    scaledlikelihood!(𝐩, mpGLM, j, k, s)
 
 In-place multiplication of `𝐩` by the conditional likelihood of the spike train, given the index of the state of the accumulator `j` and the state of the coupling `k`, and also by the prior likelihood of the regression weights
 
@@ -175,46 +67,13 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-function likelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
+function scaledlikelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer, k::Integer, s::Real)
     @unpack Δt, 𝐲 = mpGLM
     𝐋 = linearpredictor(mpGLM, j, k)
     @inbounds for i=1:length(𝐩)
-		𝐩[i] *= poissonlikelihood(Δt, 𝐋[i], 𝐲[i])
+		𝐩[i] *= scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
     end
     return nothing
-end
-
-"""
-	Poissonlikelihood(λΔt, L, y)
-
-Probability of a Poisson observation
-
-ARGUMENT
--`λΔt`: the expected value
--`y`: the observation
--`y!`: the factorial of the observation
-
-OUTPUT
--the likelihood
-"""
-function poissonlikelihood(Δt::Real, L::Real, y::Integer)
-	λΔt = softplus(L)*Δt
-	poissonlikelihood(λΔt, y)
-end
-
-"""
-	poissonlikelihood(λΔt, y)
-
-Likelihood of observation `y` given intensity `λΔt`
-"""
-function poissonlikelihood(λΔt::Real, y::Integer)
-	if y==0
-		exp(-λΔt)
-	elseif y==1
-		λΔt*exp(-λΔt)
-	else
-		λΔt^y * exp(-λΔt) / factorial(y)
-	end
 end
 
 """
@@ -237,168 +96,6 @@ function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
 	𝐯ₖ = 𝐯[min(length(𝐯), k)]
 	transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
 	𝐗*vcat(gₖ, 𝐮, 𝐯ₖ.*transformedξ)
-end
-
-"""
-	poissonloglikelihood(λΔt, y)
-
-Log-likelihood of an observation under a Poisson GLM
-
-ARGUMENT
--`λΔt`: Poisson intensity per second
--`y`: observation
-
-RETURN
--log-likelihood
-"""
-function poissonloglikelihood(λΔt::Real, y::Integer)
-	if y == 0
-		-λΔt
-	elseif y == 1
-		log(λΔt) - λΔt
-	else
-		y*log(λΔt) - λΔt
-	end
-end
-
-"""
-    poissonloglikelihood
-
-Log-likelihood of an observation under a Poisson GLM with a softplus nonlinearity
-
-ARGUMENT
--`Δt`: duration of time step
--`L`: linear predictor
--`y`: observation
-
-RETURN
--log-likelihood
-"""
-poissonloglikelihood(Δt::AbstractFloat, L::Real, y::Integer) = poissonloglikelihood(softplus(L)*Δt, y)
-
-"""
-    differentiate_loglikelihood_wrt_linearpredictor
-
-Differentiate the log-likelihood of a Poisson GLM with respect to the linear predictor
-
-The Poisson GLM is assumed to have a a softplus nonlinearity
-
-ARGUMENT
--`Δt`: duration of time step
--`L`: linear predictor at one time step
--`λ`: Poisson rate
--`y`: observation at that time step
-
-RETURN
--the first derivative with respect to the linear predictor
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff, LogExpFunctions
-julia> Δt = 0.01
-julia> y = 2
-julia> f(x) = let λΔt = softplus(x[1])*Δt; y*log(λΔt)-λΔt+log(factorial(y)); end
-julia> x = rand(1)
-julia> d1auto = ForwardDiff.gradient(f, x)
-julia> d1hand = FHMDDM.differentiate_loglikelihood_wrt_linearpredictor(Δt, x[1], softplus(x[1]), y)
-julia> abs(d1hand - d1auto[1])
-```
-"""
-function differentiate_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, λ::Real, y::Integer)
-	dλ_dL = logistic(L)
-    if y > 0
-        if L > -100.0
-            dℓ_dL = dλ_dL*(y/λ - Δt)
-        else
-            dℓ_dL = y - dλ_dL*Δt  # the limit of `dλ_dL/λ` as x goes to -∞ is 1
-        end
-    else
-        dℓ_dL = -dλ_dL*Δt
-    end
-end
-
-"""
-    differentiate_loglikelihood_wrt_linearpredictor(Δt, L, y)
-
-First derivative of the log-likelihood of a Poisson GLM with respect to the linear predictor
-"""
-differentiate_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, y::Integer) = differentiate_loglikelihood_wrt_linearpredictor(Δt, L, softplus(L), y)
-
-"""
-    differentiate_twice_loglikelihood_wrt_linearpredictor
-
-Second derivative of the log-likelihood of a Poisson GLM with respect to the linear predictor
-
-The Poisson GLM is assumed to have a a softplus nonlinearity
-
-ARGUMENT
--`Δt`: duration of time step
--`L`: linear predictor at one time step
--`λ`: Poisson rate
--`y`: observation at that time step
-
-RETURN
--the first derivative with respect to the linear predictor
--the second derivative with respect to the linear predictor
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff, LogExpFunctions
-julia> Δt = 0.01
-julia> y = 3
-julia> f(x) = FHMDDM.poissonloglikelihood(Δt, x, y)
-julia> g(x) = ForwardDiff.derivative(f, x)
-julia> h(x) = ForwardDiff.derivative(g, x)
-julia> x₀ = 1-2rand()
-julia> d1auto = g(x₀)
-julia> d2auto = h(x₀)
-julia> d2hand, d1hand = FHMDDM.differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, x₀, softplus(x₀), y)
-julia> abs(d1hand - d1auto[1])
-julia> abs(d2hand - d2auto[1])
-```
-"""
-function differentiate_twice_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, λ::Real, y::Integer)
-	dλ_dL = logistic(L)
-	d²λ_dLdL = dλ_dL*(1-dλ_dL)
-    if y > 0
-        if L > -100.0
-            dℓ_dL = dλ_dL*(y/λ - Δt)
-        else
-            dℓ_dL = y - dλ_dL*Δt  # the limit of `dλ_dL/λ` as x goes to -∞ is 1
-        end
-		if L > -50.0
-			d²ℓ_dLdL = y*(λ*d²λ_dLdL - dλ_dL^2)/λ^2 - d²λ_dLdL*Δt # the limit of first second term is 0 as L goes to -∞
-		else
-			d²ℓ_dLdL = -d²λ_dLdL*Δt
-		end
-    else
-        dℓ_dL = -dλ_dL*Δt
-		d²ℓ_dLdL = -d²λ_dLdL*Δt
-    end
-	return d²ℓ_dLdL, dℓ_dL
-end
-
-"""
-	differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, L, y)
-
-Second derivative of the log-likelihood of a Poisson GLM with respect to the linear predictor
-
-ARGUMENT
--`Δt`: duration of time step
--`L`: linear predictor at one time step
--`y`: observation at that time step
-
-RETURN
--the second derivative with respect to the linear predictor
--the first derivative with respect to the linear predictor
--the log-likelihood
-"""
-function differentiate_twice_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, y::Integer)
-	λ = softplus(L)
-	λΔt = λ*Δt
-	ℓ = poissonloglikelihood(λΔt, y)
-	d²ℓ_dL², dℓ_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, L, λ, y)
-	return d²ℓ_dL², dℓ_dL, ℓ
 end
 
 """
@@ -478,6 +175,33 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 		else
 			∇Q.b[1] = dot(sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db), 𝐕, 𝐯[k])
 		end
+	end
+	return nothing
+end
+
+"""
+	scale_expectation_∇loglikelihood(∇Q, s)
+
+Multiply the expectation of the gradient of the log-likelihood of a mixture of Poisson GLM with the scale factor
+
+MODIFIED ARGUMENT
+-`∇Q`: expectation of the gradient of the log-likelihood of a mixture of Poisson GLM
+-`s`: scale factor
+"""
+function scale_expectation_∇loglikelihood!(∇Q::GLMθ, s::Real)
+	@inbounds for k = 2:length(∇Q.𝐠)
+		∇Q.𝐠[k] *= s
+	end
+	for i in eachindex(∇Q.𝐮)
+		∇Q.𝐮[i] *= s
+	end
+	for 𝐯ₖ in ∇Q.𝐯
+		for i in eachindex(𝐯ₖ)
+			𝐯ₖ[i] *= s
+		end
+	end
+	if ∇Q.fit_b
+		∇Q.b[1] *= s
 	end
 	return nothing
 end

@@ -1,5 +1,5 @@
 """
-    likelihood!(p𝐘𝑑, trialset, ψ)
+    scaledlikelihood!(p𝐘𝑑, trialset, ψ)
 
 Update the conditional likelihood of the emissions (spikes and/or behavioral choice)
 
@@ -13,7 +13,7 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
+function scaledlikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 					 p𝑑_a::Vector{<:Vector{<:Vector{<:Real}}},
                      trialsets::Vector{<:Trialset},
                      ψ::Real)
@@ -21,11 +21,12 @@ function likelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 	K = size(p𝐘𝑑[1][1][end],2)
     @inbounds for i in eachindex(p𝐘𝑑)
 		N = length(trialsets[i].mpGLMs)
+		s = 1/N
 	    for j = 1:Ξ
 	        for k = 1:K
-				𝐩 = likelihood(trialsets[i].mpGLMs[1], j, k)
+				𝐩 = scaledlikelihood(trialsets[i].mpGLMs[1], j, k, s)
 	            for n = 2:N
-				    likelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
+				    scaledlikelihood!(𝐩, trialsets[i].mpGLMs[n], j, k, s)
 	            end
 	            t = 0
 	            for m in eachindex(p𝐘𝑑[i])

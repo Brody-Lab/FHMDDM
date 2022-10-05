@@ -47,8 +47,6 @@ Model settings
 						TVF<:Vector{<:AbstractFloat}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
-	"initial coefficient for L2 regularization for the ddm parameters"
-	α₀_choices::TF=0.0
 	"scale factor for the accumulator transformation parameter"
 	b_scalefactor::TF=10.0
 	"value optimized when initializing the choice-related parameters"
@@ -89,21 +87,20 @@ Model settings
 	gain_state_dependent::TB=true
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-2
-	"maximum L2 flattening penalty for each group of GLM parameters"
+	"maximum and minimum L2 flattening penalty for each group of GLM parameters"
 	L2flattening_GLM_max::TF=1e0
-	"maximum L2 flattening penalty for each group of GLM parameters"
 	L2flattening_GLM_min::TF=1e-4
-	"maximum L2 shrinkage penalty for the accumulator transformation parameter"
+	"maximum and minimum L2 shrinkage penalty for the accumulator transformation parameter"
 	L2shrinkage_AT_max::TF=1e2
-	"maximum L2 shrinkage penalty for the accumulator transformation parameter"
 	L2shrinkage_AT_min::TF=1e-2
-	"maximum L2 shrinkage penalty for each group of GLM parameters"
+	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
+	L2shrinkage_choices_max::TF=1e2
+	L2shrinkage_choices_min::TF=1e-2
+	"maximum and minimum L2 shrinkage penalty for each group of GLM parameters"
 	L2shrinkage_GLM_max::TF=1e1
-	"maximum L2 shrinkage penalty for each group of GLM parameters"
 	L2shrinkage_GLM_min::TF=1e-3
-	"maximum L2 shrinkage penalty for a latent variable parameter"
+	"maximum and minimum L2 shrinkage penalty for a latent variable parameter"
 	L2shrinkage_LV_max::TF=1e2
-	"minimum L2 shrinkage penalty for a latent variable parameter"
 	L2shrinkage_LV_min::TF=1e-2
 	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
 	"transition probability of the coupling variable to remain in the coupled state"

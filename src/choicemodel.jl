@@ -76,13 +76,10 @@ julia>
 ```
 """
 function maximize_evidence_choices!(model::Model;
-								αrange::Vector{<:Real}=[1e-3, 1e1],
 								iterations::Int = 500,
 								max_consecutive_failures::Int=2,
 								outer_iterations::Int=10,
 								show_trace::Bool=true,
-								verbose::Bool=true,
-								g_tol::Real=1e-5,
 								x_reltol::Real=1e-1)
 	memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
 	best𝛉, index𝛉 = FHMDDM.concatenate_choice_related_parameters(model)
@@ -92,26 +89,26 @@ function maximize_evidence_choices!(model::Model;
 	n_consecutive_failures = 0
 	posteriorconverged = false
 	for i = 1:outer_iterations
-	    results = maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, g_tol=g_tol, show_trace=show_trace)
+	    results = FHMDDM.maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, show_trace=show_trace)
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
-				new_α = min(maximum(αrange), 10geomean(𝛂))
-				verbose && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be ten times the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
+				new_α = min(model.options.L2shrinkage_choices_max, 10geomean(𝛂))
+				show_trace && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be ten times the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
 				𝛂 .= new_α
 			else
-				verbose && println("Outer iteration: ", i, ": because of a line search failure, the values of latent-variable parameters are randomized")
+				show_trace && println("Outer iteration: ", i, ": because of a line search failure, the values of latent-variable parameters are randomized")
 				randomize_latent_parameters!(model)
 			end
 		else
-			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
+			show_trace && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
 			𝛉₀ = FHMDDM.concatenate_choice_related_parameters(model)[1] # exact posterior mode
 			stats = @timed FHMDDM.∇∇choiceLL(model)
 			𝐇 = stats.value[3][index𝛂, index𝛂]
-			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
+			show_trace && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
 			FHMDDM.choiceLL!(memory, model, 𝛉₀)
 			𝐸 = FHMDDM.logevidence(𝐇, memory.ℓ[1], Diagonal(𝛂), 𝛉₀)
 			if 𝐸 > best𝐸
-				if verbose
+				if show_trace
 					if posteriorconverged
 						println("Outer iteration: ", i, ": the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") is improved by the new values of the precisions found in the previous outer iteration")
 					else
@@ -124,28 +121,28 @@ function maximize_evidence_choices!(model::Model;
 				n_consecutive_failures = 0
 			else
 				n_consecutive_failures += 1
-				verbose && println("Outer iteration: ", i, ": because the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
+				show_trace && println("Outer iteration: ", i, ": because the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
 				for j in eachindex(𝛂)
 					𝛂[j] = (𝛂[j] + best𝛂[j])/2
 				end
 			end
 			posteriorconverged = true
 			if n_consecutive_failures == max_consecutive_failures
-				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
+				show_trace && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
 				break
 			end
-			𝛂, normΔ = maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀; αrange=αrange, show_trace=show_trace)
-			if verbose
+			𝛂, normΔ = FHMDDM.maximize_evidence_choices!(memory, model, 𝛂, 𝐇, 𝛉₀; show_trace=show_trace)
+			if show_trace
 				println("Outer iteration ", i, ": new 𝛂 → ", 𝛂)
 			end
 			if normΔ < x_reltol
-				verbose && println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
+				show_trace && println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
 				break
 			else
 				randomize_latent_parameters!(model)
 			end
 		end
-		if (i==outer_iterations) && verbose
+		if (i==outer_iterations) && show_trace
 			println("Optimization halted after reaching the last of ", outer_iterations, " allowed outer iterations.")
 		end
 	end
@@ -175,13 +172,14 @@ function choice_related_precisions(model::Model)
 	index𝛂 = falses(10)
 	j = 0
 	k = 0
+	α₀ = √(model.options.L2shrinkage_choices_min*model.options.L2shrinkage_choices_max)
 	for parametername in fieldnames(Latentθ)
 		if parametername == :Aᶜ₁₁ || parametername == :Aᶜ₂₂ || parametername == :πᶜ₁
  		else
 			j = j + 1
 			if getfield(indexθ.latentθ, parametername)[1] > 0
 				k = k + 1
-				𝛂[k] = model.options.α₀_choices
+				𝛂[k] = α₀
 				index𝛂[j] = true
 			end
 		end
@@ -209,19 +207,20 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 						𝛂₀::Vector{<:Real},
 						𝐇::Matrix{<:Real},
 						𝐰₀::Vector{<:Real};
-						αrange::Vector{<:Real}=[1e-8, 1e1],
 						show_trace::Bool=true,
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
+	αmin = model.options.L2shrinkage_choices_min
+	αmax = model.options.L2shrinkage_choices_max
 	𝚽 = Diagonal(𝛂₀)
 	𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
 	𝐱₀ = similar(𝛂₀)
 	for i in eachindex(𝛂₀)
-		𝐱₀[i] = FHMDDM.native2real(𝛂₀[i], αrange[1], αrange[2])
+		𝐱₀[i] = FHMDDM.native2real(𝛂₀[i], αmin, αmax)
 	end
 	function f(𝐱)
 		𝛂 = similar(𝐱)
 		for i in eachindex(𝐱)
-			𝛂[i] = real2native(𝐱[i], αrange[1], αrange[2])
+			𝛂[i] = real2native(𝐱[i], αmin, αmax)
 		end
 		𝚽 = Diagonal(𝛂)
 	    𝐰 = (𝚽-𝐇) \ 𝐁₀𝐰₀ # LAPACK.sysv! uses less memory but is slower
@@ -232,11 +231,11 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 	function g!(∇n𝐸, 𝐱)
 		𝛂 = similar(𝐱)
 		for i in eachindex(𝐱)
-			𝛂[i] = real2native(𝐱[i], αrange[1], αrange[2])
+			𝛂[i] = real2native(𝐱[i], αmin, αmax)
 		end
 		∇negativelogevidence_choices!(memory, model, ∇n𝐸, ∇nℓ, 𝛂, 𝐁₀𝐰₀, 𝐇)
 		for i in eachindex(𝐱)
-			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αrange[1], αrange[2])
+			∇n𝐸[i] *= differentiate_native_wrt_real(𝐱[i], αmin, αmax)
 		end
 		return nothing
 	end
@@ -249,7 +248,7 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 	end
 	𝛂̂ = similar(𝐱̂)
 	for i in eachindex(𝐱̂)
-		𝛂̂[i] = real2native(𝐱̂[i], αrange[1], αrange[2])
+		𝛂̂[i] = real2native(𝐱̂[i], αmin, αmax)
 	end
 	return 𝛂̂, √normΔ
 end
@@ -410,9 +409,9 @@ julia> FHMDDM.maximize_choice_posterior!(model)
 ```
 """
 function maximize_choice_posterior!(model::Model;
-						 𝛂::Vector{<:AbstractFloat}=[model.options.α₀_choices],
+						 𝛂::Vector{<:AbstractFloat}=choice_related_precisions(model)[1],
 		                 extended_trace::Bool=true,
-		                 g_tol::AbstractFloat=1e-4,
+		                 g_tol::AbstractFloat=1e-6,
 		                 iterations::Integer=500,
 		                 show_every::Integer=10,
 		                 show_trace::Bool=true)

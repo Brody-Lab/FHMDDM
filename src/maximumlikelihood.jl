@@ -260,7 +260,7 @@ function loglikelihood(concatenatedθ::Vector{T}, indexθ::Indexθ, model::Model
 				ones(T,Ξ)
 			end
 		end
-    likelihood!(p𝐘𝑑, p𝑑_a, trialsets, θnative.ψ[1])
+    scaledlikelihood!(p𝐘𝑑, p𝑑_a, trialsets, θnative.ψ[1])
 	choiceLLscaling = scaling_factor_choiceLL(model)
 	Aᵃinput = ones(T,Ξ,Ξ).*minpa
 	one_minus_Ξminpa = 1.0-Ξ*minpa
@@ -395,8 +395,11 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 		end
 	end
 	@inbounds for s in eachindex(model.trialsets)
-		for n in eachindex(model.trialsets[s].mpGLMs)
+		N = length(model.trialsets[s].mpGLMs)
+		sf = 1/N
+		for n = 1:N
 			expectation_∇loglikelihood!(memory.∇ℓglm[s][n], memory.γ[s], model.trialsets[s].mpGLMs[n])
+			scale_expectation_∇loglikelihood!(memory.∇ℓglm[s][n], sf)
 		end
 	end
 	return nothing
@@ -711,7 +714,7 @@ function update!(memory::Memoryforgradient,
 	sortparameters!(model, memory.concatenatedθ, memory.indexθ)
 	real2native!(model.θnative, model.options, model.θreal)
 	if !isempty(memory.p𝐘𝑑[1][1][1])
-	    likelihood!(memory.p𝐘𝑑, memory.p𝑑_a, model.trialsets, model.θnative.ψ[1])
+	    scaledlikelihood!(memory.p𝐘𝑑, memory.p𝑑_a, model.trialsets, model.θnative.ψ[1])
 	end
 	@unpack options, θnative = model
 	@unpack Δt, K, minpa, Ξ = options
@@ -735,9 +738,9 @@ Scaling factor for the log-likelihood of behavioral choices
 """
 function scaling_factor_choiceLL(model::Model)
 	if model.options.scalechoiceLL
-		ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
+		ntimesteps= sum(collect(trialset.ntimesteps for trialset in model.trialsets))
 		ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
-		ntimesteps_neurons/ntrials
+		ntimesteps/ntrials
 	else
 		1.0
 	end

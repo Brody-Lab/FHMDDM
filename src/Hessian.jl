@@ -472,14 +472,21 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 						d𝛚_db::Vector{<:Vector{<:Real}},
 						d²𝛚_db²::Vector{<:Vector{<:Real}})
 	dL_d𝐯 = zeros(length(mpGLMs[1].θ.𝐯[1]))
-	@inbounds for n in eachindex(mpGLMs)
+	nneurons = length(mpGLMs)
+	sf = 1/nneurons
+	@inbounds for n = 1:nneurons
 		conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
 		for t = 1:ntimesteps
 			τ = t + offset
 			∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], 𝛚[n], d𝛚_db[n], d²𝛚_db²[n], τ)
+			for i in eachindex(∇logpy[t][n])
+				∇logpy[t][n][i] .*= sf
+			end
+			for i in eachindex(∇∇logpy[t][n])
+				∇∇logpy[t][n][i] .*= sf
+			end
 		end
 	end
-	nneurons = length(mpGLMs)
 	Ξ = length(𝛚[1])
 	K = max(length(mpGLMs[1].θ.𝐠), length(mpGLMs[1].θ.𝐯))
 	@inbounds for t = 1:ntimesteps
@@ -487,7 +494,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 		for ij in eachindex(pY[t])
 			pY[t][ij] = 1.0
 			for n=1:nneurons
-				pY[t][ij] *= poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])
+				pY[t][ij] *= poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])^sf
 			end
 		end
 		r = 0
