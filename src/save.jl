@@ -10,7 +10,7 @@ OPTIONAL ARGUMENT
 -`prefix`: prefix to the name of the files to be saved
 """
 function analyzeandsave(model::Model; prefix="results")
-    save(model::Model, prefix)
+    save(model, prefix)
     folderpath = dirname(model.options.resultspath)
     save(Predictions(model), folderpath, prefix)
     save(∇∇loglikelihood(model)[3], folderpath, prefix)
