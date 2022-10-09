@@ -39,7 +39,7 @@ Randomly initialize parameters of a mixture of Poisson GLM
 function randomizeparameters!(θ::GLMθ)
 	θ.b[1] = 0.0
 	for i in eachindex(θ.𝐮)
-		θ.𝐮[i] = 1.0 .- 2rand()
+		θ.𝐮[i] = 0.0 #1.0 .- 2rand()
 	end
 	θ.𝐠[1] = 0.0
 	for k = 2:length(θ.𝐠)
@@ -52,7 +52,7 @@ function randomizeparameters!(θ::GLMθ)
 			θ.𝐯[k] .= 𝐯₀[k]
 		end
 	else
-		θ.𝐯[1] .= 0.01
+		θ.𝐯[1] .= 0.0
 	end
 end
 

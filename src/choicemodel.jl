@@ -78,7 +78,7 @@ julia>
 function maximize_evidence_choices!(model::Model;
 								iterations::Int = 500,
 								max_consecutive_failures::Int=2,
-								outer_iterations::Int=10,
+								outer_iterations::Int=3,
 								show_trace::Bool=true,
 								x_reltol::Real=1e-1)
 	memory = FHMDDM.Memoryforgradient(model; choicemodel=true)
