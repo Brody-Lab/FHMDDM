@@ -274,6 +274,8 @@ Parameters of a mixture of Poisson generalized linear model
 	b_scalefactor::R
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
+	"whether to fit separate encoding weights for when the accumulator at the bound"
+	fit_𝛃::B
     "state-dependent gain"
     𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
@@ -286,6 +288,8 @@ Parameters of a mixture of Poisson generalized linear model
 	𝐮indices_move::UI
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
+	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
+	𝛃::VVR
 end
 
 """
