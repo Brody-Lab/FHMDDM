@@ -29,6 +29,28 @@ function MixturePoissonGLM(concatenatedθ::Vector{T},
 end
 
 """
+    linearpredictor(mpGLM, j, k)
+
+Linear combination of the weights in the j-th accumulator state and k-th coupling state
+
+ARGUMENT
+-`mpGLM`: the mixture of Poisson generalized linear model of one neuron
+-`j`: state of the accumulator variable
+-`k`: state of the coupling variable
+
+RETURN
+-`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
+"""
+function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
+    @unpack 𝐗, d𝛏_dB = mpGLM
+    @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	gₖ = 𝐠[min(length(𝐠), k)]
+	𝐯ₖ = 𝐯[min(length(𝐯), k)]
+	transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
+	𝐗*vcat(gₖ, 𝐮, 𝐯ₖ.*transformedξ)
+end
+
+"""
     scaledlikelihood(mpGLM, j, k, s)
 
 Conditional likelihood of the spike train, given the index of the state of the accumulator `j` and the state of the coupling `k`, and also by the prior likelihood of the regression weights
@@ -74,28 +96,6 @@ function scaledlikelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::In
 		𝐩[i] *= scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
     end
     return nothing
-end
-
-"""
-    linearpredictor(mpGLM, j, k)
-
-Linear combination of the weights in the j-th accumulator state and k-th coupling state
-
-ARGUMENT
--`mpGLM`: the mixture of Poisson generalized linear model of one neuron
--`j`: state of the accumulator variable
--`k`: state of the coupling variable
-
-RETURN
--`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
-"""
-function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack 𝐗, d𝛏_dB = mpGLM
-    @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯 = mpGLM.θ
-	gₖ = 𝐠[min(length(𝐠), k)]
-	𝐯ₖ = 𝐯[min(length(𝐯), k)]
-	transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-	𝐗*vcat(gₖ, 𝐮, 𝐯ₖ.*transformedξ)
 end
 
 """
