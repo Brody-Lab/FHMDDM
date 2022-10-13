@@ -21,38 +21,53 @@ function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮ind
 	θ = GLMθ(b = fill(NaN,1),
 			b_scalefactor = options.b_scalefactor,
 			fit_b = options.fit_b,
+			fit_𝛃 = options.fit_𝛃,
 			𝐠 = fill(NaN, K𝐠),
 			𝐮 = fill(NaN, n𝐮),
 			𝐮indices_hist=𝐮indices_hist,
 			𝐮indices_move=𝐮indices_move,
 			𝐮indices_time=𝐮indices_time,
 			𝐯 = collect(fill(NaN,n𝐯) for k=1:K𝐯))
-	randomizeparameters!(θ)
+	randomizeparameters!(θ, options)
 	return θ
 end
 
 """
-	randomizeparameters!(θ)
+	randomizeparameters!(θ, options)
 
 Randomly initialize parameters of a mixture of Poisson GLM
+
+MODIFIED ARGUMENT
+-`θ`: structure containing parameters of a mixture of Poisson GLM
+
+UNMODIFIED ARGUMENT
+-`options`: hyperparameters of the model
 """
-function randomizeparameters!(θ::GLMθ)
+function randomizeparameters!(θ::GLMθ, options::Options)
 	θ.b[1] = 0.0
 	for i in eachindex(θ.𝐮)
-		θ.𝐮[i] = 0.0 #1.0 .- 2rand()
+		θ.𝐮[i] = 1.0 .- 2rand()
 	end
+	θ.𝐮[θ.𝐮indices_hist] ./= options.tbf_hist_scalefactor
+	θ.𝐮[θ.𝐮indices_move] ./= options.tbf_move_scalefactor
+	θ.𝐮[θ.𝐮indices_time] ./= options.tbf_time_scalefactor
 	θ.𝐠[1] = 0.0
 	for k = 2:length(θ.𝐠)
 		θ.𝐠[k] = 1.0 .- 2rand()
 	end
 	if length(θ.𝐯) > 1
 		K = length(θ.𝐯)
-		𝐯₀ = -0.01:0.02/(K-1):0.01
+		𝐯₀ = -1.0:2.0/(K-1):1.0
 		for k = 1:K
-			θ.𝐯[k] .= 𝐯₀[k]
+			θ.𝐯[k] .= θ.𝛃[k] .= 𝐯₀[k]
 		end
 	else
-		θ.𝐯[1] .= 0.0
+		θ.𝐯[1] .= 1.0 .- 2rand(length(θ.𝐯[1]))
+		θ.𝛃[1] .= 0
+	end
+	for k = 1:length(θ.𝐯)
+		θ.𝐯[k] ./= options.tbf_accu_scalefactor
+		θ.𝛃[k] ./= options.tbf_accu_scalefactor
 	end
 end
 
@@ -74,12 +89,66 @@ function GLMθ(glmθ::GLMθ, elementtype)
 	GLMθ(b = zeros(elementtype, length(glmθ.b)),
 		b_scalefactor = glmθ.b_scalefactor,
 		fit_b = glmθ.fit_b,
+		fit_𝛃 = glmθ.fit_𝛃,
 		𝐠 = zeros(elementtype, length(glmθ.𝐠)),
 		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
 		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
 		𝐮indices_hist = glmθ.𝐮indices_hist,
 		𝐮indices_time = glmθ.𝐮indices_time,
 		𝐮indices_move = glmθ.𝐮indices_move)
+end
+
+"""
+	GLMθ(θ, concatenatedθ)
+
+Create an instance of `GLMθ` by updating a pre-existing instance with new concatenated parameters
+
+ARGUMENT
+-`θ`: pre-existing instance of `GLMθ`
+-`concatenatedθ`: values of the parameters being fitted, concatenated into a vector
+
+OPTION ARGUMENT
+-`offset`: the number of unrelated parameters in `concatenatedθ` preceding the relevant parameters
+-`initialization`: whether to purposefully ignore the transformation parameteter `b` and the bound encoding `𝛃`
+"""
+function GLMθ(θ::GLMθ, concatenatedθ::Vector{T}; offset::Integer, initialization::Bool=false) where {T<:Real}
+	θnew = GLMθ(θ, T)
+	counter = offset
+	if θnew.fit_b && !initialization
+		counter+=1
+		θnew.b[1] = concatenatedθ[counter]
+	else
+		θnew.b[1] = θ.b[1]
+	end
+	for k = 2:length(θ.𝐠)
+		counter+=1
+		θnew.𝐠[k] = concatenatedθ[counter]
+	end
+	for q in eachindex(θ.𝐮)
+		counter+=1
+		θnew.𝐮[q] = concatenatedθ[counter]
+	end
+	for k in eachindex(θ.𝐯)
+		for q in eachindex(θ.𝐯[k])
+			counter+=1
+			θnew.𝐯[k][q] = concatenatedθ[counter]
+		end
+	end
+	if θnew.fit_𝛃 && !initialization
+		for k in eachindex(θ.𝛃)
+			for q in eachindex(θ.𝛃[k])
+				counter+=1
+				θnew.𝛃[k][q] = concatenatedθ[counter]
+			end
+		end
+	else
+		for k in eachindex(θ.𝛃)
+			for q in eachindex(θ.𝛃[k])
+				θnew.𝛃[k][q] = θ.𝛃[k][q]
+			end
+		end
+	end
+	return θnew
 end
 
 """
@@ -91,9 +160,11 @@ function FHMDDM.copy(glmθ::GLMθ)
 	GLMθ(b = copy(glmθ.b),
 		b_scalefactor = glmθ.b_scalefactor,
 		fit_b = glmθ.fit_b,
+		fit_𝛃 = glmθ.fit_𝛃,
 		𝐠 = copy(glmθ.𝐠),
 		𝐮 = copy(glmθ.𝐮),
 		𝐯 = collect(copy(𝐯ₖ) for 𝐯ₖ in glmθ.𝐯),
+		𝛃 = collect(copy(𝛃ₖ) for 𝛃ₖ in glmθ.𝛃),
 		𝐮indices_hist = copy(glmθ.𝐮indices_hist),
 		𝐮indices_time = copy(glmθ.𝐮indices_time),
 		𝐮indices_move = copy(glmθ.𝐮indices_move))
@@ -135,8 +206,8 @@ function initialize_GLM_parameters!(model::Model; show_trace::Bool=false)
 		for i in eachindex(model.trialsets)
 			for mpGLM in model.trialsets[i].mpGLMs
 				vmean = mean(mpGLM.θ.𝐯)
-				mpGLM.θ.𝐯[1] .= 3.0.*vmean
-				mpGLM.θ.𝐯[2] .= -vmean
+				mpGLM.θ.𝐯[1] .= mpGLM.θ.𝛃[1] .= 3.0.*vmean
+				mpGLM.θ.𝐯[2] .= mpGLM.θ.𝛃[2] .= -vmean
 			end
 		end
 	end
@@ -152,19 +223,9 @@ MODIFIED ARGUMENT
 
 UNMODIFIED ARGUMENT
 -`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat");
-julia> maximize_choice_posterior!(model)
-julia> γ = choiceposteriors(model)[1]
-julia> mpGLM = model.trialsets[1].mpGLMs[2]
-julia> FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, γ)
-```
 """
 function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Matrix{<:Vector{<:Real}}; show_trace::Bool=false, iterations::Integer=20)
-	x₀ = concatenateparameters(mpGLM.θ; omitb=true)
+	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	nparameters = length(x₀)
 	Q = fill(NaN,1)
 	∇Q = fill(NaN, nparameters)
@@ -173,7 +234,7 @@ function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Ma
 	∇f!(∇, x) = negexpectation_of_∇loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
 	∇∇f!(∇∇, x) = negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
     results = Optim.optimize(f, ∇f!, ∇∇f!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
-	sortparameters!(mpGLM.θ, Optim.minimizer(results); omitb=true)
+	sortparameters!(mpGLM.θ, Optim.minimizer(results); initialization=true)
 	return nothing
 end
 
@@ -193,9 +254,9 @@ UNMODIFIED ARGUMENT
 -`x`: filters
 """
 function expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
-	x₀ = concatenateparameters(mpGLM.θ; omitb=true)
+	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
-		sortparameters!(mpGLM.θ, x; omitb=true)
+		sortparameters!(mpGLM.θ, x; initialization=true)
 		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	Q[1]
@@ -218,9 +279,9 @@ UNMODIFIED ARGUMENT
 -`x`: filters
 """
 function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
-	x₀ = concatenateparameters(mpGLM.θ; omitb=true)
+	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
-		sortparameters!(mpGLM.θ, x; omitb=true)
+		sortparameters!(mpGLM.θ, x; initialization=true)
 		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	for i in eachindex(∇)
@@ -246,9 +307,9 @@ UNMODIFIED ARGUMENT
 -`x`: filters
 """
 function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
-	x₀ = concatenateparameters(mpGLM.θ; omitb=true)
+	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
-		sortparameters!(mpGLM.θ, x; omitb=true)
+		sortparameters!(mpGLM.θ, x; initialization=true)
 		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	nparameters = length(x)
@@ -274,25 +335,6 @@ UNMODIFIED ARGUMENT
 -`γ`: posterior probabilities of the latent variables
 -`k`: index of the coupling state
 -`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat");
-julia> mpGLM = model.trialsets[1].mpGLMs[1]
-julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-julia> x₀ = concatenateparameters(mpGLM.θ)
-julia> nparameters = length(x₀)
-julia> fhand, ghand, hhand = fill(NaN,1), fill(NaN,nparameters), fill(NaN,nparameters,nparameters)
-julia> FHMDDM.expectation_of_∇∇loglikelihood!(fhand, ghand, hhand, γ, mpGLM)
-julia> f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x)
-julia> fauto = f(x₀)
-julia> gauto = ForwardDiff.gradient(f, x₀)
-julia> hauto = ForwardDiff.hessian(f, x₀)
-julia> abs(fauto - fhand[1])
-julia> maximum(abs.(gauto .- ghand))
-julia> maximum(abs.(hauto .- hhand))
-```
 """
 function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 										∇Q::Vector{<:Real},
@@ -315,7 +357,7 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:Real},
 	∇∇Q .= 0.0
 	@inbounds for i = 1:Ξ
 		for k = 1:K
-			𝐋 = FHMDDM.linearpredictor(mpGLM,i,k)
+			𝐋 = linearpredictor(mpGLM,i,k; ignore𝛃=true)
 			for t=1:T
 				d²ℓ_dL², dℓ_dL, ℓ = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
 				Q[1] += γ[i,k][t]*ℓ

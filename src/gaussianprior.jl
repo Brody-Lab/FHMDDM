@@ -27,23 +27,27 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 	for i = 1:length(trialsets)
 		mpGLM = trialsets[i].mpGLMs[1]
 		𝐀_lv, index𝐀_lv = shrinkagematrices(indexθ.latentθ)
-		𝐀_at, index𝐀_at = shrinkagematrices(indexθ.glmθ[i], options.b_scalefactor)
+		𝐀_b, index𝐀_b = shrinkagematrices(indexθ.glmθ[i], options.b_scalefactor)
 		𝐀_glm, index𝐀_glm = shrinkagematrices(indexθ.glmθ[i], options)
 		if !isnan(options.L2flattening_GLM_min) && !isnan(options.L2flattening_GLM_max)
 			𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.Φₐ, mpGLM.Φₜ)
-			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_at, 𝐀_glm, 𝚪_glm)
-			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_at, index𝐀_glm, index𝚪_glm)
-			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_at), length(index𝐀_glm), length(index𝚪_glm))
+			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_b, 𝐀_glm, 𝚪_glm)
+			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_b, index𝐀_glm, index𝚪_glm)
+			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_b), length(index𝐀_glm), length(index𝚪_glm))
 		else
-			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_at, 𝐀_glm)
-			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_at, index𝐀_glm)
-			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_at), length(index𝐀_glm), 0)
+			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_b, 𝐀_glm)
+			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_b, index𝐀_glm)
+			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_b), length(index𝐀_glm), 0)
 		end
 		𝛂min = vcat(𝛂min, 𝛂min_t)
 		𝛂max = vcat(𝛂max, 𝛂max_t)
 	end
 	𝛂 = sqrt.(𝛂min.*𝛂max)
-    N = indexθ.glmθ[end][end].𝐯[end][end]
+	if indexθ.glmθ[end][end].fit_𝛃
+		N = indexθ.glmθ[end][end].𝛃[end][end]
+	else
+	    N = indexθ.glmθ[end][end].𝐯[end][end]
+	end
     gaussianprior = GaussianPrior(𝐀=𝐀, 𝛂=𝛂, 𝛂min=𝛂min, 𝛂max=𝛂max, index𝐀=index𝐀, 𝚲=zeros(N,N))
     precisionmatrix!(gaussianprior)
     return gaussianprior
@@ -212,6 +216,12 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 				𝐀 = vcat(𝐀, [Aaccu])
 				index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
 			end
+			if indexᵢₙ.fit_𝛃
+				for indexᵢₙ𝛃ₖ in indexᵢₙ.𝛃
+					𝐀 = vcat(𝐀, [Aaccu])
+					index𝐀 = vcat(index𝐀, [indexᵢₙ𝛃ₖ])
+				end
+			end
 		end
 	end
 	return 𝐀, index𝐀
@@ -306,11 +316,11 @@ OUTPUT
 """
 function L2penalty_coeffcients_limits(options::Options, N_shrinkage_LV::Integer, N_shrinkage_AT::Integer, N_shrinkage_GLM::Integer, N_flattening_GLM::Integer)
 	𝛂min = vcat(options.L2shrinkage_LV_min	.*ones(N_shrinkage_LV),
-				options.L2shrinkage_AT_min	.*ones(N_shrinkage_AT),
+				options.L2shrinkage_b_min	.*ones(N_shrinkage_AT),
 				options.L2shrinkage_GLM_min	.*ones(N_shrinkage_GLM),
 				options.L2flattening_GLM_min.*ones(N_flattening_GLM))
 	𝛂max = vcat(options.L2shrinkage_LV_max .*ones(N_shrinkage_LV),
-				options.L2shrinkage_AT_max .*ones(N_shrinkage_AT),
+				options.L2shrinkage_b_max .*ones(N_shrinkage_AT),
 				options.L2shrinkage_GLM_max	.*ones(N_shrinkage_GLM),
  				options.L2flattening_GLM_max.*ones(N_flattening_GLM))
 	return 𝛂min, 𝛂max

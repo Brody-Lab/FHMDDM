@@ -61,6 +61,9 @@ function Model(options::Options, resultspath::String, trialsets::Vector{<:Trials
 			for k in eachindex(glmθ[i][n]["v"])
 				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
 			end
+			for k in eachindex(glmθ[i][n]["beta"])
+				trialsets[i].mpGLMs[n].θ.𝛃[k] .= glmθ[i][n]["beta"][k]
+			end
 		end
 	end
 	gaussianprior = GaussianPrior(options, trialsets)
@@ -238,69 +241,6 @@ function Trialset(options::Options, trialset::Dict)
 end
 
 """
-	Trialset(trialset)
-
-Create an instance of `Trialset` from a saved file
-"""
-function Trialset(trialset::Dict)
-	trials = map(trialset["trials"]) do trial
-				time = typeof(trial["clicks"]["time"])<:AbstractFloat ? [trial["clicks"]["time"]] : trial["clicks"]["time"]
-				inputtimesteps = typeof(trial["clicks"]["inputtimesteps"])<:Integer ? [trial["clicks"]["inputtimesteps"]] : trial["clicks"]["inputtimesteps"]
-				inputindex =  map(trial["clicks"]["inputindex"]) do x
-						           typeof(x)<:Integer ? [x] : x
-						       end
-				left =  map(trial["clicks"]["left"]) do x
-				           typeof(x)<:Integer ? [x] : x
-				       end
-				right =  map(trial["clicks"]["right"]) do x
-				           typeof(x)<:Integer ? [x] : x
-				       	end
-				if typeof(trial["clicks"]["source"]) <: Bool
-					source = convert(BitArray{1}, [trial["clicks"]["source"]])
-				else
-					source = convert(BitArray{1}, trial["clicks"]["source"])
-				end
-				clicks = Clicks(time=time,
-								inputtimesteps=inputtimesteps,
-								inputindex=inputindex,
-								source=source,
-								left=left,
-								right=right)
-				Trial(clicks=clicks,
-                      choice=trial["choice"],
-                      ntimesteps=trial["ntimesteps"],
-                      previousanswer=trial["previousanswer"])
-			end
-	d𝛏_dB = trialset["mpGLMs"][1]["dxi_dB"]
-	Φₐ = trialset["mpGLMs"][1]["Phiaccumulator"]
-	Φₕ = trialset["mpGLMs"][1]["Phihistory"]
-	Φₘ = trialset["mpGLMs"][1]["Phipremovement"]
-	Φₜ = trialset["mpGLMs"][1]["Phitime"]
-	𝐕 = trialset["mpGLMs"][1]["V"]
-	𝐮indices_hist = min(trialset["mpGLMs"][1]["theta"]["uindices_hist"]):max(trialset["mpGLMs"][1]["theta"]["uindices_hist"])
-	𝐮indices_move = min(trialset["mpGLMs"][1]["theta"]["uindices_move"]):max(trialset["mpGLMs"][1]["theta"]["uindices_move"])
-	𝐮indices_time = min(trialset["mpGLMs"][1]["theta"]["uindices_time"]):max(trialset["mpGLMs"][1]["theta"]["uindices_time"])
-	mpGLMs = map(trialset["mpGLMs"]) do mpGLM
-				𝐠 = typeof(mpGLM["theta"]["g"])<:AbstractFloat ? [mpGLM["theta"]["g"]] : mpGLM["theta"]["g"]
-				𝐯 = map(mpGLM["theta"]["v"]) do x
-			           	typeof(x)<:AbstractFloat ? [x] : x
-			        end
-				θ = GLMθ(𝐠=𝐠, 𝐮=mpGLM["theta"]["u"], 𝐯=𝐯, 𝐮indices_hist=𝐮indices_hist, 𝐮indices_move=𝐮indices_move, 𝐮indices_time=𝐮indices_time)
-				MixturePoissonGLM(Δt=mpGLM["dt"],
-									d𝛏_dB=d𝛏_dB,
-									Φₐ=Φₐ,
-									Φₕ=Φₕ,
-									Φₘ=Φₘ,
-									Φₜ=Φₜ,
-									θ=θ,
-									𝐕=𝐕,
-									𝐗=mpGLM["X"],
-									𝐲=mpGLM["y"])
-			end
-	Trialset(mpGLMs=mpGLMs, trials=trials)
-end
-
-"""
 	randomize_latent_parameters(options)
 
 Initialize the value of each model parameters in native space by sampling from a Uniform random variable""
@@ -364,7 +304,7 @@ function randomizeparameters!(model::Model)
 	randomize_latent_parameters!(model::Model)
 	for trialset in model.trialsets
 		for mpGLM in trialset.mpGLMs
-			randomizeparameters!(mpGLM.θ)
+			randomizeparameters!(mpGLM.θ, model.options)
 		end
 	end
 end

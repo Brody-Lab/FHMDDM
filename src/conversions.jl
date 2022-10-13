@@ -333,6 +333,7 @@ function dictionary(options::Options)
 			"fit_Ac22"=>options.fit_Aᶜ₂₂,
 			"fit_B"=>options.fit_B,
 			"fit_b"=>options.fit_b,
+			"fit_beta"=>options.fit_𝛃,
 			"fit_k"=>options.fit_k,
 			"fit_lambda"=>options.fit_λ,
 			"fit_mu0"=>options.fit_μ₀,
@@ -347,8 +348,8 @@ function dictionary(options::Options)
 			"g_tol"=>options.g_tol,
 			"L2flattening_GLM_max"=>options.L2flattening_GLM_max,
 			"L2flattening_GLM_min"=>options.L2flattening_GLM_min,
-			"L2shrinkage_AT_max"=>options.L2shrinkage_AT_max,
-			"L2shrinkage_AT_min"=>options.L2shrinkage_AT_min,
+			"L2shrinkage_b_max"=>options.L2shrinkage_b_max,
+			"L2shrinkage_b_min"=>options.L2shrinkage_b_min,
 			"L2shrinkage_choices_max"=>options.L2shrinkage_choices_max,
 			"L2shrinkage_choices_min"=>options.L2shrinkage_choices_min,
 			"L2shrinkage_GLM_max"=>options.L2shrinkage_GLM_max,
@@ -400,7 +401,6 @@ function dictionary(options::Options)
 			"tbf_time_scalefactor"=>options.tbf_time_scalefactor/options.nunits,
 			"tbf_time_stretch"=>options.tbf_time_stretch,
 			"tuning_state_dependent"=>options.tuning_state_dependent,
-			"updateDDtransformation"=>options.updateDDtransformation,
 			"Xi"=>options.Ξ)
 end
 
@@ -415,6 +415,7 @@ function dictionary(θ::GLMθ)
     	"g"=>θ.𝐠,
 		"u"=>θ.𝐮,
 		"v"=>θ.𝐯,
+		"beta"=>θ.𝛃,
 		"uindices_hist"=>collect(θ.𝐮indices_hist),
 		"uindices_move"=>collect(θ.𝐮indices_move),
 		"uindices_time"=>collect(θ.𝐮indices_time))
@@ -524,6 +525,7 @@ function Options(nunits::Integer, options::Dict)
 			fit_Aᶜ₂₂= options["fit_Ac22"],
 			fit_B = options["fit_B"],
 			fit_b = options["fit_b"],
+			fit_𝛃 = options["fit_beta"],
 			fit_k = options["fit_k"],
 			fit_λ = options["fit_lambda"],
 			fit_μ₀ = options["fit_mu0"],
@@ -538,8 +540,8 @@ function Options(nunits::Integer, options::Dict)
 			g_tol = options["g_tol"],
 			L2flattening_GLM_max = options["L2flattening_GLM_max"],
 			L2flattening_GLM_min = options["L2flattening_GLM_min"],
-			L2shrinkage_AT_max = options["L2shrinkage_AT_max"],
-			L2shrinkage_AT_min = options["L2shrinkage_AT_min"],
+			L2shrinkage_b_max = options["L2shrinkage_b_max"],
+			L2shrinkage_b_min = options["L2shrinkage_b_min"],
 			L2shrinkage_choices_max = options["L2shrinkage_choices_max"],
 			L2shrinkage_choices_min = options["L2shrinkage_choices_min"],
 			L2shrinkage_GLM_max = options["L2shrinkage_GLM_max"],
@@ -592,7 +594,6 @@ function Options(nunits::Integer, options::Dict)
 			tbf_time_scalefactor = options["tbf_time_scalefactor"]*nunits,
 			tbf_time_stretch = options["tbf_time_stretch"],
 			tuning_state_dependent = options["tuning_state_dependent"],
-			updateDDtransformation=options["updateDDtransformation"],
 			Ξ = convert(Int, options["Xi"]))
 end
 

@@ -67,12 +67,12 @@ function test_expectation_of_∇∇loglikelihood!(datapath::String)
     model = Model(datapath)
     mpGLM = model.trialsets[1].mpGLMs[1]
     γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-    x₀ = concatenateparameters(mpGLM.θ; omitb=true)
+    x₀ = concatenateparameters(mpGLM.θ; initialization=true)
     nparameters = length(x₀)
     fhand, ghand, hhand = fill(NaN,1), fill(NaN,nparameters),
     fill(NaN,nparameters,nparameters)
     FHMDDM.expectation_of_∇∇loglikelihood!(fhand, ghand, hhand, γ, mpGLM)
-    f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x; omitb=true);
+    f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x; initialization=true);
     fauto = f(x₀);
     gauto = ForwardDiff.gradient(f, x₀);
     hauto = ForwardDiff.hessian(f, x₀);
@@ -191,7 +191,7 @@ OPTIONAL ARGUMENT
 
 RETURN
 -maximum absolute normalized difference between the gradients
--absolute normalized difference between the log-evidence functions
+-maximum absolute normalized difference between the log-evidence functions
 """
 function check_∇logevidence(datapath::String; simulate::Bool=false)
     model = Model(datapath)

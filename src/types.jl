@@ -63,6 +63,8 @@ Model settings
 	fit_B::TB=true
 	"whether to fit the parameter for transforming the accumulator"
 	fit_b::TB=true
+	"whether to fit separate encoding weights for when the accumulator is at the bound"
+	fit_𝛃::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=true
 	"whether to fit the parameter specifying leak or instability"
@@ -91,8 +93,8 @@ Model settings
 	L2flattening_GLM_max::TF=1e0
 	L2flattening_GLM_min::TF=1e-4
 	"maximum and minimum L2 shrinkage penalty for the accumulator transformation parameter"
-	L2shrinkage_AT_max::TF=1e2
-	L2shrinkage_AT_min::TF=1e-2
+	L2shrinkage_b_max::TF=1e2
+	L2shrinkage_b_min::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
 	L2shrinkage_choices_max::TF=1e2
 	L2shrinkage_choices_min::TF=1e-2
@@ -195,8 +197,6 @@ Model settings
 	tbf_time_scalefactor::TF=20.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_time_stretch::TF=1.0
-	"whether to update the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space, to be the value learned from maximizing the evidence of only the choices"
-	updateDDtransformation::TB=true
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 	"number of states of the coupling variable"
@@ -289,7 +289,7 @@ Parameters of a mixture of Poisson generalized linear model
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
 	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
-	𝛃::VVR
+	𝛃::VVR=deepcopy(𝐯)
 end
 
 """
@@ -297,7 +297,8 @@ end
 
 Mixture of Poisson generalized linear model
 """
-@with_kw struct MixturePoissonGLM{F<:AbstractFloat,
+@with_kw struct MixturePoissonGLM{TI<:Integer,
+								  F<:AbstractFloat,
 								  UI<:UnitRange{<:Integer},
                                   VF<:Vector{<:AbstractFloat},
 								  VI<:Vector{<:Integer},
@@ -321,8 +322,6 @@ Mixture of Poisson generalized linear model
     𝐕::MF
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
-    "Poisson observations"
-    𝐲::VI
     "columns corresponding to the gain input"
 	𝐗columns_gain::UI = 1:1
 	"columns corresponding to the spike history input"
@@ -333,6 +332,10 @@ Mixture of Poisson generalized linear model
 	𝐗columns_move::UI = 𝐗columns_time[end] .+ (1:size(Φₘ,2))
 	"columns corresponding to the input from the accumulator"
 	𝐗columns_accu::UI = 𝐗columns_move[end] .+ (1:size(Φₐ,2))
+	"number of accumulator states"
+	Ξ::TI=length(d𝛏_dB)
+	"Poisson observations"
+    𝐲::VI
 end
 
 """

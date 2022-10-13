@@ -18,7 +18,7 @@ function ∇∇loglikelihood(model::Model)
 		∇∇scalechoiceLL!(ℓ, ∇ℓ, ∇∇ℓ, model)
 	end
 	indexθ = concatenateparameters(model)[2]
-	concatenatedindices = concatenate(indexθ)
+	concatenatedindices = concatenate(indexθ; includeunfit=true)
 	isfitted = concatenatedindices .> 0
 	if !all(isfitted)
 		∇ℓ = ∇ℓ[isfitted]
@@ -104,9 +104,9 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	indexθ_trialset = sameacrosstrials.indexθ_trialset[trialsetindex]
 	nθ_trialset = sameacrosstrials.nθ_trialset[trialsetindex]
 	if length(clicks.time) > 0
-		adaptedclicks = ∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+		adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
-	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
+	FHMDDM.update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
@@ -475,10 +475,10 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 	nneurons = length(mpGLMs)
 	sf = 1/nneurons
 	@inbounds for n = 1:nneurons
-		conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
+		FHMDDM.conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
 		for t = 1:ntimesteps
 			τ = t + offset
-			∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], 𝛚[n], d𝛚_db[n], d²𝛚_db²[n], τ)
+			FHMDDM.∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], 𝛚[n], d𝛚_db[n], d²𝛚_db²[n], τ)
 			for i in eachindex(∇logpy[t][n])
 				∇logpy[t][n][i] .*= sf
 			end
@@ -586,8 +586,8 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										d𝛚_db::Vector{<:Real},
 										d²𝛚_db²::Vector{<:Real},
 										τ::Integer)
-	@unpack 𝐗, 𝐕, 𝐲 = mpGLM
-	@unpack b, 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	@unpack 𝐗, Ξ, 𝐕, 𝐲 = mpGLM
+	@unpack b, 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
 	K = max(K𝐠, K𝐯)
@@ -595,56 +595,82 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 	offset𝐮 = K𝐠
 	n𝐠𝐮 = n𝐮 + offset𝐮
 	n𝐯 = length(𝐯[1])
-	Ξ = length(𝛚)
+	n𝐠𝐮𝐯 = n𝐠𝐮 + K*n𝐯
 	Vₜᵀ𝐯 = zeros(K𝐯)
 	for j = 1:K
 		for q=1:n𝐯
 			Vₜᵀ𝐯[j] += 𝐕[τ,q]*𝐯[j][q]
 		end
 	end
+	nparameters = length(∇logpy)
 	for i = 1:Ξ
 		for q=1:n𝐯
 			dL_d𝐯[q] = 𝐕[τ,q]*𝛚[i]
 		end
 		for j = 1:K
-			d²ℓ_dL², dℓ_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
+			d²ℓ_dL², dℓ_dL = FHMDDM.differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
 			offset𝐯 = n𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
-			dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
-			d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
-			∇logpy[1][i,j] = dℓ_dL*dL_db
-			∇∇logpy[1,1][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
+			offset𝛃 = n𝐠𝐮𝐯 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
+			if i==1 || i==Ξ
+				∇logpy[1][i,j] = 0 # because d𝛚_db = 0
+				for q = 1:nparameters
+					∇∇logpy[1,q][i,j] = 0
+				end
+			else
+				dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
+				d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
+				∇logpy[1][i,j] = dℓ_dL*dL_db
+				∇∇logpy[1,1][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
+				if j > 1 && K𝐠 > 1
+					s = j
+					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_db
+				end
+				for q=1:n𝐮
+					s = offset𝐮+q
+					∇∇logpy[1,s][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_db
+				end
+				for q=1:n𝐯
+					s = offset𝐯 + q
+					d²L_dvdb = 𝐕[τ,q]*d𝛚_db[i]
+					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_d𝐯[q]*dL_db + dℓ_dL*d²L_dvdb
+				end
+			end
 			if j > 1 && K𝐠 > 1
-				∇∇logpy[1,j][i,j] = d²ℓ_dL²*dL_db
-			end
-			for q=1:n𝐮
-				s = offset𝐮+q
-				∇∇logpy[1,s][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_db
-			end
-			for q=1:n𝐯
-				s = offset𝐯 + q
-				d²L_dvdb = 𝐕[τ,q]*d𝛚_db[i]
-				∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_d𝐯[q]*dL_db + dℓ_dL*d²L_dvdb
-			end
-			if j > 1 && K𝐠 > 1
-				∇logpy[j][i,j] = dℓ_dL
+				s = j
+				∇logpy[s][i,j] = dℓ_dL
 			end
 			for q=1:n𝐮
 				s = offset𝐮+q
 				∇logpy[s][i,j] = dℓ_dL*𝐗[τ,1+q]
 			end
-			for q=1:n𝐯
-				s = offset𝐯 + q
-				∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
+			if fit_𝛃 && (i==1 || i==Ξ)
+				for q=1:n𝐯
+					s = offset𝛃 + q
+					∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
+				end
+			else
+				for q=1:n𝐯
+					s = offset𝐯 + q
+					∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
+				end
 			end
 			if j > 1 && K𝐠 > 1
-				∇∇logpy[j,j][i,j] = d²ℓ_dL²
+				s = j
+				∇∇logpy[s,s][i,j] = d²ℓ_dL²
 				for r=1:n𝐮
 					t = offset𝐮 + r
 					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+r]
 				end
-				for r=1:n𝐯
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
+				if fit_𝛃 && (i==1 || i==Ξ)
+					for r=1:n𝐯
+						t = offset𝛃 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
+					end
+				else
+					for r=1:n𝐯
+						t = offset𝐯 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
+					end
 				end
 			end
 			for q=1:n𝐮
@@ -653,16 +679,33 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 					t = offset𝐮 + r
 					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*𝐗[τ,1+r]
 				end
-				for r=1:n𝐯
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
+				if fit_𝛃 && (i==1 || i==Ξ)
+					for r=1:n𝐯
+						t = offset𝛃 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
+					end
+				else
+					for r=1:n𝐯
+						t = offset𝐯 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
+					end
 				end
 			end
-			for q=1:n𝐯
-				for r=q:n𝐯
-					s = offset𝐯 + q
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
+			if fit_𝛃 && (i==1 || i==Ξ)
+				for q=1:n𝐯
+					for r=q:n𝐯
+						s = offset𝛃 + q
+						t = offset𝛃 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
+					end
+				end
+			else
+				for q=1:n𝐯
+					for r=q:n𝐯
+						s = offset𝐯 + q
+						t = offset𝐯 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
+					end
 				end
 			end
 		end
@@ -905,8 +948,7 @@ function Sameacrosstrials(model::Model)
 	counter = 13
 	indexθ_py = map(trialsets) do trialset
 					map(trialset.mpGLMs) do mpGLM
-						q = length(mpGLM.θ.b) + length(mpGLM.θ.𝐠)-1 + length(mpGLM.θ.𝐮) + sum(length.(mpGLM.θ.𝐯))
-						zeros(Int,q)
+						zeros(Int, countparameters(mpGLM.θ; includeunfit=true))
 					end
 				end
 	for s in eachindex(indexθ_py)

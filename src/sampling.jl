@@ -295,8 +295,8 @@ RETURN
 -`𝐲̂`: a vector representing the sampled spiking response at each time step
 """
 function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer}, )
-	@unpack Δt, Φₕ, 𝐕, 𝐲 = mpGLM
-	@unpack 𝐠, 𝐮, 𝐯 = mpGLM.θ
+	@unpack Δt, Φₕ, 𝐕, 𝐲, Ξ = mpGLM
+	@unpack 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	max_spikehistory_lag = size(Φₕ,1)
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
@@ -307,10 +307,14 @@ function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:A
         j = a[t]
         k = c[t]
 		gₖ = 𝐠[min(k, K𝐠)]
-		𝐯ₖ = 𝐯[min(k, K𝐯)]
+		if fit_𝛃 && (j==1 || j==Ξ)
+			𝐰ₖ = 𝛃[min(k, K𝐯)]
+		else
+			𝐰ₖ = 𝐯[min(k, K𝐯)]
+		end
 		L = gₖ + 𝐄𝐞[τ]
-		for i in eachindex(𝐯ₖ)
-			L+= 𝛚[j]*𝐕[τ,i]*𝐯ₖ[i]
+		for i in eachindex(𝐰ₖ)
+			L+= 𝛚[j]*𝐕[τ,i]*𝐰ₖ[i]
 		end
 		for lag = 1:min(max_spikehistory_lag, t-1)
 			if 𝐲̂[t-lag] > 0

@@ -14,18 +14,17 @@ OUTPUT
 function MixturePoissonGLM(concatenatedθ::Vector{T},
 						   mpGLM::MixturePoissonGLM;
 						   offset::Integer=0,
-						   omitb::Bool=false) where {T<:Real}
-	mpGLM = MixturePoissonGLM(Δt=mpGLM.Δt,
-							d𝛏_dB=mpGLM.d𝛏_dB,
-							Φₐ=mpGLM.Φₐ,
-                        	Φₕ=mpGLM.Φₕ,
-							Φₘ=mpGLM.Φₘ,
-							Φₜ=mpGLM.Φₜ,
-							θ=GLMθ(mpGLM.θ, concatenatedθ; offset=offset, omitb=omitb),
-							𝐕=mpGLM.𝐕,
-							𝐗=mpGLM.𝐗,
-							𝐲=mpGLM.𝐲)
-	return mpGLM
+						   initialization::Bool=false) where {T<:Real}
+	MixturePoissonGLM(Δt=mpGLM.Δt,
+						d𝛏_dB=mpGLM.d𝛏_dB,
+						Φₐ=mpGLM.Φₐ,
+	                	Φₕ=mpGLM.Φₕ,
+						Φₘ=mpGLM.Φₘ,
+						Φₜ=mpGLM.Φₜ,
+						θ=GLMθ(mpGLM.θ, concatenatedθ; offset=offset, initialization=initialization),
+						𝐕=mpGLM.𝐕,
+						𝐗=mpGLM.𝐗,
+						𝐲=mpGLM.𝐲)
 end
 
 """
@@ -41,13 +40,22 @@ ARGUMENT
 RETURN
 -`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
 """
-function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack 𝐗, d𝛏_dB = mpGLM
-    @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯 = mpGLM.θ
+function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer; ignore𝛃::Bool=false)
+    @unpack 𝐗, d𝛏_dB, Ξ = mpGLM
+    @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	gₖ = 𝐠[min(length(𝐠), k)]
-	𝐯ₖ = 𝐯[min(length(𝐯), k)]
-	transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-	𝐗*vcat(gₖ, 𝐮, 𝐯ₖ.*transformedξ)
+	if j == 1 || j == Ξ
+		if fit_𝛃 && !ignore𝛃
+			𝐰ₖ = 𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
+		else
+			𝐰ₖ = 𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
+		end
+	else
+		𝐯ₖ = 𝐯[min(length(𝐯), k)]
+		transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
+		𝐰ₖ = 𝐯ₖ.*transformedξ
+	end
+	𝐗*vcat(gₖ, 𝐮, 𝐰ₖ)
 end
 
 """
@@ -111,25 +119,9 @@ MODIFIED ARGUMENT
 UNMODIFIED ARGUMENT
 -`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i,k][t] corresponds to the i-th accumulator state and the k-th coupling state in the t-th time bin in the trialset.
 -`mpGLM`: structure containing information for the mixture of Poisson GLM for one neuron
-
-EXAMPLE
-```julia-rep
-julia> using FHMDDM, Random
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true);
-julia> mpGLM = model.trialsets[1].mpGLMs[1]
-julia> γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-julia> ∇Q = FHMDDM.GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
-julia> FHMDDM.expectation_∇loglikelihood!(∇Q, γ, mpGLM)
-julia> ghand = FHMDDM.concatenateparameters(∇Q)[1]
-julia> using ForwardDiff
-julia> concatenatedθ = FHMDDM.concatenateparameters(mpGLM.θ)[1]
-julia> f(x) = FHMDDM.expectation_loglikelihood(x, γ, mpGLM)
-julia> gauto = ForwardDiff.gradient(f, concatenatedθ)
-julia> maximum(abs.(gauto .- ghand))
-```
 """
 function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
-	@unpack Δt, 𝐕, 𝐗, 𝐲 = mpGLM
+	@unpack Δt, 𝐕, 𝐗, Ξ, 𝐲 = mpGLM
 	@unpack 𝐯 = mpGLM.θ
 	𝛚 = transformaccumulator(mpGLM)
 	d𝛚_db = dtransformaccumulator(mpGLM)
@@ -140,8 +132,23 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	if ∇Q.fit_b
 		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
 	end
-	@inbounds for i = 1:Ξ
-		for k = 1:K
+	if ∇Q.fit_𝛃
+		∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
+	end
+	@inbounds for k = 1:K
+		for i = (1,Ξ)
+			𝐋 = linearpredictor(mpGLM,i,k)
+			for t=1:T
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
+				if ∇Q.fit_𝛃
+					∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+				else
+					∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+				end
+			end
+		end
+		for i = 2:Ξ-1
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
 				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
@@ -176,6 +183,15 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 			∇Q.b[1] = dot(sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db), 𝐕, 𝐯[k])
 		end
 	end
+	if ∇Q.fit_𝛃
+		if length(∇Q.𝛃) == K
+			@inbounds for k = 1:K
+				mul!(∇Q.𝛃[k], 𝐕', ∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+			end
+		else
+			mul!(∇Q.𝛃[1], 𝐕', sum(∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ))
+		end
+	end
 	return nothing
 end
 
@@ -203,6 +219,13 @@ function scale_expectation_∇loglikelihood!(∇Q::GLMθ, s::Real)
 	if ∇Q.fit_b
 		∇Q.b[1] *= s
 	end
+	if ∇Q.fit_𝛃
+		for 𝛃ₖ in ∇Q.𝛃
+			for i in eachindex(𝛃ₖ)
+				𝛃ₖ[i] *= s
+			end
+		end
+	end
 	return nothing
 end
 
@@ -222,17 +245,17 @@ RETURN
 -expectation of the log-likelihood of the spike train of one neuron
 """
 function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}},
-									   mpGLM::MixturePoissonGLM,
-									   x::Vector{<:Real};
-										omitb::Bool=false)
-	mpGLM = MixturePoissonGLM(x, mpGLM; omitb=omitb)
+									  mpGLM::MixturePoissonGLM,
+										x::Vector{<:Real};
+									  initialization::Bool=false)
+	mpGLM = FHMDDM.MixturePoissonGLM(x, mpGLM; initialization=initialization)
     @unpack Δt, 𝐲 = mpGLM
     T = length(𝐲)
     Ξ,K = size(γ)
     Q = 0.0
     @inbounds for i = 1:Ξ
 	    for k = 1:K
-			𝐋 = linearpredictor(mpGLM,i,k)
+			𝐋 = linearpredictor(mpGLM,i,k; ignore𝛃=initialization)
             for t = 1:T
 				Q += γ[i,k][t]*poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
             end
@@ -273,6 +296,14 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real}, ∇ℓglm::Vector{<:
 				for v in 𝐯ₖ
 					counter+=1
 					∇nℓ[counter] = -v
+				end
+			end
+			if ∇ℓglm.fit_𝛃
+				for 𝛃ₖ in ∇ℓglm.𝛃
+					for β in 𝛃ₖ
+						counter+=1
+						∇nℓ[counter] = -β
+					end
 				end
 			end
 		end
