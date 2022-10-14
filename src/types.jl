@@ -43,7 +43,6 @@ Model settings
 						TS<:String,
 						TF<:AbstractFloat,
 						TI<:Integer,
-						TVI<:Vector{<:Integer},
 						TVF<:Vector{<:AbstractFloat}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
