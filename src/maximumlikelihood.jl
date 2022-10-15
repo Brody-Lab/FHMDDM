@@ -21,14 +21,6 @@ OPTIONAL ARGUMENT
 RETURN
 `losses`: value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
 `gradientnorms`: 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, LineSearches, Optim
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"
-julia> model = Model(datapath)
-julia> losses, gradientnorms = maximizelikelihood!(model, LBFGS(linesearch = LineSearches.BackTracking()))
-```
 """
 function maximizelikelihood!(model::Model,
 							 optimizer::Optim.FirstOrderOptimizer;
@@ -79,24 +71,13 @@ UNMODIFIED ARGUMENT
 -`optimizer`: optimization algorithm implemented by Flux.jl
 
 OPTIONAL ARGUMENT
--`iterations`: number of inner iterations that will be run before the optimizer gives up
+-`iterations`: maximum number of iterations
 
 RETURN
-`losses`: a vector of floating-point numbers indicating the value of the loss function (negative of the model's log-likelihood) across iterations. If `store_trace` were set to false, then these are NaN's
-`gradientnorms`: a vector of floating-point numbers indicating the 2-norm of the gradient of  of the loss function across iterations. If `store_trace` were set to false, then these are NaN's
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> import Flux
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"
-julia> model = Model(datapath)
-julia> losses, gradientnorms = FHMDDM.maximizelikelihood!(model, Flux.ADAM())
+-see documentation for `maximizelikelihood!(model, optimizer)`
 ```
 """
-function maximizelikelihood!(model::Model,
-							optimizer::Flux.Optimise.AbstractOptimiser;
-							iterations::Integer = 3000)
+function maximizelikelihood!(model::Model, optimizer::Flux.Optimise.AbstractOptimiser; iterations::Integer = 3000)
 	memory = Memoryforgradient(model)
 	θ = concatenateparameters(model)[1]
 	∇ = similar(θ)
