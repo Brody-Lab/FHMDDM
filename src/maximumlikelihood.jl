@@ -126,6 +126,13 @@ function maximizelikelihood!(model::Model,
 end
 
 """
+	loglikelihood(model)
+
+Log of the likelihood of the data given the parameters
+"""
+loglikelihood(model::Model) = loglikelihood!(model, Memoryforgradient(model), concatenateparameters(model)[1])
+
+"""
     loglikelihood!(model, memory, concatenatedθ)
 
 Compute the log-likelihood

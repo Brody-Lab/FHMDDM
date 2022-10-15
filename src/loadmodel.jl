@@ -9,7 +9,7 @@ ARGUMENT
 - `datapath`: full path of the data file
 
 OPTIONAL ARGUMENT
--`fit_to_choices`: whether the initial values the model parameters are learned by fitting to the choices alone
+-`prefix`: a string that precedes the name of all files containing the results
 
 RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
@@ -20,7 +20,7 @@ julia> using FHMDDM
 julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_14_test/data.mat");
 ```
 """
-function Model(datapath::String)
+function Model(datapath::String; prefix::String="results")
     dataMAT = read(matopen(datapath))
 	nunits = 0
 	for rawtrialset in dataMAT["data"]
@@ -28,8 +28,9 @@ function Model(datapath::String)
 	end
     options = Options(nunits, dataMAT["options"])
 	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
-    if isfile(options.resultspath)
-        Model(options, options.resultspath, trialsets)
+	resultspath = joinpath(dirname(options.datapath), prefix*".mat")
+    if isfile(resultspath)
+        Model(options, resultspath, trialsets)
     else
         Model(options, trialsets)
     end

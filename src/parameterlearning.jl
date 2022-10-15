@@ -132,6 +132,13 @@ function maximizeposterior!(model::Model;
 end
 
 """
+	logposterior(model)
+
+Log of the posterior probability of the parameters given the data
+"""
+logposterior(model::Model) = logposterior!(model, Memoryforgradient(model), concatenateparameters(model)[1])
+
+"""
 	logposterior!(model, memory, concatenatedθ)
 
 Log of the posterior probability, minus the terms independent of the parameters
@@ -185,41 +192,4 @@ function ∇negativelogposterior!(∇::Vector{<:Real}, model::Model, memory::Mem
 	∇negativeloglikelihood!(∇, memory, model, concatenatedθ)
 	mul!(∇, model.gaussianprior.𝚲, concatenatedθ, 1, 1) # same as `∇ .+= 𝚲*concatenatedθ` but allocates no memory; not much faster though
 	return nothing
-end
-
-"""
-	check_∇negativelogposterior(model)
-
-Compare the hand-computed and automatically-differentiated gradients
-
-ARGUMENT
--`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
-
-RETURN
--`absdiffℓ`: absolute difference in the log-posterior evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
--`absdiff∇`: absolute difference in the gradients
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat"
-julia> model = Model(datapath)
-julia> absdiffℓ, absdiff∇ = FHMDDM.check_∇negativelogposterior(model)
-julia> println("")
-julia> println(datapath)
-julia> println("   max(|Δloss|): ", absdiffℓ)
-julia> println("   max(|Δgradient|): ", maximum(absdiff∇))
-julia>
-```
-"""
-function check_∇negativelogposterior(model::Model)
-	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-	memory = Memoryforgradient(model)
-	ℓhand = logposterior!(model, memory, concatenatedθ)
-	∇hand = similar(concatenatedθ)
-	∇negativelogposterior!(∇hand, model, memory, concatenatedθ)
-	f(x) = logposterior(x, indexθ, model)
-	ℓauto = f(concatenatedθ)
-	∇auto = ForwardDiff.gradient(f, concatenatedθ)
-	return abs(ℓauto-ℓhand), abs.(∇auto .+ ∇hand)
 end

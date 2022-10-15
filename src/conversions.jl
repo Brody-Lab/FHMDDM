@@ -299,26 +299,6 @@ function differentiate_native_wrt_real(r::Real, l::Real, u::Real)
 end
 
 """
-	dictionary(model)
-
-Package a subset of the fields of the model into a dictionary
-"""
-function dictionary(model::Model)
-	Dict("theta_native"=> dictionary(model.θnative),
-        "theta_real"=> dictionary(model.θreal),
-        "theta0_native" => dictionary(model.θ₀native),
-        "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-        "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φₐ,
-        "Phihistory"=>model.trialsets[1].mpGLMs[1].Φₕ,
-        "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φₘ,
-        "Phitime"=>model.trialsets[1].mpGLMs[1].Φₜ,
-        "penaltycoefficients"=>model.gaussianprior.𝛂,
-        "penaltymatrices"=>model.gaussianprior.𝐀,
-        "penaltymatrixindices"=>model.gaussianprior.index𝐀,
-        "precisionmatrix"=>model.gaussianprior.𝚲)
-end
-
-"""
     dictionary(options)
 
 Convert an instance of `Options` to a dictionary

@@ -1,18 +1,10 @@
 """
     test(datapath)
 
-Run a number of test on the model
+Run a number of tests on the model
 
 ARGUMENT
 -`datapath`: full path of the data file
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08c_test/T176_2018_05_03/data.mat"
-julia> test(datapath)
-julia>
-```
 """
 function test(datapath::String)
     println(" ")
@@ -27,6 +19,10 @@ function test(datapath::String)
     println("---------")
     println("testing '∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)'")
     test_∇negativeloglikelihood!(datapath)
+	println(" ")
+	println("---------")
+	println("testing `∇negativelogposterior(model)`")
+	test_∇negativelogposterior(model)
 	println(" ")
 	println("---------")
 	println("testing hessian of the log-likelihood of the model")
@@ -258,4 +254,27 @@ function check_∇∇choiceLL(datapath::String)
 	∇auto = ForwardDiff.gradient(f, concatenatedθ)
 	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
 	return abs(ℓauto-ℓhand), abs.(∇auto .- ∇hand[index𝛂]), abs.(∇∇auto .- ∇∇hand[index𝛂,index𝛂])
+end
+
+"""
+	test_∇negativelogposterior(model)
+
+Compare the hand-computed and automatically-differentiated gradients
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+```
+"""
+function test_∇negativelogposterior(model::Model)
+	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+	memory = Memoryforgradient(model)
+	ℓhand = logposterior!(model, memory, concatenatedθ)
+	∇hand = similar(concatenatedθ)
+	∇negativelogposterior!(∇hand, model, memory, concatenatedθ)
+	f(x) = logposterior(x, indexθ, model)
+	ℓauto = f(concatenatedθ)
+	∇auto = ForwardDiff.gradient(f, concatenatedθ)
+	println("   |Δloss|: ", abs(ℓauto-ℓhand))
+    println("   max(|Δ∇loss|): ", maximum(abs.(∇auto .+ ∇hand)))
+	return nothing
 end

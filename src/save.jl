@@ -10,8 +10,8 @@ OPTIONAL ARGUMENT
 -`prefix`: prefix to the name of the files to be saved
 """
 function analyzeandsave(model::Model; prefix="results")
-    save(model, prefix)
-    folderpath = dirname(model.options.resultspath)
+    savesummary(model; prefix=prefix)
+    folderpath = dirname(model.options.datapath)
     save(Predictions(model), folderpath, prefix)
     save(∇∇loglikelihood(model)[3], folderpath, prefix)
 end
@@ -21,17 +21,38 @@ end
 
 Save the results of a model into file compatible with both MATLAB and Julia
 
-Saved as `model.options.resultspath/<prefix>.mat`
+Saved as `model.options.datapath/<prefix>.mat`
 
 ARGUMENT
 -`model`: a structure containing the data, parameters, and settings
 -`prefix`: name of the file to be saved
 """
-function save(model::Model, prefix::String)
-    dict = dictionary(model)
-    path = joinpath(dirname(model.options.resultspath), prefix*".mat")
-    matwrite(path, dict)
+function savesummary(model::Model; prefix::String="results")
+    path = joinpath(dirname(model.options.datapath), prefix*".mat")
+    matwrite(path, summarize(model))
     return nothing
+end
+
+"""
+	summarize(model)
+
+Package the parameters, hyperparameters, and fields useful for analysis into a dictionary
+"""
+function summarize(model::Model)
+	Dict("loglikelihood"=>loglikelihood(model),
+		"logposterior"=>logposterior(model),
+		"theta_native"=> dictionary(model.θnative),
+        "theta_real"=> dictionary(model.θreal),
+        "theta0_native" => dictionary(model.θ₀native),
+        "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
+        "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φₐ,
+        "Phihistory"=>model.trialsets[1].mpGLMs[1].Φₕ,
+        "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φₘ,
+        "Phitime"=>model.trialsets[1].mpGLMs[1].Φₜ,
+        "penaltycoefficients"=>model.gaussianprior.𝛂,
+        "penaltymatrices"=>model.gaussianprior.𝐀,
+        "penaltymatrixindices"=>model.gaussianprior.index𝐀,
+        "precisionmatrix"=>model.gaussianprior.𝚲)
 end
 
 """
@@ -78,73 +99,6 @@ function save(hessian_loglikelihood::Matrix{<:AbstractFloat}, folderpath::String
 end
 
 """
-    save(model, λΔt, pchoice)
-
-Save the model parameters and the expectation of the emissions
-"""
-function save(λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}}, model::Model, pchoice::Vector{<:Vector{<:AbstractFloat}}; filename="results.mat")
-    modeldict = dictionary(model)
-    dict = Dict("pchoice" => pchoice,
-                "lambdaDeltat" => λΔt)
-    path = joinpath(dirname(model.options.resultspath), filename)
-    matwrite(path, dict)
-    return nothing
-end
-
-"""
-    save(hessian_loglikelihood, λΔt, model, pchoice)
-
-Save the model parameters and the expectation of the emissions and a hessian
-"""
-function save(hessian_loglikelihood::Matrix{<:AbstractFloat}, model::Model; filename="preinitialization.mat")
-    dict = Dict("theta_native"=> dictionary(model.θnative),
-                "theta_real"=> dictionary(model.θreal),
-                "theta0_native" => dictionary(model.θ₀native),
-                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φₐ,
-                "Phihistory"=>model.trialsets[1].mpGLMs[1].Φₕ,
-                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φₘ,
-                "Phitime"=>model.trialsets[1].mpGLMs[1].Φₜ,
-                "penaltycoefficients"=>model.gaussianprior.𝛂,
-                "penaltymatrices"=>model.gaussianprior.𝐀,
-                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
-                "precisionmatrix"=>model.gaussianprior.𝚲,
-                "hessian_loglikelihood"=>hessian_loglikelihood)
-    path = joinpath(dirname(model.options.resultspath), filename)
-    matwrite(path, dict)
-    return nothing
-end
-
-"""
-    save(hessian_loglikelihood, λΔt, model, pchoice)
-
-Save the model parameters and the expectation of the emissions and a hessian
-"""
-function save(hessian_loglikelihood::Matrix{<:AbstractFloat},
-              λΔt::Vector{<:Vector{<:Vector{<:AbstractFloat}}},
-              model::Model,
-              pchoice::Vector{<:Vector{<:AbstractFloat}}; filename=basename(model.options.resultspath))
-    dict = Dict("theta_native"=> dictionary(model.θnative),
-                "theta_real"=> dictionary(model.θreal),
-                "theta0_native" => dictionary(model.θ₀native),
-                "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-                "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φₐ,
-                "Phihistory"=>model.trialsets[1].mpGLMs[1].Φₕ,
-                "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φₘ,
-                "Phitime"=>model.trialsets[1].mpGLMs[1].Φₜ,
-                "penaltycoefficients"=>model.gaussianprior.𝛂,
-                "penaltymatrices"=>model.gaussianprior.𝐀,
-                "penaltymatrixindices"=>model.gaussianprior.index𝐀,
-                "precisionmatrix"=>model.gaussianprior.𝚲,
-                "hessian_loglikelihood"=>hessian_loglikelihood,
-                "pchoice" => pchoice,
-                "lambdaDeltat" => λΔt)
-    path = joinpath(dirname(model.options.resultspath), filename)
-    matwrite(path, dict)
-    return nothing
-end
-
-"""
     save(cvresults,options)
 
 Save the results of crossvalidation
@@ -153,7 +107,7 @@ ARGUMENT
 -`cvresults`: an instance of `CVResults`, a drift-diffusion linear model
 """
 function save(cvresults::CVResults, options::Options)
-    path = dirname(options.resultspath)*"/cvresults.mat"
+    path = dirname(options.datapath)*"/cvresults.mat"
     matwrite(path, dictionary(cvresults))
     return nothing
 end
