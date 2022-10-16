@@ -29,16 +29,9 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 		𝐀_lv, index𝐀_lv = shrinkagematrices(indexθ.latentθ)
 		𝐀_b, index𝐀_b = shrinkagematrices(indexθ.glmθ[i], options.b_scalefactor)
 		𝐀_glm, index𝐀_glm = shrinkagematrices(indexθ.glmθ[i], options)
-		if !isnan(options.L2flattening_GLM_min) && !isnan(options.L2flattening_GLM_max)
-			𝚪_glm, index𝚪_glm = variancematrices(indexθ.glmθ[i], mpGLM.Φₐ, mpGLM.Φₜ)
-			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_b, 𝐀_glm, 𝚪_glm)
-			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_b, index𝐀_glm, index𝚪_glm)
-			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_b), length(index𝐀_glm), length(index𝚪_glm))
-		else
-			𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_b, 𝐀_glm)
-			index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_b, index𝐀_glm)
-			𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_b), length(index𝐀_glm), 0)
-		end
+		𝐀 = vcat(𝐀, 𝐀_lv, 𝐀_b, 𝐀_glm)
+		index𝐀 = vcat(index𝐀, index𝐀_lv, index𝐀_b, index𝐀_glm)
+		𝛂min_t, 𝛂max_t = L2penalty_coeffcients_limits(options, length(index𝐀_lv), length(index𝐀_b), length(index𝐀_glm))
 		𝛂min = vcat(𝛂min, 𝛂min_t)
 		𝛂max = vcat(𝛂max, 𝛂max_t)
 	end
@@ -254,53 +247,7 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, b_scalefactor::Real)
 end
 
 """
-    variancematrices(indexθglm, Φₐ, Φₜ)
-
-Return the variance matrix of each group of parameters representing a time-varying quantity being flattened
-
-ARGUMENT
--`indexθglm`: a nested array indexing each parameter in each mixture of Poisson GLM. The element `indexθglm[i][n]` corresponds to the n-th neuron in the i-th trialset
--`Φₐ`: values of the temporal basis functions parametrizing hte time-varying encoding of the accumulator. Element `Φₐ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial
--`Φₜ`: values of the temporal basis functions parametrizing time in each trial. Element `Φₜ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial.
-
-OUTPUT
--`𝚪`: A nest array of matrices. Element `𝚪[i]` corresponds to the Nᵢ×Nᵢ variance matrix of the i-th group of parameters, with N parameters in the group
--`index𝚪`: Element `index𝚪[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
-"""
-function variancematrices(indexθglm::Vector{<:GLMθ}, Φₐ::Matrix{<:AbstractFloat}, Φₜ::Matrix{<:AbstractFloat})
-	Γaccumulator = Φₐ'*variancematrix(size(Φₐ,1))*Φₐ
-	Γtime = Φₜ'*variancematrix(size(Φₜ,1))*Φₜ
-	𝚪 = Matrix{typeof(1.0)}[]
-	index𝚪 = Vector{typeof(1)}[]
-	@unpack 𝐮indices_time = indexθglm[1]
-	for indexᵢₙ in indexθglm
-		𝚪 = vcat(𝚪, [Γtime])
-		index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[𝐮indices_time]])
-		for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
-			𝚪 = vcat(𝚪, [Γaccumulator])
-			index𝚪 = vcat(index𝚪, [indexᵢₙ𝐯ₖ])
-		end
-	end
-    return 𝚪, index𝚪
-end
-
-"""
-    variancematrix(n)
-
-Return a matrix that computes the variance of `n` elements
-
-OUTPUT
--`Γ`: a matrix:
-    (n-1)/n 	-1/n		-1/n		...		-1/n
-	-1/n		(n-1)/n		-1/n		...		-1/n
-	-1/n		-1/n		(n-1)/n		...		-1/n
-										...
-	-1/n		-1/n		-1/n		...		(n-1)/n
-"""
-variancematrix(n::Integer) = I/n - ones(n,n)./n^2
-
-"""
-	L2penalty_coeffcients_limits(options, N_shrinkage_DDM, N_shrinkage_GLM, N_flattening_GLM)
+	L2penalty_coeffcients_limits(options, N_shrinkage_DDM, N_shrinkage_GLM)
 
 Minimum and maximum of the coefficients of the L2 penalties
 
@@ -308,21 +255,18 @@ ARGUMENT
 -`options`: Settings of the model
 -`N_shrinkage_DDM`: number of shrinkage coefficients related to DDM parameters
 -`N_shrinkage_GLM`: number of shrinkage coefficients related to GLM parameters
--`N_flattening_GLM`: number of flattening coefficients related to GLM parameters
 
 OUTPUT
 -`𝛂min`: vector of the minimum of the coefficient of each L2 penalty being learned
 -`𝛂max`: vector of the maximum of the coefficient of each L2 penalty being learned
 """
-function L2penalty_coeffcients_limits(options::Options, N_shrinkage_LV::Integer, N_shrinkage_AT::Integer, N_shrinkage_GLM::Integer, N_flattening_GLM::Integer)
+function L2penalty_coeffcients_limits(options::Options, N_shrinkage_LV::Integer, N_shrinkage_AT::Integer, N_shrinkage_GLM::Integer)
 	𝛂min = vcat(options.L2shrinkage_LV_min	.*ones(N_shrinkage_LV),
 				options.L2shrinkage_b_min	.*ones(N_shrinkage_AT),
-				options.L2shrinkage_GLM_min	.*ones(N_shrinkage_GLM),
-				options.L2flattening_GLM_min.*ones(N_flattening_GLM))
+				options.L2shrinkage_GLM_min	.*ones(N_shrinkage_GLM))
 	𝛂max = vcat(options.L2shrinkage_LV_max .*ones(N_shrinkage_LV),
 				options.L2shrinkage_b_max .*ones(N_shrinkage_AT),
-				options.L2shrinkage_GLM_max	.*ones(N_shrinkage_GLM),
- 				options.L2flattening_GLM_max.*ones(N_flattening_GLM))
+				options.L2shrinkage_GLM_max	.*ones(N_shrinkage_GLM))
 	return 𝛂min, 𝛂max
 end
 

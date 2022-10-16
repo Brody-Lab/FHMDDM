@@ -1,3 +1,50 @@
+
+"""
+    variancematrices(indexθglm, Φₐ, Φₜ)
+
+Return the variance matrix of each group of parameters representing a time-varying quantity being flattened
+
+ARGUMENT
+-`indexθglm`: a nested array indexing each parameter in each mixture of Poisson GLM. The element `indexθglm[i][n]` corresponds to the n-th neuron in the i-th trialset
+-`Φₐ`: values of the temporal basis functions parametrizing hte time-varying encoding of the accumulator. Element `Φₐ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial
+-`Φₜ`: values of the temporal basis functions parametrizing time in each trial. Element `Φₜ[t,i]` corresponds to the value of the i-th temporal basis function at the t-th time step in each trial.
+
+OUTPUT
+-`𝚪`: A nest array of matrices. Element `𝚪[i]` corresponds to the Nᵢ×Nᵢ variance matrix of the i-th group of parameters, with N parameters in the group
+-`index𝚪`: Element `index𝚪[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
+"""
+function variancematrices(indexθglm::Vector{<:GLMθ}, Φₐ::Matrix{<:AbstractFloat}, Φₜ::Matrix{<:AbstractFloat})
+	Γaccumulator = Φₐ'*variancematrix(size(Φₐ,1))*Φₐ
+	Γtime = Φₜ'*variancematrix(size(Φₜ,1))*Φₜ
+	𝚪 = Matrix{typeof(1.0)}[]
+	index𝚪 = Vector{typeof(1)}[]
+	@unpack 𝐮indices_time = indexθglm[1]
+	for indexᵢₙ in indexθglm
+		𝚪 = vcat(𝚪, [Γtime])
+		index𝚪 = vcat(index𝚪, [indexᵢₙ.𝐮[𝐮indices_time]])
+		for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
+			𝚪 = vcat(𝚪, [Γaccumulator])
+			index𝚪 = vcat(index𝚪, [indexᵢₙ𝐯ₖ])
+		end
+	end
+    return 𝚪, index𝚪
+end
+
+"""
+    variancematrix(n)
+
+Return a matrix that computes the variance of `n` elements
+
+OUTPUT
+-`Γ`: a matrix:
+    (n-1)/n 	-1/n		-1/n		...		-1/n
+	-1/n		(n-1)/n		-1/n		...		-1/n
+	-1/n		-1/n		(n-1)/n		...		-1/n
+										...
+	-1/n		-1/n		-1/n		...		(n-1)/n
+"""
+variancematrix(n::Integer) = I/n - ones(n,n)./n^2
+
 """
 	index_shrinkage_coefficients(model)
 

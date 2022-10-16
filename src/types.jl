@@ -88,9 +88,6 @@ Model settings
 	gain_state_dependent::TB=true
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-2
-	"maximum and minimum L2 flattening penalty for each group of GLM parameters"
-	L2flattening_GLM_max::TF=1e0
-	L2flattening_GLM_min::TF=1e-4
 	"maximum and minimum L2 shrinkage penalty for the accumulator transformation parameter"
 	L2shrinkage_b_max::TF=1e2
 	L2shrinkage_b_min::TF=1e-2
