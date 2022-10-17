@@ -27,6 +27,7 @@ export  analyzeandsave,
         Predictions,
         sample,
         samples,
+        save,
         savesummary,
         savedata,
         test
