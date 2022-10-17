@@ -203,12 +203,21 @@ ARGUMENT
 """
 function test_∇negativelogposterior(datapath::String; maxabsdiff::Real=1e-9)
 	model = Model(datapath)
+	for trialset in model.trialsets
+        for mpGLM in trialset.mpGLMs
+            if length(mpGLM.θ.b) > 0
+                while abs(mpGLM.θ.b[1]) < 1e-4
+                    mpGLM.θ.b[1] = 1 - 2rand()
+                end
+            end
+        end
+    end
 	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-	memory = Memoryforgradient(model)
-	ℓhand = logposterior!(model, memory, concatenatedθ)
+	memory = FHMDDM.Memoryforgradient(model)
+	ℓhand = FHMDDM.logposterior!(model, memory, concatenatedθ)
 	∇hand = similar(concatenatedθ)
-	∇negativelogposterior!(∇hand, model, memory, concatenatedθ)
-	f(x) = logposterior(x, indexθ, model)
+	FHMDDM.∇negativelogposterior!(∇hand, model, memory, concatenatedθ)
+	f(x) = FHMDDM.logposterior(x, indexθ, model)
 	ℓauto = f(concatenatedθ)
 	∇auto = ForwardDiff.gradient(f, concatenatedθ)
 	absΔ𝐿 = abs(ℓauto-ℓhand)

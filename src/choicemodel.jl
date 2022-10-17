@@ -92,7 +92,7 @@ function maximize_evidence_choices!(model::Model;
 	    results = FHMDDM.maximize_choice_posterior!(model; 𝛂=𝛂, iterations=iterations, show_trace=show_trace)
 		if !Optim.converged(results)
 			if Optim.iteration_limit_reached(results)
-				new_α = min(model.options.L2shrinkage_choices_max, 10geomean(𝛂))
+				new_α = min(model.options.L2_choices_max, 10geomean(𝛂))
 				show_trace && println("Outer iteration: ", i, ": because the maximum number of iterations was reached, the values of the precisions are set to be ten times the geometric mean of the hyperparameters. New 𝛂  → ", new_α)
 				𝛂 .= new_α
 			else
@@ -172,7 +172,7 @@ function choice_related_precisions(model::Model)
 	index𝛂 = falses(10)
 	j = 0
 	k = 0
-	α₀ = √(model.options.L2shrinkage_choices_min*model.options.L2shrinkage_choices_max)
+	α₀ = √(model.options.L2_choices_min*model.options.L2_choices_max)
 	for parametername in fieldnames(Latentθ)
 		if parametername == :Aᶜ₁₁ || parametername == :Aᶜ₂₂ || parametername == :πᶜ₁
  		else
@@ -209,8 +209,8 @@ function maximize_evidence_choices!(memory::Memoryforgradient,
 						𝐰₀::Vector{<:Real};
 						show_trace::Bool=true,
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
-	αmin = model.options.L2shrinkage_choices_min
-	αmax = model.options.L2shrinkage_choices_max
+	αmin = model.options.L2_choices_min
+	αmax = model.options.L2_choices_max
 	𝚽 = Diagonal(𝛂₀)
 	𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
 	𝐱₀ = similar(𝛂₀)

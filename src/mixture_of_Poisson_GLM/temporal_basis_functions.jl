@@ -64,15 +64,19 @@ RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
 """
 function temporal_bases_values(begins0::Bool, Δt::AbstractFloat, ends0::Bool, hz::Real, period::Real, scalefactor::Real, stretch::Real, 𝐓::Vector{<:Integer})
-	Tmax = maximum(𝐓)
-	nbases = max(1, ceil(Int, hz*(Tmax*Δt)))
-    if nbases == 1
-		x = scalefactor/sqrt(Tmax)
-        Φ = fill(x,Tmax,1)
-    else
-        Φ = unitarybases(begins0, ends0, nbases, Tmax, period, stretch).*scalefactor
-    end
-    return Φ
+	if isnan(hz)
+		return fill(1.0, 0, 0)
+	else
+		Tmax = maximum(𝐓)
+		nbases = max(1, ceil(Int, hz*(Tmax*Δt)))
+	    if nbases == 1
+			x = scalefactor/sqrt(Tmax)
+	        Φ = fill(x,Tmax,1)
+	    else
+	        Φ = unitarybases(begins0, ends0, nbases, Tmax, period, stretch).*scalefactor
+	    end
+	    return Φ
+	end
 end
 
 """
@@ -91,14 +95,16 @@ function temporal_bases_values(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integ
     Tmax = maximum(𝐓)
     nbases = size(Φ,2)
     𝐕 = zeros(sum(𝐓), nbases)
-    k = 0
-    for T in 𝐓
-        for t = 1:T
-            k = k + 1;
-            𝐕[k,:] = Φ[t,:]
-        end
-    end
-    return 𝐕
+	if nbases > 0
+	    k = 0
+	    for T in 𝐓
+	        for t = 1:T
+	            k = k + 1;
+	            𝐕[k,:] = Φ[t,:]
+	        end
+	    end
+	end
+	return 𝐕
 end
 
 """
@@ -113,11 +119,15 @@ RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
 function premovementbases(options::Options)
-	nbases = max(1, ceil(Int, options.tbf_move_dur_s*options.tbf_move_hz))
-	nbins = ceil(Int, options.tbf_move_dur_s/options.Δt)
-	Φ = unitarybases(options.tbf_move_begins0, options.tbf_move_ends0, nbases, nbins, options.tbf_move_period, options.tbf_move_stretch)
-	Φ .*= options.tbf_move_scalefactor
-	return Φ
+	if isnan(options.tbf_move_hz)
+		return fill(1.0, 0, 0)
+	else
+		nbases = max(1, ceil(Int, options.tbf_move_dur_s*options.tbf_move_hz))
+		nbins = ceil(Int, options.tbf_move_dur_s/options.Δt)
+		Φ = unitarybases(options.tbf_move_begins0, options.tbf_move_ends0, nbases, nbins, options.tbf_move_period, options.tbf_move_stretch)
+		Φ .*= options.tbf_move_scalefactor
+		return Φ
+	end
 end
 
 """
@@ -137,22 +147,24 @@ RETURN
 function premovementbases(movementtimes_s::Vector{<:AbstractFloat}, options::Options, Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
 	nbins, nbases = size(Φ)
 	𝐔 = zeros(sum(𝐓), nbases)
-	movementbin = ceil.(Int, movementtimes_s./options.Δt) # movement times are always positive
-	τ = 0
-	for i=1:length(𝐓)
-		T = 𝐓[i]
-		if movementbin[i] < nbins
-			j₀ = nbins - movementbin[i] + 1
-			for (t,j) in zip(1:T, j₀:nbins)
-				𝐔[τ+t,:] = Φ[j,:]
+	if nbases > 0
+		movementbin = ceil.(Int, movementtimes_s./options.Δt) # movement times are always positive
+		τ = 0
+		for i=1:length(𝐓)
+			T = 𝐓[i]
+			if movementbin[i] < nbins
+				j₀ = nbins - movementbin[i] + 1
+				for (t,j) in zip(1:T, j₀:nbins)
+					𝐔[τ+t,:] = Φ[j,:]
+				end
+			else
+				t₀ = movementbin[i] - nbins + 1
+				for (t,j) in zip(t₀:T, 1:nbins)
+					𝐔[τ+t,:] = Φ[j,:]
+				end
 			end
-		else
-			t₀ = movementbin[i] - nbins + 1
-			for (t,j) in zip(t₀:T, 1:nbins)
-				𝐔[τ+t,:] = Φ[j,:]
-			end
+			τ += T
 		end
-		τ += T
 	end
 	return 𝐔
 end
@@ -167,22 +179,17 @@ ARGUMENT
 
 OUTPUT
 -`Φ`: a matrix whose element Φ[τ,i] corresponds to the value of i-th temporal basis function in the τ-th time bin after the spike
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_05b_test/T176_2018_05_03/data.mat"
-julia> model = Model(datapath)
-julia> model.trialsets[1].mpGLMs[1].Φₕ
-julia>
-```
 """
 function spikehistorybases(options::Options)
-	nbases = max(1, ceil(Int, options.tbf_hist_dur_s*options.tbf_hist_hz))
-	nbins = ceil(Int, options.tbf_hist_dur_s/options.Δt)
-	Φ = unitarybases(options.tbf_hist_begins0, options.tbf_hist_ends0, nbases, nbins, options.tbf_hist_period, options.tbf_hist_stretch)
-	Φ .*= options.tbf_hist_scalefactor
-	return Φ
+	if isnan(options.tbf_hist_hz)
+		return fill(1.0, 0, 0)
+	else
+		nbases = max(1, ceil(Int, options.tbf_hist_dur_s*options.tbf_hist_hz))
+		nbins = ceil(Int, options.tbf_hist_dur_s/options.Δt)
+		Φ = unitarybases(options.tbf_hist_begins0, options.tbf_hist_ends0, nbases, nbins, options.tbf_hist_period, options.tbf_hist_stretch)
+		Φ .*= options.tbf_hist_scalefactor
+		return Φ
+	end
 end
 
 """
@@ -201,20 +208,22 @@ RETURN
 function spikehistorybases(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer}, 𝐲::Vector{<:Integer})
 	filterlength, nbases = size(Φ)
 	𝐔 = zeros(sum(𝐓), nbases)
-	τ = 0
-	for T in 𝐓
-		indices = τ .+ (1:T)
-		spiketimesteps = findall(𝐲[indices] .> 0)
-		for tₛₚₖ in spiketimesteps
-			y = 𝐲[tₛₚₖ+τ]
-			indices𝐔 = τ .+ (tₛₚₖ+1:T)
-			for (i,j) in zip(indices𝐔, 1:filterlength)
-				for p = 1:nbases
-					𝐔[i,p] += y*Φ[j,p]
+	if nbases > 0
+		τ = 0
+		for T in 𝐓
+			indices = τ .+ (1:T)
+			spiketimesteps = findall(𝐲[indices] .> 0)
+			for tₛₚₖ in spiketimesteps
+				y = 𝐲[tₛₚₖ+τ]
+				indices𝐔 = τ .+ (tₛₚₖ+1:T)
+				for (i,j) in zip(indices𝐔, 1:filterlength)
+					for p = 1:nbases
+						𝐔[i,p] += y*Φ[j,p]
+					end
 				end
 			end
+			τ = τ + T;
 		end
-		τ = τ + T;
 	end
 	return 𝐔
 end
@@ -253,26 +262,6 @@ function unitarybases(begins0::Bool, ends0::Bool, nbases::Integer, nbins::Intege
 		F = svd(Φ)
 		F.U[:,1:nbases]
 	end
-end
-
-"""
-    orthogonal_wellconditioned_tbf(begins0, ends0, nbases, nbins, period, stretch)
-
-Temporal basis functions that are orthogonal to each other and well-conditioned
-
-The raised cosines temporal basis functions are used as the starting point
-
-ARGUMENT
--`nbases`: starting number of temporal basis functions. The ultimate temporal basis functions may have fewer.
--`nbins`: number of bins in the time window tiled by the bases
--`options`: Settings of the model
-
-RETURN
--`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
-"""
-function orthogonal_wellconditioned_tbf(begins0::Bool, ends0::Bool, nbases::Integer, nbins::Integer, period::Real, stretch::Real; max_condition_number::Real=10)
-    Φ = raisedcosines(begins0, ends0, nbases, nbins, period, stretch)
-    transformtbf(Φ, max_condition_number)
 end
 
 """

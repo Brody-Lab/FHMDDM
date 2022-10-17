@@ -245,7 +245,7 @@ RETURN
 """
 function indexparameters(options::Options, trialsets::Vector{<:Trialset})
 	indexθlatent = index_latent_parameters(options)
-	indexθglm = concatenate_glm_parameters(count_latent_parameters_being_fitted(options), trialsets)[2]
+	indexθglm = concatenate_glm_parameters(count_latent_parameters(options), trialsets)[2]
     return Indexθ(latentθ=indexθlatent, glmθ=indexθglm)
 end
 
@@ -272,25 +272,6 @@ function is_parameter_fit(options::Options, parametername::Symbol)
 		tofit = tofit && (options.K == 2)
 	end
 	return tofit
-end
-
-"""
-	count_latent_parameters_being_fitted(options)
-
-Count the number of parameters of latent variables being fitted
-
-ARGUMENT
--`options`: settings of the model
-
-RETURN
--a positive integer
-"""
-function count_latent_parameters_being_fitted(options::Options)
-	counter = 0
-	for field in fieldnames(Latentθ)
-		counter += is_parameter_fit(options, field)
-	end
-	counter
 end
 
 """
@@ -332,12 +313,38 @@ function concatenate_choice_related_parameters(model::Model)
 end
 
 """
-	countparameters(θ)
+	count_latent_parameters(options)
+
+Count the number of parameters of latent variables being fitted
+
+ARGUMENT
+-`options`: settings of the model
+
+OPTIONAL ARGUMENT
+-`includeunfit`: whether to count parameters not being fit
+
+RETURN
+-a positive integer
+"""
+function count_latent_parameters(options::Options; includeunfit::Bool=false)
+	counter=zero(Int)
+	if includeunfit
+		return counter+length(fieldnames(Latentθ))
+	else
+		for field in fieldnames(Latentθ)
+			counter += is_parameter_fit(options, field)
+		end
+		return counter
+	end
+end
+
+"""
+	countparameters(glmθ)
 
 Count the number of parameters in the Poisson mixture GLM of one neuron
 
 ARGUMENT
--`θ`: a struct containing the parameters of a GLMs
+-`glmθ`: a struct containing the parameters of a GLMs
 
 OPTIONAL ARGUMENT
 -`intialization`: whether only the parameters included in the initialization are counted (thereby excluding `b` and `𝛃`)
@@ -346,17 +353,37 @@ OPTIONAL ARGUMENT
 RETURN
 -number of parameters in the GLM
 """
-function countparameters(θ::GLMθ; initialization::Bool=false, includeunfit::Bool=false)
-	counter = (includeunfit || (θ.fit_b && !initialization)) ? 1 : 0
-	counter += length(θ.𝐠)-1
-	counter += length(θ.𝐮)
-	for 𝐯ₖ in θ.𝐯
+function countparameters(glmθ::GLMθ; initialization::Bool=false, includeunfit::Bool=false)
+	counter = (includeunfit || (glmθ.fit_b && !initialization)) ? one(Int) : zero(Int)
+	counter += length(glmθ.𝐠)-1
+	counter += length(glmθ.𝐮)
+	for 𝐯ₖ in glmθ.𝐯
 		counter += length(𝐯ₖ)
 	end
-	if includeunfit || (θ.fit_𝛃 && !initialization)
-		for 𝛃ₖ in θ.𝛃
+	if includeunfit || (glmθ.fit_𝛃 && !initialization)
+		for 𝛃ₖ in glmθ.𝛃
 			counter += length(𝛃ₖ)
 		end
+	end
+	return counter
+end
+
+"""
+	countparameters(model)
+
+Count the number of parameters in the model
+
+The optional argument `includeunfit` indicates whether to count parameters not being fit and defaults to be false.
+"""
+countparameters(model::Model; includeunfit::Bool=false) = countparameters(model.options, model.trialsets; includeunfit=includeunfit)
+
+"""
+	countparameters(options, trialsets)
+"""
+function countparameters(options::Options, trialsets::Vector{<:Trialset}; includeunfit::Bool=false)
+	counter=count_latent_parameters(options; includeunfit=includeunfit)
+	for trialset in trialsets
+		counter+=countparameters(trialset.mpGLMs[1].θ; includeunfit=includeunfit)*length(trialset.mpGLMs)
 	end
 	return counter
 end

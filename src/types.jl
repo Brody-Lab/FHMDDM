@@ -89,17 +89,32 @@ Model settings
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for the accumulator transformation parameter"
-	L2shrinkage_b_max::TF=1e2
-	L2shrinkage_b_min::TF=1e-2
+	L2_b_max::TF=1e2
+	L2_b_min::TF=1e-2
+	"maximum and minimum L2 shrinkage penalty for the weight of the post-commitment encoding of accumulated evidence"
+	L2_beta_max::TF=1e2
+	L2_beta_min::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
-	L2shrinkage_choices_max::TF=1e2
-	L2shrinkage_choices_min::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty for each group of GLM parameters"
-	L2shrinkage_GLM_max::TF=1e1
-	L2shrinkage_GLM_min::TF=1e-3
+	L2_choices_max::TF=1e2
+	L2_choices_min::TF=1e-2
+	"maximum and minimum L2 shrinkage penalty for the state-dependent gain"
+	L2_gain_max::TF=1e2
+	L2_gain_min::TF=1e-2
+	"maximum and minimum L2 shrinkage penalty of the weight of the post-spike filter"
+	L2_hist_max::TF=1e1
+	L2_hist_min::TF=1e-3
+	"maximum and minimum L2 shrinkage penalty of the weight of the pre-movement filter"
+	L2_move_max::TF=1e1
+	L2_move_min::TF=1e-3
+	"maximum and minimum L2 shrinkage penalty of the weight of the post-stereoclick filter"
+	L2_time_max::TF=1e1
+	L2_time_min::TF=1e-3
 	"maximum and minimum L2 shrinkage penalty for a latent variable parameter"
-	L2shrinkage_LV_max::TF=1e2
-	L2shrinkage_LV_min::TF=1e-2
+	L2_latent_max::TF=1e2
+	L2_latent_min::TF=1e-2
+	"maximum and minimum L2 shrinkage penalty for the weight of the pre-commitment encoding of accumulated evidence"
+	L2_v_max::TF=1e2
+	L2_v_min::TF=1e-2
 	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
 	"transition probability of the coupling variable to remain in the coupled state"
 	lqu_Aᶜ₁₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₁₁[1]) && (lqu_Aᶜ₁₁[1] <= lqu_Aᶜ₁₁[2]) && (lqu_Aᶜ₁₁[2] < lqu_Aᶜ₁₁[3]) && (lqu_Aᶜ₁₁[3] <= 1.0)
@@ -321,11 +336,11 @@ Mixture of Poisson generalized linear model
 	"columns corresponding to the spike history input"
 	𝐗columns_hist::UI = 𝐗columns_gain[end] .+ (1:size(Φₕ,2))
 	"columns corresponding to the input from time from the beginning of the trial"
-	𝐗columns_time::UI = 𝐗columns_hist[end] .+ (1:size(Φₜ,2))
+	𝐗columns_time::UI = (𝐗columns_gain[end] + size(Φₕ,2)) .+ (1:size(Φₜ,2))
 	"columns corresponding to the input from time before mvoement"
-	𝐗columns_move::UI = 𝐗columns_time[end] .+ (1:size(Φₘ,2))
+	𝐗columns_move::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2)) .+ (1:size(Φₘ,2))
 	"columns corresponding to the input from the accumulator"
-	𝐗columns_accu::UI = 𝐗columns_move[end] .+ (1:size(Φₐ,2))
+	𝐗columns_accu::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₐ,2))
 	"number of accumulator states"
 	Ξ::TI=length(d𝛏_dB)
 	"Poisson observations"

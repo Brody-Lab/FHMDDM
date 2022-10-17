@@ -56,7 +56,7 @@ function summarize(model::Model)
 end
 
 """
-    save(predictions, folderpath, prefix)
+    save(predictions)
 
 Save predictions of the model:
 -accumulator distribution: `folderpath/<prefix>_pa.mat`
@@ -69,10 +69,12 @@ Save predictions of the model:
 
 ARGUMENT
 -`model`: a structure containing the data, parameters, and settings
+
+OPTIONAL ARGUMENT
 -'folderpath': full path of the folder
 -`prefix`: name of the file to be saved
 """
-function save(predictions::Predictions, folderpath::String, prefix::String)
+function save(predictions::Predictions; folderpath::String=dirname(model.options.datapath), prefix::String="results")
     matwrite(joinpath(folderpath, prefix*"_pa"*".mat"), Dict("pa" => predictions.p𝐚))
     matwrite(joinpath(folderpath, prefix*"_pa_d"*".mat"), Dict("pa_d" => predictions.p𝐚_𝑑))
     matwrite(joinpath(folderpath, prefix*"_pa_Yd"*".mat"), Dict("pa_Yd" => predictions.p𝐚_𝐘𝑑))

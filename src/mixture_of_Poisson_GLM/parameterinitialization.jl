@@ -14,7 +14,7 @@ OUTPUT
 -an instance of `GLMθ`
 """
 function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
-	n𝐮 = 𝐮indices_move[end]
+	n𝐮 = length(𝐮indices_hist) + length(𝐮indices_time) + length(𝐮indices_move)
 	n𝐯 =size(𝐕,2)
 	K𝐠 = options.gain_state_dependent ? options.K : 1
 	K𝐯 = options.tuning_state_dependent ? options.K : 1
