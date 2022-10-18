@@ -27,9 +27,9 @@ export  analyzeandsave,
         Predictions,
         sample,
         samples,
-        save,
-        savesummary,
         savedata,
+        savepredictions,
+        savesummary,
         test
 include("types.jl") # This list contains files that in which functions and types are specified. The file "types.jl" has to be listed first, but the order of the other files does not matter.
 include("accumulatortransformation.jl")

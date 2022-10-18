@@ -9,15 +9,14 @@ ARGUMENT
 OPTIONAL ARGUMENT
 -`prefix`: prefix to the name of the files to be saved
 """
-function analyzeandsave(model::Model; prefix="results")
-    savesummary(model; prefix=prefix)
-    folderpath = dirname(model.options.datapath)
-    save(Predictions(model), folderpath, prefix)
-    save(∇∇loglikelihood(model)[3], folderpath, prefix)
+function analyzeandsave(model::Model; folderpath::String=dirname(model.options.datapath), prefix="results")
+    savesummary(model; folderpath=folderpath, prefix=prefix)
+    savepredictions(model; folderpath=folderpath, prefix=prefix)
+	save∇∇loglikelihood(model; folderpath=folderpath, prefix=prefix)
 end
 
 """
-    save(model)
+    savesummary(model)
 
 Save the results of a model into file compatible with both MATLAB and Julia
 
@@ -27,11 +26,7 @@ ARGUMENT
 -`model`: a structure containing the data, parameters, and settings
 -`prefix`: name of the file to be saved
 """
-function savesummary(model::Model; prefix::String="results")
-    path = joinpath(dirname(model.options.datapath), prefix*".mat")
-    matwrite(path, summarize(model))
-    return nothing
-end
+savesummary(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results") = matwrite(joinpath(folderpath, prefix*".mat"), summarize(model))
 
 """
 	summarize(model)
@@ -56,7 +51,7 @@ function summarize(model::Model)
 end
 
 """
-    save(predictions)
+    savepredictions(model)
 
 Save predictions of the model:
 -accumulator distribution: `folderpath/<prefix>_pa.mat`
@@ -74,7 +69,8 @@ OPTIONAL ARGUMENT
 -'folderpath': full path of the folder
 -`prefix`: name of the file to be saved
 """
-function save(predictions::Predictions; folderpath::String=dirname(model.options.datapath), prefix::String="results")
+function savepredictions(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results")
+	predictions = Predictions(model)
     matwrite(joinpath(folderpath, prefix*"_pa"*".mat"), Dict("pa" => predictions.p𝐚))
     matwrite(joinpath(folderpath, prefix*"_pa_d"*".mat"), Dict("pa_d" => predictions.p𝐚_𝑑))
     matwrite(joinpath(folderpath, prefix*"_pa_Yd"*".mat"), Dict("pa_Yd" => predictions.p𝐚_𝐘𝑑))
@@ -86,7 +82,7 @@ function save(predictions::Predictions; folderpath::String=dirname(model.options
 end
 
 """
-    save(hessian_loglikelihood, folderpath, prefix)
+    save∇∇loglikelihood(model;	 folderpath, prefix)
 
 Save the hessian of the log-likelihood as `folderpath/<prefix>_hessian_loglikelihood.mat`
 
@@ -95,7 +91,8 @@ ARGUMENT
 -'folderpath': full path of the folder
 -`prefix`: name of the file to be saved
 """
-function save(hessian_loglikelihood::Matrix{<:AbstractFloat}, folderpath::String, prefix::String)
+function save∇∇loglikelihood(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results")
+	hessian_loglikelihood = ∇∇loglikelihood(model)[3]
     matwrite(joinpath(folderpath, prefix*"_hessian_loglikelihood"*".mat"), Dict("hessian_loglikelihood"=>hessian_loglikelihood))
     return nothing
 end

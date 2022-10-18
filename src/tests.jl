@@ -52,7 +52,7 @@ function test(datapath::String; maxabsdiff::Real=1e-9)
 	maximizeevidence!(Model(datapath))
     printseparator()
     println("testing saving model summary and predictions in `test.mat`")
-	analyzeandsave(Model(datapath); prefix="test.mat")
+	analyzeandsave(Model(datapath); prefix="test")
 	printseparator()
 	println("tests completed")
     return nothing
