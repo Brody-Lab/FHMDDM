@@ -197,7 +197,7 @@ end
 """
 	scaledpoissonlikelihood(Δt, L, s, y)
 
-Probability of a Poisson observation raised to a scale factor
+Probability of a Poisson observation multiplied by a scale factor
 
 ARGUMENT
 -`Δt`: time step size
@@ -211,10 +211,10 @@ OUTPUT
 function scaledpoissonlikelihood(Δt::Real, L::Real, s::Real, y::Integer)
 	λΔt = softplus(L)*Δt
 	if y==0
-		exp(-λΔt*s)
+		s*exp(-λΔt)
 	elseif y==1
-		λΔt^s*exp(-λΔt*s)
+		s*λΔt*exp(-λΔt)
 	else
-		(λΔt^y/factorial(y))^s * exp(-λΔt*s)
+		s*λΔt^y*exp(-λΔt)/factorial(y)
 	end
 end

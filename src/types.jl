@@ -39,11 +39,7 @@ end
 
 Model settings
 """
-@with_kw struct Options{TB<:Bool,
-						TS<:String,
-						TF<:AbstractFloat,
-						TI<:Integer,
-						TVF<:Vector{<:AbstractFloat}}
+@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
 	"scale factor for the accumulator transformation parameter"
@@ -147,11 +143,13 @@ Model settings
 	"total number of units across all trialsets"
 	nunits::TI
 	"value to maximized to learn the parameters"
-	objective::String; @assert any(objective .== ["evidence", "posterior", "likelihood"])
+	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood"])
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"whether to scale the log-likelihood of the choices to be of similar magnitude of the log-likelihood of the spike trains"
 	scalechoiceLL::TB=true
+    "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
+	sf_y::TF=1.2
 	"whether the tuning to the accumulator is state-dependent"
 	tuning_state_dependent::TB=true
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"

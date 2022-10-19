@@ -15,13 +15,13 @@ RETURN
 """
 function scaledlikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 					 p𝑑_a::Vector{<:Vector{<:Vector{<:Real}}},
+					 s::Real,
                      trialsets::Vector{<:Trialset},
                      ψ::Real)
 	Ξ = size(p𝐘𝑑[1][1][end],1)
 	K = size(p𝐘𝑑[1][1][end],2)
     @inbounds for i in eachindex(p𝐘𝑑)
 		N = length(trialsets[i].mpGLMs)
-		s = 1/N
 	    for j = 1:Ξ
 	        for k = 1:K
 				𝐩 = scaledlikelihood(trialsets[i].mpGLMs[1], j, k, s)

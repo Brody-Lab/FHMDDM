@@ -127,25 +127,18 @@ UNMODIFIED ARGUMENT
 
 RETURN
 -log-likelihood
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> memory = FHMDDM.Memoryforgradient(model)
-julia> ℓ = loglikelihood!(model, memory, memory.concatenatedθ)
-julia> ℓ = loglikelihood!(model, memory, rand(length(memory.concatenatedθ)))
 ```
 """
-function loglikelihood!(model::Model,
-						memory::Memoryforgradient,
-					    concatenatedθ::Vector{<:Real})
+function loglikelihood!(model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
+	log_s = log(model.options.sf_y)
 	if concatenatedθ != memory.concatenatedθ
 		P = update!(memory, model, concatenatedθ)
 		memory.ℓ[1] = 0.0
 		@inbounds for s in eachindex(model.trialsets)
+			N = length(model.trialsets[s].mpGLMs)
 			for m in eachindex(model.trialsets[s].trials)
+				T = model.trialsets[s].trials[m].ntimesteps
+				memory.ℓ[1] -= N*T*log_s
 				memory.ℓ[1] += loglikelihood(memory.p𝐘𝑑[s][m], memory.p𝑑_a[s][m], memory, P, model.θnative, model.trialsets[s].trials[m])
 			end
 		end
@@ -165,20 +158,6 @@ ARGUMENT
 
 RETURN
 -`ℓ`: log-likelihood of the data from one trial
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat"
-julia> model = Model(datapath)
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> ℓ = FHMDDM.loglikelihood(concatenatedθ, indexθ, model)
-julia> f(x) = FHMDDM.loglikelihood(x, indexθ, model)
-julia> memory = FHMDDM.Memoryforgradient(model)
-julia> ℓ2 = FHMDDM.loglikelihood!(model, memory, concatenatedθ) #ForwardDiff-incompatible
-julia> abs(ℓ2-ℓ)
-julia>
-```
 """
 function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
 					   p𝑑_a::Vector{<:Real},
@@ -232,25 +211,25 @@ ARGUMENT
 RETURN
 -log-likelihood
 """
-function loglikelihood(concatenatedθ::Vector{T}, indexθ::Indexθ, model::Model) where {T<:Real}
+function loglikelihood(concatenatedθ::Vector{type}, indexθ::Indexθ, model::Model) where {type<:Real}
 	model = Model(concatenatedθ, indexθ, model)
 	@unpack options, θnative, θreal, trialsets = model
-	@unpack Δt, minpa, K, Ξ = options
+	@unpack Δt, minpa, sf_y, K, Ξ = options
 	p𝐘𝑑=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
 				map(1:trial.ntimesteps) do t
-					ones(T,Ξ,K)
+					ones(type,Ξ,K)
 				end
 			end
 		end
 	p𝑑_a=map(model.trialsets) do trialset
 			map(trialset.trials) do trial
-				ones(T,Ξ)
+				ones(type,Ξ)
 			end
 		end
-    scaledlikelihood!(p𝐘𝑑, p𝑑_a, trialsets, θnative.ψ[1])
-	choiceLLscaling = scaling_factor_choiceLL(model)
-	Aᵃinput = ones(T,Ξ,Ξ).*minpa
+    scaledlikelihood!(p𝐘𝑑, p𝑑_a, sf_y, trialsets, θnative.ψ[1])
+	choiceLLscaling = scale_factor_choiceLL(model)
+	Aᵃinput = ones(type,Ξ,Ξ).*minpa
 	one_minus_Ξminpa = 1.0-Ξ*minpa
 	Aᵃinput[1,1] += one_minus_Ξminpa
 	Aᵃinput[Ξ,Ξ] += one_minus_Ξminpa
@@ -267,13 +246,16 @@ function loglikelihood(concatenatedθ::Vector{T}, indexθ::Indexθ, model::Model
 		Aᶜᵀ = [Aᶜ₁₁ 1-Aᶜ₁₁; 1-Aᶜ₂₂ Aᶜ₂₂]
 		πᶜᵀ = [πᶜ₁ 1-πᶜ₁]
 	else
-		Aᶜᵀ = ones(T,1,1)
-		πᶜᵀ = ones(T,1,1)
+		Aᶜᵀ = ones(type,1,1)
+		πᶜᵀ = ones(type,1,1)
 	end
-	ℓ = zero(T)
+	log_s = log(sf_y)
+	ℓ = zero(type)
 	@inbounds for s in eachindex(trialsets)
+		nneurons = length(trialsets[s].mpGLMs)
 		for m in eachindex(trialsets[s].trials)
 			trial = trialsets[s].trials[m]
+			ℓ-=nneurons*trial.ntimesteps*log_s
 			p𝐚ₜ = probabilityvector(minpa, θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
 			f = p𝐘𝑑[s][m][1] .* p𝐚ₜ .* πᶜᵀ
 			D = sum(f)
@@ -321,24 +303,6 @@ MODIFIED ARGUMENT
 
 ARGUMENT
 -`concatenatedθ`: values of the model's parameters concatenated into a vector
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM, ForwardDiff
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_18a_test/T176_2018_05_03_scaled/data.mat"
-julia> model = Model(datapath)
-julia> concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
-julia> ∇nℓ = similar(concatenatedθ)
-julia> memory = FHMDDM.Memoryforgradient(model)
-julia> FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
-julia> f(x) = -FHMDDM.loglikelihood(x, indexθ, model)
-julia> ℓ_auto = f(concatenatedθ)
-julia> ∇nℓ_auto = ForwardDiff.gradient(f, concatenatedθ)
-julia> println("")
-julia> println("   max(|Δloss|): ", abs(ℓ_auto + memory.ℓ[1]))
-julia> println("   max(|Δgradient|): ", maximum(abs.(∇nℓ_auto .- ∇nℓ)))
-julia>
-```
 """
 function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
  								 memory::Memoryforgradient,
@@ -383,11 +347,8 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 		end
 	end
 	@inbounds for s in eachindex(model.trialsets)
-		N = length(model.trialsets[s].mpGLMs)
-		sf = 1/N
-		for n = 1:N
+		for n = 1:length(model.trialsets[s].mpGLMs)
 			expectation_∇loglikelihood!(memory.∇ℓglm[s][n], memory.γ[s], model.trialsets[s].mpGLMs[n])
-			scale_expectation_∇loglikelihood!(memory.∇ℓglm[s][n], sf)
 		end
 	end
 	return nothing
@@ -420,6 +381,7 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 	if length(clicks.time) > 0
 		adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
 	end
+	ℓ[1] -= length(model.trialsets[s].mpGLMs)*trial.ntimesteps*log(model.options.sf_y)
 	t = 1
 	∇priorprobability!(∇pa₁, P, trial.previousanswer)
 	fᶜ[1] = copy(P.𝛑)
@@ -615,7 +577,7 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 								∇Aᵃsilent=∇Aᵃsilent,
 								Aᶜ=Aᶜ,
 								∇Aᶜ=∇Aᶜ,
-								choiceLLscaling = scaling_factor_choiceLL(model),
+								choiceLLscaling = scale_factor_choiceLL(model),
 								concatenatedθ=similar(concatenatedθ),
 								D = zeros(maxtimesteps),
 								Δt=options.Δt,
@@ -686,26 +648,17 @@ ARGUMENT
 
 RETURN
 -`P`: an instance of `Probabilityvector`
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> memory, P = FHMDDM.Memoryforgradient(model)
-julia> P = update!(model, memory, rand(length(memory.concatenatedθ)))
 ```
 """
-function update!(memory::Memoryforgradient,
-				 model::Model,
-				 concatenatedθ::Vector{<:Real})
+function update!(memory::Memoryforgradient, model::Model, concatenatedθ::Vector{<:Real})
+	@unpack options, θnative, θreal = model
+	@unpack Δt, K, minpa, sf_y, Ξ = options
 	memory.concatenatedθ .= concatenatedθ
 	sortparameters!(model, memory.concatenatedθ, memory.indexθ)
-	real2native!(model.θnative, model.options, model.θreal)
+	real2native!(θnative, options, θreal)
 	if !isempty(memory.p𝐘𝑑[1][1][1])
-	    scaledlikelihood!(memory.p𝐘𝑑, memory.p𝑑_a, model.trialsets, model.θnative.ψ[1])
+	    scaledlikelihood!(memory.p𝐘𝑑, memory.p𝑑_a, sf_y, model.trialsets, θnative.ψ[1])
 	end
-	@unpack options, θnative = model
-	@unpack Δt, K, minpa, Ξ = options
 	P = Probabilityvector(Δt, minpa, θnative, Ξ)
 	update_for_∇transition_probabilities!(P)
 	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
@@ -720,15 +673,15 @@ function update!(memory::Memoryforgradient,
 end
 
 """
-	scaling_factor_choiceLL(model)
+	scale_factor_choiceLL(model)
 
 Scaling factor for the log-likelihood of behavioral choices
 """
-function scaling_factor_choiceLL(model::Model)
+function scale_factor_choiceLL(model::Model)
 	if model.options.scalechoiceLL
-		ntimesteps= sum(collect(trialset.ntimesteps for trialset in model.trialsets))
+		ntimesteps_neurons = sum(collect(trialset.ntimesteps*length(trialset.mpGLMs) for trialset in model.trialsets))
 		ntrials = sum(collect(trialset.ntrials for trialset in model.trialsets))
-		ntimesteps/ntrials
+		ntimesteps_neurons/ntrials
 	else
 		1.0
 	end

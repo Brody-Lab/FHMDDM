@@ -196,40 +196,6 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 end
 
 """
-	scale_expectation_∇loglikelihood(∇Q, s)
-
-Multiply the expectation of the gradient of the log-likelihood of a mixture of Poisson GLM with the scale factor
-
-MODIFIED ARGUMENT
--`∇Q`: expectation of the gradient of the log-likelihood of a mixture of Poisson GLM
--`s`: scale factor
-"""
-function scale_expectation_∇loglikelihood!(∇Q::GLMθ, s::Real)
-	@inbounds for k = 2:length(∇Q.𝐠)
-		∇Q.𝐠[k] *= s
-	end
-	for i in eachindex(∇Q.𝐮)
-		∇Q.𝐮[i] *= s
-	end
-	for 𝐯ₖ in ∇Q.𝐯
-		for i in eachindex(𝐯ₖ)
-			𝐯ₖ[i] *= s
-		end
-	end
-	if ∇Q.fit_b
-		∇Q.b[1] *= s
-	end
-	if ∇Q.fit_𝛃
-		for 𝛃ₖ in ∇Q.𝛃
-			for i in eachindex(𝛃ₖ)
-				𝛃ₖ[i] *= s
-			end
-		end
-	end
-	return nothing
-end
-
-"""
     expectation_of_loglikelihood(γ, mpGLM, x)
 
 ForwardDiff-compatible computation of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron

@@ -473,18 +473,11 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 						d²𝛚_db²::Vector{<:Vector{<:Real}})
 	dL_d𝐯 = zeros(length(mpGLMs[1].θ.𝐯[1]))
 	nneurons = length(mpGLMs)
-	sf = 1/nneurons
 	@inbounds for n = 1:nneurons
 		FHMDDM.conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
 		for t = 1:ntimesteps
 			τ = t + offset
 			FHMDDM.∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], 𝛚[n], d𝛚_db[n], d²𝛚_db²[n], τ)
-			for i in eachindex(∇logpy[t][n])
-				∇logpy[t][n][i] .*= sf
-			end
-			for i in eachindex(∇∇logpy[t][n])
-				∇∇logpy[t][n][i] .*= sf
-			end
 		end
 	end
 	Ξ = length(𝛚[1])
@@ -494,7 +487,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 		for ij in eachindex(pY[t])
 			pY[t][ij] = 1.0
 			for n=1:nneurons
-				pY[t][ij] *= poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])^sf
+				pY[t][ij] *= poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])
 			end
 		end
 		r = 0
@@ -1104,7 +1097,7 @@ UNMODIFIED ARGUMENT
 -`model`: structure containing the data, parameters, and hyperparameters
 """
 function ∇∇scalechoiceLL!(ℓ::Vector{<:AbstractFloat}, ∇ℓ::Vector{<:AbstractFloat}, ∇∇ℓ::Matrix{<:AbstractFloat}, model::Model)
-	s = scaling_factor_choiceLL(model)
+	s = scale_factor_choiceLL(model)
 	ℓˢ, ∇ℓˢ, ∇∇ℓˢ = ∇∇choiceLL(model)
 	ℓ[1] += (s-1)*ℓˢ
 	nθchoice = length(∇ℓˢ)
