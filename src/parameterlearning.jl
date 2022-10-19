@@ -10,19 +10,11 @@ MODIFIED ARGUMENT
 
 RETURN
 -depending on the `model.options.objective`, output of `maximizeevidence!`, `maximizeposterior!`, or `maximizelikelihood!`
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08c_test/T176_2018_05_03/data.mat"
-julia> model = Model(datapath)
-julia> learnparameters!(model)
-julia>
 ```
 """
-function learnparameters!(model::Model; initialize::Bool=true, iterations::Integer=500)
+function learnparameters!(model::Model; initialize::Bool=true, iterations::Integer=500, show_GLM_optimization_trace::Bool=false)
 	@unpack objective = model.options
-	initialize && initializeparameters!(model)
+	initialize && initializeparameters!(model; show_GLM_optimization_trace=show_GLM_optimization_trace)
 	if objective == "evidence"
 		output = maximizeevidence!(model;iterations=iterations)
 	elseif objective == "posterior"
@@ -53,13 +45,13 @@ julia> model = Model(datapath)
 julia> FHMDDM.initializeparameters!(model)
 ```
 """
-function initializeparameters!(model::Model; show_trace::Bool=true, verbose::Bool=true)
+function initializeparameters!(model::Model; show_trace::Bool=true, show_GLM_optimization_trace::Bool=false)
 	if !isempty(concatenate_latent_parameters(model)[1])
 		fitonlychoices!(model; show_trace=show_trace)
 	end
-	verbose && println("Initializing GLM parameters")
-	stats = @timed initialize_GLM_parameters!(model; show_trace=false)
-	verbose && println("Initializing the GLM parameters took ", stats.time, " seconds")
+	println("Initializing GLM parameters")
+	stats = @timed initialize_GLM_parameters!(model; show_trace=show_GLM_optimization_trace)
+	println("Initializing the GLM parameters took ", stats.time, " seconds")
 	return nothing
 end
 

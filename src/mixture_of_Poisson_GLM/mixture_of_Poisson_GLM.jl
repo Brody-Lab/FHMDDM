@@ -40,12 +40,12 @@ ARGUMENT
 RETURN
 -`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
 """
-function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer; ignore𝛃::Bool=false)
+function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack 𝐗, d𝛏_dB, Ξ = mpGLM
     @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	gₖ = 𝐠[min(length(𝐠), k)]
 	if j == 1 || j == Ξ
-		if fit_𝛃 && !ignore𝛃
+		if fit_𝛃
 			𝐰ₖ = 𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
 		else
 			𝐰ₖ = 𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
@@ -54,6 +54,29 @@ function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer; ignor
 		𝐯ₖ = 𝐯[min(length(𝐯), k)]
 		transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
 		𝐰ₖ = 𝐯ₖ.*transformedξ
+	end
+	𝐗*vcat(gₖ, 𝐮, 𝐰ₖ)
+end
+
+"""
+	linearpredictor_without_transformation(mpGLM, j, k)
+
+Linear combination without transforming the accumulated evidence
+
+ARGUMENT
+-see above
+
+RETURN
+-see above
+"""
+function linearpredictor_without_transformation(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
+	@unpack 𝐗, d𝛏_dB, Ξ = mpGLM
+	@unpack 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
+	gₖ = 𝐠[min(length(𝐠), k)]
+	if (j == 1 || j == Ξ) && fit_𝛃
+		𝐰ₖ = 𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
+	else
+		𝐰ₖ = 𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
 	end
 	𝐗*vcat(gₖ, 𝐮, 𝐰ₖ)
 end
@@ -210,10 +233,7 @@ ARGUMENT
 RETURN
 -expectation of the log-likelihood of the spike train of one neuron
 """
-function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}},
-									  mpGLM::MixturePoissonGLM,
-										x::Vector{<:Real};
-									  initialization::Bool=false)
+function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpGLM::MixturePoissonGLM, x::Vector{<:Real}; initialization::Bool=false)
 	mpGLM = FHMDDM.MixturePoissonGLM(x, mpGLM; initialization=initialization)
     @unpack Δt, 𝐲 = mpGLM
     T = length(𝐲)
@@ -221,7 +241,11 @@ function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}},
     Q = 0.0
     @inbounds for i = 1:Ξ
 	    for k = 1:K
-			𝐋 = linearpredictor(mpGLM,i,k; ignore𝛃=initialization)
+			if initialization
+				𝐋 = linearpredictor_without_transformation(mpGLM,i,k)
+			else
+				𝐋 = linearpredictor(mpGLM,i,k)
+			end
             for t = 1:T
 				Q += γ[i,k][t]*poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
             end

@@ -38,9 +38,9 @@ function test(datapath::String; maxabsdiff::Real=1e-9)
     println("testing the hessian of the log-likelihood of only the behavioral choices")
 	println("	- `∇∇choiceLL(model)`")
     test_∇∇choiceLL(datapath; maxabsdiff=maxabsdiff)
-    printseparator()
-    println("testing parameter initialization")
-    initializeparameters!(Model(datapath))
+	printseparator()
+	println("testing parameter initialization")
+	initializeparameters!(Model(datapath))
 	printseparator()
 	println("testing maximum likelihood estimation")
 	maximizelikelihood!(Model(datapath), Optim.LBFGS(linesearch = LineSearches.BackTracking()))
@@ -265,7 +265,7 @@ function test_∇logevidence(datapath::String; maxabsdiff::Real=1e-9, simulate::
 		FHMDDM.sortparameters!(model, 𝛉, index𝛉)
 		FHMDDM.real2native!(model.θnative, model.options, model.θreal)
 	else
-		FHMDDM.initializeparameters!(model; show_trace=false, verbose=false)
+		FHMDDM.initializeparameters!(model; show_trace=false)
 		FHMDDM.maximizeposterior!(model; show_trace=false);
 		𝐇 = FHMDDM.∇∇loglikelihood(model)[3][index𝚽, index𝚽]
 		𝐰₀ = FHMDDM.concatenateparameters(model)[1][index𝚽]
@@ -307,20 +307,24 @@ RETURN
 """
 function test_∇∇choiceLL(datapath::String; maxabsdiff::Real=1e-9)
 	model = Model(datapath)
-	concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇choiceLL(model)
-	index𝛂 = FHMDDM.choice_related_precisions(model)[2]
-	f(x) = FHMDDM.choiceLL(x, indexθ.latentθ, model)
-	ℓauto = f(concatenatedθ)
-	∇auto = ForwardDiff.gradient(f, concatenatedθ)
-	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
-	absΔℓ = abs(ℓauto-ℓhand)
-	maxabsΔ∇ℓ = maximum(abs.(∇auto .- ∇hand[index𝛂]))
-	maxabsΔ∇∇ℓ = maximum(abs.(∇∇auto .- ∇∇hand[index𝛂,index𝛂]))
-	println("   |Δ(ℓ)|: ", absΔℓ)
-    println("   max(|Δ(∇ℓ)|): ", maxabsΔ∇ℓ)
-    println("   max(|Δ(∇∇ℓ)|): ", maxabsΔ∇∇ℓ)
-	if (absΔℓ > maxabsdiff) || (maxabsΔ∇ℓ > maxabsdiff) || (maxabsΔ∇∇ℓ > maxabsdiff)
-		error("Maxmimum absolute difference exceeded")
+	concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
+	if isempty(concatenatedθ)
+		println("   drift-diffusion parameters are not being fitted")
+	else
+		index𝛂 = FHMDDM.choice_related_precisions(model)[2]
+		f(x) = FHMDDM.choiceLL(x, indexθ.latentθ, model)
+		ℓauto = f(concatenatedθ)
+		∇auto = ForwardDiff.gradient(f, concatenatedθ)
+		∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
+		absΔℓ = abs(ℓauto-ℓhand)
+		maxabsΔ∇ℓ = maximum(abs.(∇auto .- ∇hand[index𝛂]))
+		maxabsΔ∇∇ℓ = maximum(abs.(∇∇auto .- ∇∇hand[index𝛂,index𝛂]))
+		println("   |Δ(ℓ)|: ", absΔℓ)
+	    println("   max(|Δ(∇ℓ)|): ", maxabsΔ∇ℓ)
+	    println("   max(|Δ(∇∇ℓ)|): ", maxabsΔ∇∇ℓ)
+		if (absΔℓ > maxabsdiff) || (maxabsΔ∇ℓ > maxabsdiff) || (maxabsΔ∇∇ℓ > maxabsdiff)
+			error("Maxmimum absolute difference exceeded")
+		end
 	end
 end

@@ -80,12 +80,6 @@ ARGUMENT
 
 RETURN
 -`γ`: joint posterior probabilities of the accumulator and coupling variables at each time step conditioned on the emissions at all time steps in the trialset. Element `γ[i][j,k][t]` represent the posterior probability at the t-th timestep in the i-th trialset: p(aₜⱼ=1, cₜₖ=1 ∣ 𝐘, 𝑑)
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> γ = posteriors(model)
 ```
 """
 function posteriors(model::Model)
@@ -96,12 +90,13 @@ function posteriors(model::Model)
 end
 
 """
-	posteriors!(memory, model)
+	posteriors!(memory, P, model)
 
 Compute the posterior distribution of the latent variables
 
 MODIFIED ARGUMENT
 -`memory`: structure containing the memory for computing the gradient of the log-likelihood of the model
+-`P`: a structure for computing the derivatives with respect to the drift-diffusion parameters
 
 UNMODIFIED ARGUMENT
 -`model`: structure containing the parameters, data, and hyperparameters
@@ -364,25 +359,21 @@ end
 """
 	choiceposteriors!(memory, model)
 
-Compute the joint posteriors of the latent variables conditioned on only the choice at each time step.
+Compute the posterior probability of the latent variables at each time step, conditioned on only the choice
+
+MODIFIED ARGUMENT
+-`memory`: structure containing the memory for computing the gradient of the log-likelihood of the model. In particular, the field `γ` corresponds to the single-time-step posterior probabilities of the accumulator and coupling variables at each time step conditioned on the choices (𝑑). Element `γ[i][j,k][t]` represent the posterior probability at the t-th timestep in the i-th trialset: p(aₜⱼ=1, cₜₖ=1 ∣ 𝑑)
 
 ARGUMENT
 -`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion model
 
 RETURN
--`γ`: joint posterior probabilities of the accumulator and coupling variables at each time step conditioned on the choices (𝑑). Element `γ[i][j,k][t]` represent the posterior probability at the t-th timestep in the i-th trialset: p(aₜⱼ=1, cₜₖ=1 ∣ 𝑑)
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> γ = FHMDDM.choiceposteriors(model)
-```
+-`P`: a structure for computing the derivatives with respect to the drift-diffusion parameters, in case it is to be reused
 """
 function choiceposteriors!(memory::Memoryforgradient, model::Model)
 	P = update_for_choice_posteriors!(memory, model)
 	posteriors!(memory, P, model)
-	return nothing
+	return P
 end
 
 """
@@ -400,8 +391,7 @@ RETURN
 -`P`: an instance of `Probabilityvector`
 ```
 """
-function update_for_choice_posteriors!(memory::Memoryforgradient,
-				 					   model::Model)
+function update_for_choice_posteriors!(memory::Memoryforgradient, model::Model)
 	@unpack options, θnative, trialsets = model
 	@unpack Δt, K, minpa, Ξ = options
 	@unpack p𝑑_a, p𝐘𝑑 = memory
