@@ -1,30 +1,24 @@
 """
-	MixturePoissonGLM(concatenatedθ, glmθindex, mpGLM)
+	MixturePoissonGLM(concatenatedθ, mpGLM)
 
 Create a structure for a mixture of Poisson GLM with updated parameters
 
 ARGUMENT
 -`concatenatedθ`: a vector of new parameter values
--`glmθindex`: index of each parameter in the vector of values
 -`mpGLM`: a structure containing information on the mixture of Poisson GLM for one neuron
 
 OUTPUT
 -a new structure for the mixture of Poisson GLM of a neuron with new parameter values
 """
-function MixturePoissonGLM(concatenatedθ::Vector{T},
-						   mpGLM::MixturePoissonGLM;
-						   offset::Integer=0,
-						   initialization::Bool=false) where {T<:Real}
-	MixturePoissonGLM(Δt=mpGLM.Δt,
-						d𝛏_dB=mpGLM.d𝛏_dB,
-						Φₐ=mpGLM.Φₐ,
-	                	Φₕ=mpGLM.Φₕ,
-						Φₘ=mpGLM.Φₘ,
-						Φₜ=mpGLM.Φₜ,
-						θ=GLMθ(mpGLM.θ, concatenatedθ; offset=offset, initialization=initialization),
-						𝐕=mpGLM.𝐕,
-						𝐗=mpGLM.𝐗,
-						𝐲=mpGLM.𝐲)
+function MixturePoissonGLM(concatenatedθ::Vector{<:Real}, mpGLM::MixturePoissonGLM; offset::Integer=0, initialization::Bool=false)
+	values = map(fieldnames(MixturePoissonGLM)) do fieldname
+				if fieldname == :θ
+					GLMθ(mpGLM.θ, concatenatedθ; offset=offset, initialization=initialization)
+				else
+					getfield(mpGLM, fieldname)
+				end
+			end
+	return MixturePoissonGLM(values...)
 end
 
 """
@@ -97,7 +91,7 @@ RETURN
 function scaledlikelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer, s::Real)
     @unpack Δt, 𝐲 = mpGLM
     𝐋 = linearpredictor(mpGLM, j, k)
-    𝐩 = 𝐋 # reuse memory
+    𝐩 = 𝐋
     @inbounds for i=1:length(𝐩)
         𝐩[i] = scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
     end
@@ -299,4 +293,35 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real}, ∇ℓglm::Vector{<:
 		end
 	end
 	return nothing
+end
+
+"""
+	postspikefilter(mpGLM)
+
+Return a vector representing the post-spike filter of a Poisson mixture GLM.
+
+The first element of the vector corresponds to the first time step after the spike.
+"""
+function postspikefilter(mpGLM::MixturePoissonGLM)
+	@unpack Φₕ, θ = mpGLM
+	@unpack 𝐮, 𝐮indices_hist = θ
+	return Φₕ*𝐮[𝐮indices_hist]
+end
+
+"""
+	externalinput(mpGLM)
+
+Sum the input from extern events for each time step in a trialset.
+
+The external events typically consist of the stereoclick, departure from the center port, and the photostimulus.
+
+RETURN
+-a vector whose τ-th element corresponds to the τ-th time step in the trialset
+"""
+function externalinput(mpGLM::MixturePoissonGLM)
+	@unpack 𝐗, 𝐗columns_time, 𝐗columns_move, 𝐗columns_phot, θ = mpGLM
+	@unpack 𝐮, 𝐮indices_time, 𝐮indices_move, 𝐮indices_phot = θ
+	𝐄 = @view 𝐗[:,vcat(𝐗columns_time, 𝐗columns_move, 𝐗columns_phot)]
+	𝐞 = 𝐮[vcat(𝐮indices_time, 𝐮indices_move, 𝐮indices_phot)]
+	return 𝐄*𝐞
 end

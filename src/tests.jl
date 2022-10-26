@@ -6,7 +6,7 @@ Run a number of tests on the model
 ARGUMENT
 -`datapath`: full path of the data file
 """
-function test(datapath::String; maxabsdiff::Real=1e-9)
+function test(datapath::String; maxabsdiff::Real=1e-8)
 	println("testing `"*datapath*"`")
     printseparator()
     println("testing the hessian of the expectation of the log-likelihood of one neuron's spike train")
@@ -72,7 +72,7 @@ Check the hessian and gradient of the expectation of the log-likelihood of one n
 
 The function being checked is used in parameter initialization.
 """
-function test_expectation_of_∇∇loglikelihood!(datapath::String; maxabsdiff::Real=1e-9)
+function test_expectation_of_∇∇loglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
     model = Model(datapath)
     mpGLM = model.trialsets[1].mpGLMs[1]
     γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
@@ -104,7 +104,7 @@ Check the gradient of the expectation of the log-likelihood of one neuron's GLM.
 
 The function being checked is used in computing the gradient of the log-likelihood of the entire model.
 """
-function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1e-9)
+function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
     model = Model(datapath)
     mpGLM = model.trialsets[1].mpGLMs[1]
     if length(mpGLM.θ.b) > 0
@@ -132,7 +132,7 @@ end
 
 Check the gradient of the negative of the log-likelihood of the model
 """
-function test_∇negativeloglikelihood!(datapath::String; maxabsdiff::Real=1e-9)
+function test_∇negativeloglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
     model = Model(datapath)
     for trialset in model.trialsets
         for mpGLM in trialset.mpGLMs
@@ -164,7 +164,7 @@ end
 
 Check the computation of the hessian of the log-likelihood
 """
-function test_∇∇loglikelihood(datapath::String; maxabsdiff::Real=1e-9)
+function test_∇∇loglikelihood(datapath::String; maxabsdiff::Real=1e-8)
     model = Model(datapath)
     for trialset in model.trialsets
         for mpGLM in trialset.mpGLMs
@@ -177,7 +177,7 @@ function test_∇∇loglikelihood(datapath::String; maxabsdiff::Real=1e-9)
     end
 	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood(model)
-	f(x) = loglikelihood(x, indexθ, model)
+	f(x) = FHMDDM.loglikelihood(x, indexθ, model)
 	ℓauto = f(concatenatedθ)
 	∇auto = ForwardDiff.gradient(f, concatenatedθ)
 	∇∇auto = ForwardDiff.hessian(f, concatenatedθ)
@@ -201,7 +201,7 @@ ARGUMENT
 -`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
 ```
 """
-function test_∇negativelogposterior(datapath::String; maxabsdiff::Real=1e-9)
+function test_∇negativelogposterior(datapath::String; maxabsdiff::Real=1e-8)
 	model = Model(datapath)
 	for trialset in model.trialsets
         for mpGLM in trialset.mpGLMs
@@ -244,7 +244,7 @@ RETURN
 -maximum absolute normalized difference between the gradients
 -maximum absolute normalized difference between the log-evidence functions
 """
-function test_∇logevidence(datapath::String; maxabsdiff::Real=1e-9, simulate::Bool=false)
+function test_∇logevidence(datapath::String; maxabsdiff::Real=1e-8, simulate::Bool=false)
     model = Model(datapath)
 	@unpack 𝛂, index𝐀, index𝚽, 𝚽 = model.gaussianprior
 	𝛉, index𝛉 = FHMDDM.concatenateparameters(model)
@@ -305,7 +305,7 @@ RETURN
 -`absdiff∇∇`: absolute difference in the hessians
 ```
 """
-function test_∇∇choiceLL(datapath::String; maxabsdiff::Real=1e-9)
+function test_∇∇choiceLL(datapath::String; maxabsdiff::Real=1e-8)
 	model = Model(datapath)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇choiceLL(model)
 	concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)

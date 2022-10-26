@@ -177,38 +177,45 @@ OUTPUT
 -an instance of `trialsetdata`
 """
 function Trialset(options::Options, trialset::Dict)
+	@unpack K, Ξ = options
+	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1)
 	inttype = typeof(1)
 	floattype = typeof(1.0)
     rawtrials = vec(trialset["trials"])
-	movementtimes_s = map(x->x["movementtime_s"], rawtrials)
-	@assert all(movementtimes_s.>0)
-    𝐓 = map(x->convert(inttype, x["ntimesteps"]), rawtrials)
+	𝐓 = map(x->convert(inttype, x["ntimesteps"]), rawtrials)
+	maxtimesteps = maximum(𝐓)
 	units = vec(trialset["units"])
-    𝐘 = map(x->convert.(typeof(1), vec(x["y"])), units)
+	𝐘 = map(x->convert.(typeof(1), vec(x["y"])), units)
 	Ttrialset = sum(𝐓)
     @assert all(length.(𝐘) .== Ttrialset)
-	@unpack K, Ξ = options
-	d𝛏_dB = (2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1)
+	movementtimes_s = map(x->x["movementtime_s"], rawtrials)
+	@assert all(movementtimes_s.>0)
 	𝐆 = ones(Ttrialset)
-	Φₕ = spikehistorybases(options)
-	𝐔ₕ = map(𝐲->spikehistorybases(Φₕ, 𝐓, 𝐲), 𝐘)
-	Φₘ = premovementbases(options)
-	𝐔ₘ = premovementbases(movementtimes_s, options, Φₘ, 𝐓)
-	Φₜ = timebases(options, 𝐓)
-	𝐔ₜ = temporal_bases_values(Φₜ, 𝐓)
-	Φₐ = accumulatorbases(options, 𝐓)
-	𝐕 = temporal_bases_values(Φₐ, 𝐓)
+	Φₕ = spikehistorybasis(options)
+	𝐔ₕ = map(𝐲->spikehistorybasis(Φₕ, 𝐓, 𝐲), 𝐘)
+	Φₘ = premovementbasis(options)
+	𝐔ₘ = premovementbasis(movementtimes_s, options, Φₘ, 𝐓)
+	Φₜ = timebasis(maxtimesteps, options)
+	𝐔ₜ = temporal_basis_functions(Φₜ, 𝐓)
+	photo_onset_s = collect(rawtrial["photostimulus_incline_on_s"] for rawtrial in rawtrials)
+	photo_offset_s = collect(rawtrial["photostimulus_decline_on_s"] for rawtrial in rawtrials)
+	Φₚ, Φₚtimesteps, 𝐔ₚ = photostimulusbasis(options, photo_onset_s, photo_offset_s, 𝐓)
+	Φₐ = accumulatorbasis(maxtimesteps, options)
+	𝐕 = temporal_basis_functions(Φₐ, 𝐓)
 	𝐮indices_hist = 1:size(Φₕ,2)
 	𝐮indices_time = (isempty(𝐮indices_hist) ? 0 : 𝐮indices_hist[end]) .+ (1:size(Φₜ,2))
 	𝐮indices_move = (isempty(𝐮indices_time) ? 0 : 𝐮indices_time[end]) .+ (1:size(Φₘ,2))
+	𝐮indices_phot = (isempty(𝐮indices_move) ? 0 : 𝐮indices_move[end]) .+ (1:size(Φₚ,2))
 	mpGLMs = map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
-				𝐗=hcat(𝐆, 𝐔ₕ, 𝐔ₜ, 𝐔ₘ, 𝐕)
-				glmθ = GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_time, 𝐕)
+				𝐗=hcat(𝐆, 𝐔ₕ, 𝐔ₜ, 𝐔ₘ, 𝐔ₚ, 𝐕)
+				glmθ = GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_phot, 𝐮indices_time, 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
   								d𝛏_dB=d𝛏_dB,
 								Φₐ=Φₐ,
 								Φₕ=Φₕ,
 								Φₘ=Φₘ,
+								Φₚ=Φₚ,
+								Φₚtimesteps=Φₚtimesteps,
 								Φₜ=Φₜ,
 								θ=glmθ,
 								𝐕=𝐕,

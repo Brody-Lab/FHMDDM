@@ -70,15 +70,17 @@ RETURN
 -`𝛂min`: a vector containing the minimum precision of the prior on each parameter
 """
 function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
-	@unpack 𝐮indices_hist, 𝐮indices_time, 𝐮indices_move = indexθglm[1]
+	@unpack 𝐮indices_hist, 𝐮indices_time, 𝐮indices_move, 𝐮indices_phot = indexθglm[1]
 	nbaseshist = length(𝐮indices_hist)
 	nbasestime = length(𝐮indices_time)
 	nbasesmove = length(𝐮indices_move)
+	nbasesphot = length(𝐮indices_phot)
 	nbasesaccu = length(indexθglm[1].𝐯[1])
 	Again = ones(1,1).*options.tbf_time_scalefactor^2
 	Ahist = zeros(nbaseshist,nbaseshist) + options.tbf_hist_scalefactor^2*I # computations with `Diagonal` are slower
 	Atime = zeros(nbasestime,nbasestime) + options.tbf_time_scalefactor^2*I
 	Amove = zeros(nbasesmove,nbasesmove) + options.tbf_move_scalefactor^2*I
+	Aphot = zeros(nbasesphot,nbasesphot) + options.tbf_phot_scalefactor^2*I
 	Aevtr = ones(1,1)*options.b_scalefactor^2
 	Aaccu = zeros(nbasesaccu,nbasesaccu) + options.tbf_accu_scalefactor^2*I
 	𝐀 = Matrix{typeof(1.0)}[]
@@ -115,6 +117,12 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_move]])
 			𝛂max = vcat(𝛂max, options.L2_move_max)
 			𝛂min = vcat(𝛂min, options.L2_move_min)
+		end
+		if nbasesphot > 0
+			𝐀 = vcat(𝐀, [Aphot])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_phot]])
+			𝛂max = vcat(𝛂max, options.L2_phot_max)
+			𝛂min = vcat(𝛂min, options.L2_phot_min)
 		end
 		if nbasesaccu > 0
 			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯

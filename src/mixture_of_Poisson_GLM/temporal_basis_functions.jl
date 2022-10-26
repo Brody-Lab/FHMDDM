@@ -1,52 +1,96 @@
 """
-	accumulatorbases(options, 𝐓)
+	accumulatorbasis(options, 𝐓)
 
 Temporal basis functions for the accumulator kernel
 
 ARGUMENT
+-`maxtimesteps`: maximum number of time steps across all trials in a trialset
 -`options`: settings of the model
--`𝐓`: number of timesteps
 
 RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
-function accumulatorbases(options::Options, 𝐓::Vector{<:Integer})
-    temporal_bases_values(  options.tbf_accu_begins0,
+function accumulatorbasis(maxtimesteps::Integer, options::Options)
+    temporal_basis_functions(options.tbf_accu_begins0,
                             options.Δt,
                             options.tbf_accu_ends0,
                             options.tbf_accu_hz,
-                            options.tbf_accu_period,
+                            options.tbf_period,
                             options.tbf_accu_scalefactor,
                             options.tbf_accu_stretch,
-                            𝐓)
+							maxtimesteps)
 end
 
 """
-	timebases(options, 𝐓)
+	timebasis(options, 𝐓)
 
 Temporal basis functions for the time kernel
 
 ARGUMENT
+-`maxtimesteps`: maximum number of time steps across all trials in a trialset
 -`options`: settings of the model
--`𝐓`: number of timesteps
 
 RETURN
 -`𝐔`: A matrix whose element 𝐔[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
-function timebases(options::Options, 𝐓::Vector{<:Integer})
-    temporal_bases_values(  options.tbf_time_begins0,
+function timebasis(maxtimesteps::Integer, options::Options)
+    temporal_basis_functions(options.tbf_time_begins0,
                             options.Δt,
                             options.tbf_time_ends0,
                             options.tbf_time_hz,
-                            options.tbf_time_period,
+                            options.tbf_period,
                             options.tbf_time_scalefactor,
                             options.tbf_time_stretch,
-                            𝐓)
+							maxtimesteps)
 end
 
 """
-	temporal_bases_values(begins0, ends0, hz, period, scalefactor, stretch, 𝐓)
+	premovementbasis(options)
+
+Temporal basis functions for the premovement kernel
+
+ARGUMENT
+-`options`: settings of the model
+
+RETURN
+-`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
+"""
+function premovementbasis(options::Options)
+    temporal_basis_functions(options.tbf_move_begins0,
+                            options.Δt,
+                            options.tbf_move_ends0,
+                            options.tbf_move_hz,
+                            options.tbf_period,
+                            options.tbf_move_scalefactor,
+                            options.tbf_move_stretch,
+							ceil(Int, options.tbf_move_dur_s/options.Δt))
+end
+
+"""
+	spikehistorybasis(options)
+
+Values of temporal basis functions parametrizing a postspike filter
+
+ARGUMENT
+-`options`: settings of the model
+
+OUTPUT
+-`Φ`: a matrix whose element Φ[τ,i] corresponds to the value of i-th temporal basis function in the τ-th time bin after the spike
+"""
+function spikehistorybasis(options::Options)
+	temporal_basis_functions(options.tbf_hist_begins0,
+                            options.Δt,
+                            options.tbf_hist_ends0,
+                            options.tbf_hist_hz,
+                            options.tbf_period,
+                            options.tbf_hist_scalefactor,
+                            options.tbf_hist_stretch,
+							ceil(Int, options.tbf_hist_dur_s/options.Δt))
+end
+
+"""
+	temporal_basis_functions(begins0, ends0, hz, period, scalefactor, stretch, 𝐓)
 
 Value of each temporal basis at each time bin in a trialset
 
@@ -63,24 +107,23 @@ INPUT
 RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
 """
-function temporal_bases_values(begins0::Bool, Δt::AbstractFloat, ends0::Bool, hz::Real, period::Real, scalefactor::Real, stretch::Real, 𝐓::Vector{<:Integer})
-	if isnan(hz)
+function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, ends0::Bool, hz::Real, period::Real, scalefactor::Real, stretch::Real, Tmax::Integer)
+	if isnan(hz) || (Tmax < 1)
 		return fill(1.0, 0, 0)
 	else
-		Tmax = maximum(𝐓)
-		nbases = max(1, ceil(Int, hz*(Tmax*Δt)))
-	    if nbases == 1
+		D = max(1, ceil(Int, hz*(Tmax*Δt)))
+	    if D == 1
 			x = scalefactor/sqrt(Tmax)
 	        Φ = fill(x,Tmax,1)
 	    else
-	        Φ = unitarybases(begins0, ends0, nbases, Tmax, period, stretch).*scalefactor
+	        Φ = unitarybasis(begins0, ends0, D, Tmax, period, stretch).*scalefactor
 	    end
 	    return Φ
 	end
 end
 
 """
-	temporal_bases_values(Φ, 𝐓)
+	temporal_basis_functions(Φ, 𝐓)
 
 Value of each temporal basis at each time bin in a trialset
 
@@ -91,11 +134,11 @@ INPUT
 RETURN
 -`𝐕`: A matrix whose element 𝐕[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 """
-function temporal_bases_values(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
+function temporal_basis_functions(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
     Tmax = maximum(𝐓)
-    nbases = size(Φ,2)
-    𝐕 = zeros(sum(𝐓), nbases)
-	if nbases > 0
+    D = size(Φ,2)
+    𝐕 = zeros(sum(𝐓), D)
+	if D > 0
 	    k = 0
 	    for T in 𝐓
 	        for t = 1:T
@@ -108,30 +151,155 @@ function temporal_bases_values(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integ
 end
 
 """
-	premovementbases(options)
+	photostimulusbasis(options, 𝐭_onset_s, 𝐭_offset_s, 𝐓)
 
-Temporal basis functions for the premovement kernel
+Temporal basis vectors for learning the photostimulus filter and their values in each time step
 
 ARGUMENT
 -`options`: settings of the model
+-`𝐭_onset_s`: time of photostimulus onset in each trial
+-`𝐭_offset_s`: time of photostimulus offset in each trial
+-`𝐓`: number of time steps in each trial
 
 RETURN
--`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
+-`Φ`: a matrix of floats whose columns correspond to the temporal basis vectors and whose rows correspond to time steps relative to photostimulus onset.
+-`Φtimesteps`: a unit range of integers representing the time steps of `Φ` relative to photostimulus onset. Each value of `Φtimesteps` corresponds to a row of `Φ`. A value of `Φtimesteps[i]=1` indicates that the i-th row of `Φ` corresponds to the time step when the photostimulus occured.
+-`𝐔`: a matrix of floats whose columns correspond to the temporal basis vectors and whose rows correspond to time steps in a trialset
 """
-function premovementbases(options::Options)
-	if isnan(options.tbf_move_hz)
-		return fill(1.0, 0, 0)
+function photostimulusbasis(options::Options, 𝐭_onset_s::Vector{<:AbstractFloat}, 𝐭_offset_s::Vector{<:AbstractFloat}, 𝐓::Vector{<:Integer})
+	indices = map(𝐭_onset_s, 𝐭_offset_s) do t_on, t_off
+					!isnan(t_on) && !isnan(t_off)
+			  end
+	if sum(indices)==0
+		Φ = zeros(0, 0)
+		Φtimesteps = 1:0
+		𝐔 = zeros(sum(𝐓), size(Φ,2))
 	else
-		nbases = max(1, ceil(Int, options.tbf_move_dur_s*options.tbf_move_hz))
-		nbins = ceil(Int, options.tbf_move_dur_s/options.Δt)
-		Φ = unitarybases(options.tbf_move_begins0, options.tbf_move_ends0, nbases, nbins, options.tbf_move_period, options.tbf_move_stretch)
-		Φ .*= options.tbf_move_scalefactor
-		return Φ
+		duration = round.((𝐭_offset_s[indices] .- 𝐭_onset_s[indices])./options.Δt)
+		duration = unique(duration[.!isnan.(duration)])
+		@assert length(duration)==1
+		@assert duration[1] > 0
+		duration = duration[1]
+		duration = convert(Int, duration)
+		𝐭ₒₙ = 𝐭_onset_s[indices]./options.Δt
+		𝐭ₒₙ = collect(tₒₙ < 0.0 ? floor(Int, tₒₙ) : ceil(Int, tₒₙ) for tₒₙ in 𝐭ₒₙ)
+		Φ, Φtimesteps = photostimulusbasis(duration, options, 𝐓[indices], 𝐭ₒₙ)
+		𝐔 = zeros(sum(𝐓), size(Φ,2))
+		photostimulusbasis!(𝐔, indices, Φ, Φtimesteps, 𝐓, 𝐭ₒₙ)
 	end
+	return Φ, Φtimesteps, 𝐔
 end
 
 """
-	premovementbases(options, movementtimes_s, Φ, 𝐓)
+	photostimulusbasis(duration, options, 𝐓, 𝐭ₒₙ)
+
+Temporal basis vectors for learning the photostimulus filter
+
+ARGUMENT
+-`duration`: number of time steps in the photostimulus
+-`options`: settings of the model
+-`𝐓`: number of time steps in each trial, for only the trials with a photostimulus
+-`𝐭ₒₙ`: the time step in each trial when the photostimulus began, for only the trials with a photostimulus
+
+RETURN
+-`Φ`: a matrix of floats whose columns correspond to the temporal basis vectors and whose rows correspond to time steps relative to photostimulus onset.
+-`Φtimesteps`: a unit range of integers representing the time steps of `Φ` relative to photostimulus onset. Each value of `Φtimesteps` corresponds to a row of `Φ`. A value of `Φtimesteps[i]=1` indicates that the i-th row of `Φ` corresponds to the time step when the photostimulus occured.
+"""
+function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:Integer}, 𝐭ₒₙ::Vector{<:Integer})
+	nsteps_onset_to_trialend = map((T, tₒₙ)-> tₒₙ < 0 ? T-tₒₙ : T-tₒₙ+1, 𝐓, 𝐭ₒₙ)
+	Φon = temporal_basis_functions(options.tbf_phot_begins0,
+									options.Δt,
+									options.tbf_phot_ends0,
+									options.tbf_phot_hz,
+									options.tbf_period,
+									1.0,
+									options.tbf_phot_stretch,
+									maximum(nsteps_onset_to_trialend))
+	latest_onset = maximum(𝐭ₒₙ)
+	if latest_onset < 0
+		Φtimesteps = 1-latest_onset:size(Φon,1)
+		Φon = Φon[Φtimesteps, :]
+	else
+		Φtimesteps = 1:size(Φon,1)
+	end
+	Φon = unitarybasis(Φon)
+	indexoff = findfirst(Φtimesteps.==(duration+1))
+	if indexoff != nothing
+		nsteps_offset = length(Φtimesteps) - indexoff + 1
+		Φoff = temporal_basis_functions(options.tbf_phot_begins0,
+	                            	   options.Δt,
+			                           options.tbf_phot_ends0,
+			                           options.tbf_phot_hz,
+			                           options.tbf_period,
+			                           options.tbf_phot_scalefactor,
+			                           options.tbf_phot_stretch,
+									   nsteps_offset)
+		Φoff = vcat(zeros(indexoff-1, size(Φoff,2)), Φoff)
+		Φoff = unitarybasis(Φoff)
+ 		Φ = hcat(Φon, Φoff)
+		Φ = unitarybasis(Φ)
+	else
+		Φ = Φon
+	end
+	Φ .*= options.tbf_phot_scalefactor
+	return Φ, Φtimesteps
+end
+
+"""
+	photostimulusbasis!(𝐔, Φ, Φtimesteps, 𝐓, 𝐭ₒₙ)
+
+Evaluate each temporal basis vector at each time step in a trialset
+
+MODIFIED ARGUMENT
+-`𝐔`: a matrix of floats whose columns correspond to the temporal basis vectors and whose rows correspond to time steps in a trialset
+
+ARGUMENT
+-`indices`: a bit vector indicating which trial in the trialset has a photostimulus
+-`Φ`: a matrix of floats whose columns correspond to the temporal basis vectors and whose rows correspond to time steps relative to photostimulus onset.
+-`Φtimesteps`: a unit range of integers representing the time steps of `Φ` relative to photostimulus onset. Each value of `Φtimesteps` corresponds to a row of `Φ`. A value of `Φtimesteps[i]=1` indicates that the i-th row of `Φ` corresponds to the time step when the photostimulus occured.
+-`𝐓`: a vector of integers representing the number of time steps in each trial in the trialset
+-`𝐭ₒₙ`: a vector of integers representing the time step when the photostimulus began, for trials with a photostimulus.
+"""
+function photostimulusbasis!(𝐔::Matrix{<:AbstractFloat}, indices::Vector{Bool}, Φ::Matrix{<:AbstractFloat}, Φtimesteps::UnitRange{<:Integer}, 𝐓::Vector{<:Integer}, 𝐭ₒₙ::Vector{<:Integer})
+	D = size(Φ,2)
+	τ = 0
+	k = 0
+	for m in eachindex(𝐓)
+		T = 𝐓[m]
+		if indices[m]
+			k += 1
+			tₒₙ = 𝐭ₒₙ[k]
+			if tₒₙ < 0
+				i = 1 - Φtimesteps[1] - tₒₙ
+				for t in 1:T
+					τ += 1
+					i += 1
+					for d = 1:D
+						𝐔[τ,d] = Φ[i,d]
+					end
+				end
+			else
+				i = 1 - tₒₙ
+				for t in 1:T
+					τ += 1
+					i += 1
+					if i > 0
+						for d = 1:D
+							𝐔[τ,d] = Φ[i,d]
+						end
+					end
+				end
+			end
+		else
+			τ += T
+		end
+	end
+	@assert τ == size(𝐔,1)
+	return nothing
+end
+
+"""
+	premovementbasis(options, movementtimes_s, Φ, 𝐓)
 
 Temporal basis functions for the premovement kernel
 
@@ -144,10 +312,10 @@ ARGUMENT
 RETURN
 -`𝐔`: A matrix whose element 𝐔[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 """
-function premovementbases(movementtimes_s::Vector{<:AbstractFloat}, options::Options, Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
-	nbins, nbases = size(Φ)
-	𝐔 = zeros(sum(𝐓), nbases)
-	if nbases > 0
+function premovementbasis(movementtimes_s::Vector{<:AbstractFloat}, options::Options, Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
+	nbins, D = size(Φ)
+	𝐔 = zeros(sum(𝐓), D)
+	if D > 0
 		movementbin = ceil.(Int, movementtimes_s./options.Δt) # movement times are always positive
 		τ = 0
 		for i=1:length(𝐓)
@@ -170,30 +338,7 @@ function premovementbases(movementtimes_s::Vector{<:AbstractFloat}, options::Opt
 end
 
 """
-	spikehistorybases(options)
-
-Values of temporal basis functions parametrizing a postspike filter
-
-ARGUMENT
--`options`: settings of the model
-
-OUTPUT
--`Φ`: a matrix whose element Φ[τ,i] corresponds to the value of i-th temporal basis function in the τ-th time bin after the spike
-"""
-function spikehistorybases(options::Options)
-	if isnan(options.tbf_hist_hz)
-		return fill(1.0, 0, 0)
-	else
-		nbases = max(1, ceil(Int, options.tbf_hist_dur_s*options.tbf_hist_hz))
-		nbins = ceil(Int, options.tbf_hist_dur_s/options.Δt)
-		Φ = unitarybases(options.tbf_hist_begins0, options.tbf_hist_ends0, nbases, nbins, options.tbf_hist_period, options.tbf_hist_stretch)
-		Φ .*= options.tbf_hist_scalefactor
-		return Φ
-	end
-end
-
-"""
-	spikehistorybases(Φ, 𝐓, 𝐲)
+	spikehistorybasis(Φ, 𝐓, 𝐲)
 
 Response of each temporal basis function parametrizing the postspike filter at each time step in the trialset
 
@@ -205,10 +350,10 @@ ARGUMENT
 RETURN
 -`𝐔`: a matrix whose element 𝐔[t,i] corresponds to the response of the i-th temporal basis function at the t-th time step in the trialset.
 """
-function spikehistorybases(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer}, 𝐲::Vector{<:Integer})
-	filterlength, nbases = size(Φ)
-	𝐔 = zeros(sum(𝐓), nbases)
-	if nbases > 0
+function spikehistorybasis(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer}, 𝐲::Vector{<:Integer})
+	filterlength, D = size(Φ)
+	𝐔 = zeros(sum(𝐓), D)
+	if D > 0
 		τ = 0
 		for T in 𝐓
 			indices = τ .+ (1:T)
@@ -217,7 +362,7 @@ function spikehistorybases(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer},
 				y = 𝐲[tₛₚₖ+τ]
 				indices𝐔 = τ .+ (tₛₚₖ+1:T)
 				for (i,j) in zip(indices𝐔, 1:filterlength)
-					for p = 1:nbases
+					for p = 1:D
 						𝐔[i,p] += y*Φ[j,p]
 					end
 				end
@@ -229,7 +374,7 @@ function spikehistorybases(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer},
 end
 
 """
-	unitarybases(begins0, ends0, nbases, nbins, period, stretch)
+	unitarybasis(begins0, ends0, D, nbins, period, stretch)
 
 A matrix of values from orthogonal temporal basis functions that each has an L2 norm of one.
 
@@ -238,7 +383,7 @@ The raised cosines temporal basis functions are used as the starting point.
 ARGUMENT
 -`begins0`: whether the raised cosines begin at the trough or at the peak
 -`ends0`: whether the raised cosines end at the trough or at the peak
--`nbases`: number of temporal basis functions
+-`D`: number of temporal basis functions
 -`nbins`: number of time steps
 -`period`: width of the cosines, in terms of inter-center distance
 -`stretch`: degree to which later cosines are stretched
@@ -249,30 +394,48 @@ RETURN
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM, LinearAlgebra
-julia> Φ = FHMDDM.unitarybases(true, true, true, 4, 121, 4, 0.1)
+julia> Φ = FHMDDM.unitarybasis(true, true, true, 4, 121, 4, 0.1)
 julia> maximum(abs.(Φ'*Φ - I))
 8.881784197001252e-16
 ```
 """
-function unitarybases(begins0::Bool, ends0::Bool, nbases::Integer, nbins::Integer, period::Real, stretch::Real)
-	if nbases == 1
+function unitarybasis(begins0::Bool, ends0::Bool, D::Integer, nbins::Integer, period::Real, stretch::Real)
+	if D == 1
 		fill(1/√nbins, nbins, 1)
 	else
-		Φ = raisedcosines(begins0, ends0, nbases, nbins, period, stretch)
+		Φ = raisedcosines(begins0, ends0, D, nbins, period, stretch)
 		F = svd(Φ)
-		F.U[:,1:nbases]
+		F.U[:,1:D]
 	end
 end
 
 """
-    raisedcosines(begins0, ends0, nbases, nbins, period, stretch)
+	unitarybasis(X)
+
+Unitary basis for the real vector space spanned by the columns of `X`
+
+OPTIONAL ARGUMENT
+-`min_relative_singular_value`: dimensions whose singular value, relative to the maximum singular value across dimensions, is less than `min_relative_singular_value` are omitted
+
+RETURN
+-A unitary matrix whose columns span the real vector space span by the columns of `X`
+"""
+function unitarybasis(X::Matrix{<:AbstractFloat}; min_relative_singular_value::AbstractFloat=0.0)
+	factorization = svd(X)
+	relative_singular_values = factorization.S./maximum(factorization.S)
+	indices = relative_singular_values .> min_relative_singular_value
+	return factorization.U[:,indices]
+end
+
+"""
+    raisedcosines(begins0, ends0, D, nbins, period, stretch)
 
 Values of raised cosine temporal basis functions (tbf's)
 
 ARGUMENT
 -`begins0`: whether the first temporal basis function begins at the trough or at the peak
 -`ends0`: whether the last temporal basis function begins at the trough or at the peak
--`nbases`: number of bases
+-`D`: number of bases
 -`nbins`: number of bins in the time window tiled by the bases
 -`period`: period of the raised cosine, in units of the inter-center distance
 -`stretch`: an index of the stretching of the cosines
@@ -280,7 +443,7 @@ ARGUMENT
 RETURN
 -`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
 """
-function raisedcosines(begins0::Bool, ends0::Bool, nbases::Integer, nbins::Integer, period::Real, stretch::Real)
+function raisedcosines(begins0::Bool, ends0::Bool, D::Integer, nbins::Integer, period::Real, stretch::Real)
     if isnan(stretch) || stretch < eps()
         a = 1
         b = nbins
@@ -293,18 +456,18 @@ function raisedcosines(begins0::Bool, ends0::Bool, nbases::Integer, nbins::Integ
     end
     if begins0
         if ends0
-            Δcenter = (b-a) / (nbases+3)
+            Δcenter = (b-a) / (D+3)
         else
-            Δcenter = (b-a) / (nbases+1)
+            Δcenter = (b-a) / (D+1)
         end
-        centers = a .+ 2Δcenter .+ collect(0:max(1,nbases-1)).*Δcenter
+        centers = a .+ 2Δcenter .+ collect(0:max(1,D-1)).*Δcenter
     else
         if ends0
-            Δcenter = (b-a) / (nbases+1)
+            Δcenter = (b-a) / (D+1)
         else
-            Δcenter = (b-a) / (nbases-1)
+            Δcenter = (b-a) / (D-1)
         end
-        centers = a .+ collect(0:max(1,nbases-1)).*Δcenter
+        centers = a .+ collect(0:max(1,D-1)).*Δcenter
     end
     ω = 2π/Δcenter/period
     Φ = raisedcosines(centers, ω, t)

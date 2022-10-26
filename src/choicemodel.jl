@@ -36,17 +36,6 @@ ARGUMENT
 
 RETURN
 -hessian matrix of the posterior distribution conditioned on only the choices, evaluated at the mode given by `model.θnative`
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
-julia> 𝛂 = FHMDDM.maximize_evidence_choices!(model)
-julia> H = FHMDDM.hessian_posterior_choices(𝛂, model)
-julia> λΔt, pchoice = expectedemissions(model;nsamples=2)
-julia> save(model, H, λΔt, pchoice)
-julia>
-```
 """
 function hessian_posterior_choices(𝛂::Vector{<:AbstractFloat}, model::Model)
 	index𝛂 = FHMDDM.choice_related_precisions(model)[2]
@@ -64,16 +53,6 @@ MODIFIED ARGUMENT
 
 RETURN
 -`best𝛂`: the precisions that maximize evidence
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat")
-julia> FHMDDM.maximize_evidence_choices!(model)
-julia> λΔt, pchoice = expectedemissions(model;nsamples=2)
-julia> save(model, λΔt, pchoice)
-julia>
-```
 """
 function maximize_evidence_choices!(model::Model;
 								iterations::Int = 500,

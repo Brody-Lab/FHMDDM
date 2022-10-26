@@ -5,16 +5,17 @@ Randomly initiate the parameters for a mixture of Poisson generalized linear mod
 
 ARGUMENT
 -`options`: settings of the model
--`𝐮indices_hist`: indices in 𝐮 corresponding to the temporal basis functions of the postspike filter
--`𝐮indices_move`: indices in 𝐮 corresponding to the temporal basis functions of the premovement filter
--`𝐮indices_time`: indices in 𝐮 corresponding to the temporal basis functions of the time-in-trial filter
+-`𝐮indices_hist`: indices in 𝐮 corresponding to the temporal basis functions of the post-spike filter
+-`𝐮indices_move`: indices in 𝐮 corresponding to the temporal basis functions of the pre-movement filter
+-`𝐮indices_phot`: indices in 𝐮 corresponding to the temporal basis functions of the post-photostimulus filter
+-`𝐮indices_time`: indices in 𝐮 corresponding to the temporal basis functions of the post-stereoclick filter
 -`𝐕`: constant and time-varying inputs from the accumulator
 
 OUTPUT
 -an instance of `GLMθ`
 """
-function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
-	n𝐮 = length(𝐮indices_hist) + length(𝐮indices_time) + length(𝐮indices_move)
+function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_phot::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
+	n𝐮 = length(𝐮indices_hist) + length(𝐮indices_time) + length(𝐮indices_move) + length(𝐮indices_phot)
 	n𝐯 =size(𝐕,2)
 	K𝐠 = options.gain_state_dependent ? options.K : 1
 	K𝐯 = options.tuning_state_dependent ? options.K : 1
@@ -26,6 +27,7 @@ function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮ind
 			𝐮 = fill(NaN, n𝐮),
 			𝐮indices_hist=𝐮indices_hist,
 			𝐮indices_move=𝐮indices_move,
+			𝐮indices_phot=𝐮indices_phot,
 			𝐮indices_time=𝐮indices_time,
 			𝐯 = collect(fill(NaN,n𝐯) for k=1:K𝐯))
 	randomizeparameters!(θ, options)
@@ -50,6 +52,7 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 	end
 	θ.𝐮[θ.𝐮indices_hist] ./= options.tbf_hist_scalefactor
 	θ.𝐮[θ.𝐮indices_move] ./= options.tbf_move_scalefactor
+	θ.𝐮[θ.𝐮indices_phot] ./= options.tbf_phot_scalefactor
 	θ.𝐮[θ.𝐮indices_time] ./= options.tbf_time_scalefactor
 	θ.𝐠[1] = 0.0
 	for k = 2:length(θ.𝐠)
@@ -70,6 +73,13 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 		θ.𝛃[k] ./= options.tbf_accu_scalefactor
 	end
 end
+
+"""
+	initialize(glmθ)
+
+Create an uninitialized instance of `GLMθ`
+"""
+initialize(glmθ::GLMθ) = GLMθ(glmθ, eltype(glmθ.𝐮))
 
 """
 	GLMθ(glmθ, elementtype)
@@ -94,8 +104,9 @@ function GLMθ(glmθ::GLMθ, elementtype)
 		𝐮 = zeros(elementtype, length(glmθ.𝐮)),
 		𝐯 = collect(zeros(elementtype, length(𝐯)) for 𝐯 in glmθ.𝐯),
 		𝐮indices_hist = glmθ.𝐮indices_hist,
-		𝐮indices_time = glmθ.𝐮indices_time,
-		𝐮indices_move = glmθ.𝐮indices_move)
+		𝐮indices_move = glmθ.𝐮indices_move,
+		𝐮indices_phot = glmθ.𝐮indices_phot,
+		𝐮indices_time = glmθ.𝐮indices_time,)
 end
 
 """
@@ -166,16 +177,10 @@ function FHMDDM.copy(glmθ::GLMθ)
 		𝐯 = collect(copy(𝐯ₖ) for 𝐯ₖ in glmθ.𝐯),
 		𝛃 = collect(copy(𝛃ₖ) for 𝛃ₖ in glmθ.𝛃),
 		𝐮indices_hist = copy(glmθ.𝐮indices_hist),
-		𝐮indices_time = copy(glmθ.𝐮indices_time),
-		𝐮indices_move = copy(glmθ.𝐮indices_move))
+		𝐮indices_move = copy(glmθ.𝐮indices_move),
+		𝐮indices_phot = copy(glmθ.𝐮indices_phot),
+		𝐮indices_time = copy(glmθ.𝐮indices_time))
 end
-
-"""
-	initialize(glmθ)
-
-Create an uninitialized instance of `GLMθ`
-"""
-initialize(glmθ::GLMθ) = GLMθ(glmθ, eltype(glmθ.𝐮))
 
 """
 	initialize_GLM_parameters!(model)

@@ -102,6 +102,9 @@ Model settings
 	"maximum and minimum L2 shrinkage penalty of the weight of the pre-movement filter"
 	L2_move_max::TF=1e1
 	L2_move_min::TF=1e-3
+	"maximum and minimum L2 shrinkage penalty of the weight of the post-photostimulus filter"
+	L2_phot_max::TF=1e1
+	L2_phot_min::TF=1e-3
 	"maximum and minimum L2 shrinkage penalty of the weight of the post-stereoclick filter"
 	L2_time_max::TF=1e1
 	L2_time_min::TF=1e-3
@@ -158,51 +161,37 @@ Model settings
 	tbf_accu_ends0::TB=false
 	"number of temporal basis functions parametrizing the weight of the accumulator per second"
 	tbf_accu_hz::TF=4
-	"period of each temporal basis functions parametrizing the weight of the accumulator, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
-	tbf_accu_period::TF=4
 	"scale factor of the temporal basis functions"
 	tbf_accu_scalefactor::TF=75.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_accu_stretch::TF=0.1
-	"whether the temporal basis functions parametrizing the post-spike filter is at the trough or at the peak in the beginning of the trial"
+	"Options for the temporal basis associated with the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter."
 	tbf_hist_begins0::TB=false
-	"duration, in seconds, of the post-spike filter"
 	tbf_hist_dur_s::TF=0.25
-	"whether the temporal basis functions parametrizing the post-spike filter is at the trough or at the peak in the end of the trial"
 	tbf_hist_ends0::TB=false
-	"number of temporal basis functions per second"
 	tbf_hist_hz::TF=12
-	"period of each temporal basis functions, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
-	tbf_hist_period::TF=4
-	"scale factor of the temporal basis functions"
 	tbf_hist_scalefactor::TF=10.0
-	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_hist_stretch::TF=1.0
-	"whether the temporal basis functions parametrizing the weight of time from movement is at the trough or at the peak in the beginning of the trial"
+	"Options for the temporal basis associated with the pre-movement filter"
 	tbf_move_begins0::TB=true
-	"duration of kernel"
 	tbf_move_dur_s::TF=0.6
-	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the end of the trial"
 	tbf_move_ends0::TB=false
-	"number of temporal basis functions parametrizing the weight of time from movement per second"
 	tbf_move_hz::TF=2
-	"period of each temporal basis functions parametrizing the weight of time from movement, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
-	tbf_move_period::TF=4
-	"scale factor of the temporal basis functions"
 	tbf_move_scalefactor::TF=20.0
-	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_move_stretch::TF=0.001
-	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the beginning of the trial"
+	"Options for the temporal basis associated with the post-photostimulus filter"
+	tbf_phot_begins0::TB=false
+	tbf_phot_ends0::TB=false
+	tbf_phot_hz::TF=4
+	tbf_phot_scalefactor::TF=20.0
+	tbf_phot_stretch::TF=1.0
+	"period of each temporal basis functions, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
+	tbf_period::TF=4
+	"Options for the temporal basis associated with the post-stereoclick filter"
 	tbf_time_begins0::TB=false
-	"whether the temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial is at the trough or at the peak in the end of the trial"
 	tbf_time_ends0::TB=false
-	"number of temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial per second"
 	tbf_time_hz::TF=4
-	"period of each temporal basis functions parametrizing the weight of time from the stereoclick to the end of the trial, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
-	tbf_time_period::TF=4
-	"scale factor of the temporal basis functions"
 	tbf_time_scalefactor::TF=20.0
-	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_time_stretch::TF=1.0
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
@@ -293,6 +282,8 @@ Parameters of a mixture of Poisson generalized linear model
 	𝐮indices_time::UI
 	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the input from time before movement"
 	𝐮indices_move::UI
+	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the post-photostimulus filter"
+	𝐮indices_phot::UI
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
 	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
@@ -321,6 +312,10 @@ Mixture of Poisson generalized linear model
 	Φₕ::MF
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the animal leaving the center and the neuron's probability of spiking. The timing is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. The columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
 	Φₘ::MF
+	"temporal basis vectors for the photostimulus"
+	Φₚ::MF
+	"time steps of the temporal basis vectors relative to the onset of the photostimulus"
+	Φₚtimesteps::UI
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
 	Φₜ::MF
 	"parameters"
@@ -337,6 +332,8 @@ Mixture of Poisson generalized linear model
 	𝐗columns_time::UI = (𝐗columns_gain[end] + size(Φₕ,2)) .+ (1:size(Φₜ,2))
 	"columns corresponding to the input from time before mvoement"
 	𝐗columns_move::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2)) .+ (1:size(Φₘ,2))
+	"columns corresponding to the input from time before mvoement"
+	𝐗columns_phot::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₚ,2))
 	"columns corresponding to the input from the accumulator"
 	𝐗columns_accu::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₐ,2))
 	"number of accumulator states"
