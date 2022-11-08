@@ -26,36 +26,62 @@ ARGUMENT
 -`model`: a structure containing the data, parameters, and settings
 -`prefix`: name of the file to be saved
 """
-savesummary(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results") = matwrite(joinpath(folderpath, prefix*".mat"), summarize(model))
+savesummary(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results") = matwrite(joinpath(folderpath, prefix*".mat"), dictionary(Summary(model)))
 
 """
-	summarize(model)
+	dictionary(Summary)
 
-Package the parameters, hyperparameters, and fields useful for analysis into a dictionary
+Convert an instance of Summary to a dictionary
 """
-function summarize(model::Model)
-	Dict("loglikelihood"=>loglikelihood(model),
-		"logposterior"=>logposterior(model),
-		"theta_native"=> dictionary(model.θnative),
-        "theta_real"=> dictionary(model.θreal),
-        "theta0_native" => dictionary(model.θ₀native),
-        "thetaglm"=>map(trialset->map(mpGLM->dictionary(mpGLM.θ), trialset.mpGLMs), model.trialsets),
-        "Phiaccumulator"=>model.trialsets[1].mpGLMs[1].Φₐ,
-        "Phihistory"=>model.trialsets[1].mpGLMs[1].Φₕ,
-        "Phiphotostimulus"=>model.trialsets[1].mpGLMs[1].Φₚ,
-        "Phipremovement"=>model.trialsets[1].mpGLMs[1].Φₘ,
-        "Phitime"=>model.trialsets[1].mpGLMs[1].Φₜ,
-        "Phiphotostimulus_timesteps"=>collect(model.trialsets[1].mpGLMs[1].Φₚtimesteps),
-        "penaltycoefficients"=>model.gaussianprior.𝛂,
-        "penaltymatrices"=>model.gaussianprior.𝐀,
-        "penaltymatrixindices"=>model.gaussianprior.index𝐀,
-        "precisionmatrix"=>model.gaussianprior.𝚲)
+function dictionary(modelsummary::Summary)
+	Dict("loglikelihood"=>modelsummary.loglikelihood,
+		"logposterior"=>modelsummary.logposterior,
+		"thetanative"=> dictionary(modelsummary.θnative),
+        "thetareal"=> dictionary(modelsummary.θreal),
+        "theta0native" => dictionary(modelsummary.θ₀native),
+        "thetaglm"=>map(θ->map(θ->dictionary(θ), θ), modelsummary.θglm),
+        "Phiaccumulator"=>modelsummary.Φₐ,
+        "Phihistory"=>modelsummary.Φₕ,
+        "Phiphotostimulus"=>modelsummary.Φₚ,
+        "Phipremovement"=>modelsummary.Φₘ,
+        "Phitime"=>modelsummary.Φₜ,
+        "Phiphotostimulus_timesteps"=>collect(modelsummary.Φₚtimesteps),
+        "penaltycoefficients"=>modelsummary.𝛂,
+        "penaltymatrices"=>modelsummary.𝐀,
+        "penaltymatrixindices"=>modelsummary.index𝐀,
+        "precisionmatrix"=>modelsummary.𝚲)
+end
+
+"""
+	Summary(model)
+
+Summarize the model
+"""
+function Summary(model::Model)
+	Summary(loglikelihood=loglikelihood(model),
+		 	logposterior=logposterior(model),
+			θnative=model.θnative,
+			θreal=model.θreal,
+			θ₀native=model.θ₀native,
+			θglm=map(trialset->map(mpGLM->mpGLM.θ, trialset.mpGLMs), model.trialsets),
+			Φₐ=model.trialsets[1].mpGLMs[1].Φₐ,
+	        Φₕ=model.trialsets[1].mpGLMs[1].Φₕ,
+	        Φₚ=model.trialsets[1].mpGLMs[1].Φₚ,
+	        Φₘ=model.trialsets[1].mpGLMs[1].Φₘ,
+	        Φₜ=model.trialsets[1].mpGLMs[1].Φₜ,
+	        Φₚtimesteps=collect(model.trialsets[1].mpGLMs[1].Φₚtimesteps),
+	        𝛂=model.gaussianprior.𝛂,
+	        𝐀=model.gaussianprior.𝐀,
+	        index𝐀=model.gaussianprior.index𝐀,
+	        𝚲=model.gaussianprior.𝚲)
 end
 
 """
     savepredictions(model)
 
-Save predictions of the model:
+Save predictions of the model.
+
+The specific predictions being saved include
 -accumulator distribution: `folderpath/<prefix>_pa.mat`
 -choice-conditioned accumulator distribution: `folderpath/<prefix>_pa_d.mat`
 -choice- and spikes-conditioned accumulator distribution: `folderpath/<prefix>_pa_Yd.mat`
@@ -73,14 +99,47 @@ OPTIONAL ARGUMENT
 """
 function savepredictions(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results")
 	predictions = Predictions(model)
-    matwrite(joinpath(folderpath, prefix*"_pa"*".mat"), Dict("pa" => predictions.p𝐚))
-    matwrite(joinpath(folderpath, prefix*"_pa_d"*".mat"), Dict("pa_d" => predictions.p𝐚_𝑑))
-    matwrite(joinpath(folderpath, prefix*"_pa_Yd"*".mat"), Dict("pa_Yd" => predictions.p𝐚_𝐘𝑑))
-    matwrite(joinpath(folderpath, prefix*"_pc_Yd"*".mat"), Dict("pc_Yd" => predictions.p𝐜_𝐘𝑑))
-    matwrite(joinpath(folderpath, prefix*"_pd"*".mat"), Dict("pd" => predictions.p𝑑))
-    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat"*".mat"), Dict("lambdaDeltat" => predictions.λΔt))
-    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat_d"*".mat"), Dict("lambdaDeltat_d" => predictions.λΔt_𝑑))
+	save(Predictions(model), model.options; folderpath=folderpath, prefix=prefix)
     return nothing
+end
+
+"""
+	save(predictions, options)
+
+Save predictions of the model
+
+Not all fields of the structure `Predictions` are saved. The fields not being saved include `p𝐜_𝐘𝑑` and `nsamples`.
+
+ARGUMENT
+-`predictions`: a structure containing the predictions
+-`options`: a structures containing the fixed hyperparameters of the model
+
+"""
+function save(predictions::Predictions, options::Options; folderpath::String=dirname(options.datapath), prefix::String="results")
+	dict = dictionary(predictions)
+    matwrite(joinpath(folderpath, prefix*"_pa"*".mat"), Dict("pa" => dict["pa"]))
+    matwrite(joinpath(folderpath, prefix*"_pa_d"*".mat"), Dict("pa_d" => dict["pa_d"]))
+    matwrite(joinpath(folderpath, prefix*"_pa_Yd"*".mat"), Dict("pa_Yd" => dict["pa_Yd"]))
+    matwrite(joinpath(folderpath, prefix*"_pd"*".mat"), Dict("pd" => dict["pd"]))
+    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat"*".mat"), Dict("lambdaDeltat" => dict["lambdaDeltat"]))
+    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat_d"*".mat"), Dict("lambdaDeltat_d" => dict["lambdaDeltat_d"]))
+    return nothing
+end
+
+"""
+	dictionary(predictions)
+
+Package an instance `Predictions` as a dictionary
+"""
+function dictionary(predictions::Predictions)
+	Dict("pa" => predictions.p𝐚,
+        "pa_d" => predictions.p𝐚_𝑑,
+        "pa_Yd" => predictions.p𝐚_𝐘𝑑,
+        "pc_Yd" => predictions.p𝐜_𝐘𝑑,
+        "pd" => predictions.p𝑑,
+        "lambdaDeltat" => predictions.λΔt,
+        "lambdaDeltat_d" => predictions.λΔt_𝑑,
+		"nsamples" => predictions.nsamples)
 end
 
 """
@@ -96,20 +155,6 @@ ARGUMENT
 function save∇∇loglikelihood(model::Model; folderpath::String=dirname(model.options.datapath), prefix::String="results")
 	hessian_loglikelihood = ∇∇loglikelihood(model)[3]
     matwrite(joinpath(folderpath, prefix*"_hessian_loglikelihood"*".mat"), Dict("hessian_loglikelihood"=>hessian_loglikelihood))
-    return nothing
-end
-
-"""
-    save(cvresults,options)
-
-Save the results of crossvalidation
-
-ARGUMENT
--`cvresults`: an instance of `CVResults`, a drift-diffusion linear model
-"""
-function save(cvresults::CVResults, options::Options)
-    path = dirname(options.datapath)*"/cvresults.mat"
-    matwrite(path, dictionary(cvresults))
     return nothing
 end
 

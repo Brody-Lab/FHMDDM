@@ -1,84 +1,4 @@
 """
-	Predictions(model)
-
-ARGUMENT
--`model`: a structure containing the data, parameters, and hyperparameters of the model
-
-RETURN
--a structure containing the predictions of the model
-"""
-function Predictions(model::Model; nsamples::Integer=100)
-    @unpack trialsets, options, θnative = model
-	@unpack Ξ, K = options
-    λΔt = map(trialsets) do trialset
-			map(trialset.mpGLMs) do mpGLM
-				zeros(trialset.ntimesteps)
-			end
-		  end
-	λΔt_𝑑 = deepcopy(λΔt)
-	p𝐚 = map(trialsets) do trialset
-			map(trialset.trials) do trial
-				collect(zeros(Ξ) for t=1:trial.ntimesteps)
-			end
-		  end
-	p𝐜_𝐘𝑑 = map(trialsets) do trialset
-			map(trialset.trials) do trial
-				collect(zeros(K) for t=1:trial.ntimesteps)
-			end
-		  end
-	p𝐚_𝑑, p𝐚_𝐘𝑑 = deepcopy(p𝐚), deepcopy(p𝐚)
-	p𝑑 = collect(zeros(trialset.ntrials) for trialset in trialsets)
-	memory = Memoryforgradient(model)
-	P = FHMDDM.update!(memory, model, concatenateparameters(model)[1])
-	@unpack Aᵃinput, Aᵃsilent, Aᶜ, p𝐚₁, πᶜ = memory
-	f⨀b = memory.f
-	p𝑑_𝐚 = ones(Ξ)
-	maxtimesteps = length(f⨀b)
-	a = zeros(Int, maxtimesteps)
-	c = zeros(Int, maxtimesteps)
-	𝐄𝐞_𝐡_𝛚 = map(trialsets) do trialset
-			map(trialset.mpGLMs) do mpGLM
-				return externalinput(mpGLM), postspikefilter(mpGLM), transformaccumulator(mpGLM)
-			end
-		end
-    for trialset in trialsets
-		for trial in trialset.trials
-			i = trial.trialsetindex
-			m = trial.index_in_trialset
-			𝛕 = trial.τ₀ .+ (1:trial.ntimesteps)
-			forward!(memory, P, θnative, trial)
-			backward!(memory, P, trial)
-			accumulatorprobability!(p𝐚[i][m], p𝐚₁, Aᵃinput, Aᵃsilent, trial)
-			accumulator_probability_given_choice!(p𝐚_𝑑[i][m], p𝑑_𝐚, Aᵃinput, Aᵃsilent, p𝐚[i][m], θnative.ψ[1], trial)
-			for t = 1:trial.ntimesteps
-				p𝐚_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=2), dims=2)
-				p𝐜_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=1), dims=1)
-			end
-			for s = 1:nsamples
-				samplecoupling!(c, Aᶜ, trial.ntimesteps, πᶜ)
-				sampleaccumulator!(a, Aᵃinput, Aᵃsilent, p𝐚₁, trial)
-				p𝑑[i][m] += sample(a[trial.ntimesteps], θnative.ψ[1], Ξ)/nsamples
-				for (𝐄𝐞_𝐡_𝛚, λΔt, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt[i], trialset.mpGLMs)
-					λΔt[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
-				end
-				sample_accumulator_given_choice!(a, Aᵃinput, Aᵃsilent, p𝐚[i][m], p𝐚_𝑑[i][m][trial.ntimesteps], trial)
-				for (𝐄𝐞_𝐡_𝛚, λΔt_𝑑, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt_𝑑[i], trialset.mpGLMs)
-					λΔt_𝑑[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
-				end
-			end
-		end
-	end
-    return Predictions(	p𝐚 = p𝐚,
-						p𝐚_𝑑 = p𝐚_𝑑,
-						p𝐚_𝐘𝑑 = p𝐚_𝐘𝑑,
-						p𝐜_𝐘𝑑 = p𝐜_𝐘𝑑,
-						p𝑑 = p𝑑,
-						λΔt = λΔt,
-						λΔt_𝑑 = λΔt_𝑑,
-						nsamples = nsamples)
-end
-
-"""
 	accumulatorprobability!(Aᵃinput, P, p𝐚, Aᵃsilent, θnative, trial)
 
 Probability of the accumulator at each time step
@@ -153,6 +73,188 @@ function accumulator_probability_given_choice!(p𝐚_𝑑::Vector{<:Vector{<:Abs
 		p𝐚_𝑑[t] = p𝐚[t] .* b
 	end
 	return nothing
+end
+
+"""
+	collectpredictions(cvindices, 𝛌Δt)
+
+Combine the predicted spike train response across cross-validation folds
+
+ARGUMENT
+-`cvindices`: indices of the trials and timesteps used for training and testing in each fold
+-`𝛌Δt`: predicted spike trains, either conditioned on the choice or unconditioned. Element `𝛌Δt[f][i][n][τ]` corresponds to the f-the cross-validation fold, i-th trialset, n-th neuron, and τ-th time step among the time steps concatenated across the trials subsampled in the f-th cross-validation fold.
+
+OUTPUT
+-`λΔt`: predicted spike train response combined across cross-validation folds. Element `λΔt[i][n][τ]` corresponds to the i-th trialset, n-th neuron, and τ-th time step among the time steps concatenated across all trials in the i-th trialset.
+"""
+function collectpredictions(cvindices::Vector{<:CVIndices}, 𝛌Δt::Vector{<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}})
+	ntrialsets = length(cvindices[1].testingtrials)
+	map(1:ntrialsets) do i
+		ntimesteps = 0
+		for f in eachindex(cvindices)
+			ntimesteps += length(cvindices[f].testingtimesteps[i])
+		end
+		nneurons = length(𝛌Δt[1][i])
+		map(1:nneurons) do n
+			λΔt = fill(NaN, ntimesteps)
+			for f in eachindex(cvindices)
+				λΔt[cvindices[f].testingtimesteps[i]] .= 𝛌Δt[f][i][n]
+			end
+			return λΔt
+		end
+	end
+end
+
+"""
+	collectpredictions(cvindices, 𝐏)
+
+Combine the predicted distributions of a latent variable across cross-validation folds
+
+ARGUMENT
+-`cvindices`: indices of the trials and timesteps used for training and testing in each fold
+-`𝐏`: predicted distribution of either the accumulator or the coupling variable, conditioned on both the spikes and the choices, conditioned on only the choices, or unconditioned. Element `𝐏[f][i][q][t][j]` corresponds to the probability of the latent variable being in the j-th state in the t-th time step of the q-th trial among the subsampled trials in the i-th trialset, evaluated in the f-th cross-validation fold.
+
+RETURN
+-`𝐩`: the predicted distribution. Element `𝐩[i][m][t][j]` corresponds to the probability of the latent variable being in the j-th state in the t-th time step of the m-th trial in the i-th trialset
+"""
+function collectpredictions(cvindices::Vector{<:CVIndices}, 𝐏::Vector{<:Vector{<:Vector{<:Vector{<:Vector{<:type}}}}}) where {type<:AbstractFloat}
+	ntrialsets = length(cvindices[1].testingtrials)
+	map(1:ntrialsets) do i
+		ntrials = 0
+		for cvindex in cvindices
+			ntrials += length(cvindex.testingtrials[i])
+		end
+		𝐩 = collect([type[]] for m = 1:ntrials)
+		for f in eachindex(cvindices)
+			for q in eachindex(cvindices[f].testingtrials[i])
+				m = cvindices[f].testingtrials[i][q]
+				𝐩[m] = 𝐏[f][i][q]
+			end
+		end
+		return 𝐩
+	end
+end
+
+"""
+	collectpredictions(cvindices, P𝑑)
+
+Combine the predicted probabilities of behavioral choices across cross-validation folds
+
+ARGUMENT
+-`cvindices`: vector whose each element corresponds to indices of the trials and timesteps used for training and testing in each cross-validation fold
+-`P𝑑`: predicted probabilities of behavioral choices. Element `P𝑑[f][i][q]` corresponds to the probability of the behavioral choice in the q-th trial among the subsampled trials in the i-th trialset, evaluated in the f-th cross-validation fold.
+"""
+function collectpredictions(cvindices::Vector{<:CVIndices}, P𝑑::Vector{<:Vector{<:Vector{<:AbstractFloat}}})
+	ntrialsets = length(cvindices[1].testingtrials)
+	map(1:ntrialsets) do i
+		ntrials = 0
+		for cvindex in cvindices
+			ntrials += length(cvindex.testingtrials[i])
+		end
+		p𝑑 = fill(NaN, ntrials)
+		for f in eachindex(cvindices)
+			p𝑑[cvindices[f].testingtrials[i]] .= P𝑑[f][i]
+		end
+		return p𝑑
+	end
+end
+
+"""
+	Predictions(cvindices, testmodels)
+
+Out-of-sample predictions
+
+ARGUMENT
+-`cvindices`: vector whose each element corresponds to indices of the trials and timesteps used for training and testing in each cross-validation fold
+-`testmodels`: vector whose each element corresponds to a cross-validation fold. Each element contains a structure containing hold-out data and parameters learned using training data.
+
+OUTPUT
+-an instance of `Predictions`
+"""
+function Predictions(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model})
+	predictions_each_fold = collect(Predictions(testmodel) for testmodel in testmodels)
+	collected_predictions = (FHMDDM.collectpredictions(cvindices, collect(getfield(predictions, field) for predictions in predictions_each_fold)) for field in (:p𝐚, :p𝐚_𝑑, :p𝐚_𝐘𝑑, :p𝐜_𝐘𝑑, :p𝑑, :λΔt, :λΔt_𝑑))
+	return Predictions(collected_predictions..., predictions_each_fold[1].nsamples)
+end
+
+"""
+	Predictions(model)
+
+ARGUMENT
+-`model`: a structure containing the data, parameters, and hyperparameters of the model
+
+RETURN
+-a structure containing the predictions of the model
+"""
+function Predictions(model::Model; nsamples::Integer=100)
+    @unpack trialsets, options, θnative = model
+	@unpack Ξ, K = options
+    λΔt = map(trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				zeros(trialset.ntimesteps)
+			end
+		  end
+	λΔt_𝑑 = deepcopy(λΔt)
+	p𝐚 = map(trialsets) do trialset
+			map(trialset.trials) do trial
+				collect(zeros(Ξ) for t=1:trial.ntimesteps)
+			end
+		  end
+	p𝐜_𝐘𝑑 = map(trialsets) do trialset
+			map(trialset.trials) do trial
+				collect(zeros(K) for t=1:trial.ntimesteps)
+			end
+		  end
+	p𝐚_𝑑, p𝐚_𝐘𝑑 = deepcopy(p𝐚), deepcopy(p𝐚)
+	p𝑑 = collect(zeros(trialset.ntrials) for trialset in trialsets)
+	memory = Memoryforgradient(model)
+	P = FHMDDM.update!(memory, model, concatenateparameters(model)[1])
+	@unpack Aᵃinput, Aᵃsilent, Aᶜ, p𝐚₁, πᶜ = memory
+	f⨀b = memory.f
+	p𝑑_𝐚 = ones(Ξ)
+	maxtimesteps = length(f⨀b)
+	a = zeros(Int, maxtimesteps)
+	c = zeros(Int, maxtimesteps)
+	𝐄𝐞_𝐡_𝛚 = map(trialsets) do trialset
+			map(trialset.mpGLMs) do mpGLM
+				return externalinput(mpGLM), postspikefilter(mpGLM), transformaccumulator(mpGLM)
+			end
+		end
+    for trialset in trialsets
+		for trial in trialset.trials
+			i = trial.trialsetindex
+			m = trial.index_in_trialset
+			𝛕 = trial.τ₀ .+ (1:trial.ntimesteps)
+			forward!(memory, P, θnative, trial)
+			backward!(memory, P, trial)
+			accumulatorprobability!(p𝐚[i][m], p𝐚₁, Aᵃinput, Aᵃsilent, trial)
+			accumulator_probability_given_choice!(p𝐚_𝑑[i][m], p𝑑_𝐚, Aᵃinput, Aᵃsilent, p𝐚[i][m], θnative.ψ[1], trial)
+			for t = 1:trial.ntimesteps
+				p𝐚_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=2), dims=2)
+				p𝐜_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=1), dims=1)
+			end
+			for s = 1:nsamples
+				samplecoupling!(c, Aᶜ, trial.ntimesteps, πᶜ)
+				sampleaccumulator!(a, Aᵃinput, Aᵃsilent, p𝐚₁, trial)
+				p𝑑[i][m] += sample(a[trial.ntimesteps], θnative.ψ[1], Ξ)/nsamples
+				for (𝐄𝐞_𝐡_𝛚, λΔt, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt[i], trialset.mpGLMs)
+					λΔt[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
+				end
+				sample_accumulator_given_choice!(a, Aᵃinput, Aᵃsilent, p𝐚[i][m], p𝐚_𝑑[i][m][trial.ntimesteps], trial)
+				 for (𝐄𝐞_𝐡_𝛚, λΔt_𝑑, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt_𝑑[i], trialset.mpGLMs)
+					λΔt_𝑑[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
+				end
+			end
+		end
+	end
+    return Predictions(	p𝐚 = p𝐚,
+						p𝐚_𝑑 = p𝐚_𝑑,
+						p𝐚_𝐘𝑑 = p𝐚_𝐘𝑑,
+						p𝐜_𝐘𝑑 = p𝐜_𝐘𝑑,
+						p𝑑 = p𝑑,
+						λΔt = λΔt,
+						λΔt_𝑑 = λΔt_𝑑,
+						nsamples = nsamples)
 end
 
 """

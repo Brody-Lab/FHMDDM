@@ -35,44 +35,74 @@ RETURN
 -`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
 """
 function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack 𝐗, d𝛏_dB, Ξ = mpGLM
-    @unpack b, b_scalefactor, 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
+    @unpack θ, 𝐗 = mpGLM
+    @unpack 𝐠, 𝐮 = θ
 	gₖ = 𝐠[min(length(𝐠), k)]
+	𝐰 = evidenceweight(j, k, mpGLM)
+	𝐗*vcat(gₖ, 𝐮, 𝐰)
+end
+
+"""
+	evidenceweight(j,k,mpGLM)
+
+Encoding weight of the accumulated evidence conditioned on the states of the latent variables
+
+ARGUMENT
+-`j`: state of the accumulator variable
+-`k`: state of the coupling variable
+-`mpGLM`: the mixture of Poisson generalized linear model of one neuron
+
+RETURN
+-`𝐰`: vector representing the encoding weight of accumulated evidence
+"""
+function evidenceweight(j::Integer, k::Integer, mpGLM::MixturePoissonGLM)
+	@unpack d𝛏_dB, Ξ = mpGLM
+    @unpack b, b_scalefactor, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	if j == 1 || j == Ξ
 		if fit_𝛃
-			𝐰ₖ = 𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
+			𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
 		else
-			𝐰ₖ = 𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
+			𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
 		end
 	else
 		𝐯ₖ = 𝐯[min(length(𝐯), k)]
 		transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-		𝐰ₖ = 𝐯ₖ.*transformedξ
+		𝐯ₖ.*transformedξ
 	end
-	𝐗*vcat(gₖ, 𝐮, 𝐰ₖ)
 end
 
 """
-	linearpredictor_without_transformation(mpGLM, j, k)
+	conditionallikelihood!(p, mpGLM, τ)
 
-Linear combination without transforming the accumulated evidence
+Conditional likelihood the spike train response at a single timestep
 
-ARGUMENT
--see above
+MODIFIED ARGUMENT
+-`p`: a matrix whose element `p[i,j]` represents the likelihood conditioned on the accumulator in the i-th state and the coupling in the j-th state
 
-RETURN
--see above
+UNMODIFIED ARGUMENT
+-`mpGLM`:a structure with information on the mixture of Poisson GLM of a neuron
+-`τ`: timestep among time steps concatenated across all trials in a trialset
 """
-function linearpredictor_without_transformation(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-	@unpack 𝐗, d𝛏_dB, Ξ = mpGLM
-	@unpack 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
-	gₖ = 𝐠[min(length(𝐠), k)]
-	if (j == 1 || j == Ξ) && fit_𝛃
-		𝐰ₖ = 𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
-	else
-		𝐰ₖ = 𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
+function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ::Integer)
+	@unpack Δt, θ, 𝐕, 𝐗, 𝐲 = mpGLM
+	@unpack 𝐠, 𝐮 = θ
+	𝐔ₜ𝐮 = 0
+	offset𝐔 = length(𝐠)-1
+	for i in eachindex(𝐮)
+		q = offset𝐔 + i
+		𝐔ₜ𝐮 += 𝐗[τ,q]*𝐮[i]
 	end
-	𝐗*vcat(gₖ, 𝐮, 𝐰ₖ)
+	Ξ, K = size(p)
+	K𝐠 = length(𝐠)
+	for k=1:K
+		gₖ = 𝐠[min(k,K𝐠)]
+		for j=1:Ξ
+			𝐰 = evidenceweight(j,k,mpGLM)
+			L = gₖ + 𝐔ₜ𝐮 + 𝐕[τ,:]⋅𝐰
+			p[j,k] = poissonlikelihood(Δt, L, 𝐲[τ])
+		end
+	end
+	return nothing
 end
 
 """
@@ -235,11 +265,7 @@ function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpG
     Q = 0.0
     @inbounds for i = 1:Ξ
 	    for k = 1:K
-			if initialization
-				𝐋 = linearpredictor_without_transformation(mpGLM,i,k)
-			else
-				𝐋 = linearpredictor(mpGLM,i,k)
-			end
+			𝐋 = linearpredictor(mpGLM,i,k)
             for t = 1:T
 				Q += γ[i,k][t]*poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
             end
@@ -324,4 +350,31 @@ function externalinput(mpGLM::MixturePoissonGLM)
 	𝐄 = @view 𝐗[:,vcat(𝐗columns_time, 𝐗columns_move, 𝐗columns_phot)]
 	𝐞 = 𝐮[vcat(𝐮indices_time, 𝐮indices_move, 𝐮indices_phot)]
 	return 𝐄*𝐞
+end
+
+"""
+    subsample(mpGLM, timesteps)
+
+Create a mixture of Poisson GLM by subsampling the spike train of a neuron
+
+ARGUMENT
+-`mpGLM`: a structure with information on the mixture of Poisson GLM of a neuron
+-`timesteps`: a vector of integers indexing the timesteps to include
+
+OUTPUT
+-an instance of `MixturePoissonGLM`
+"""
+function subsample(mpGLM::MixturePoissonGLM, timesteps::Vector{<:Integer})
+    MixturePoissonGLM(Δt = mpGLM.Δt,
+                        d𝛏_dB = mpGLM.d𝛏_dB,
+						Φₐ = mpGLM.Φₐ,
+						Φₕ = mpGLM.Φₕ,
+						Φₘ = mpGLM.Φₘ,
+						Φₚ = mpGLM.Φₚ,
+						Φₚtimesteps = mpGLM.Φₚtimesteps,
+						Φₜ = mpGLM.Φₜ,
+						θ = FHMDDM.copy(mpGLM.θ),
+                        𝐕 = mpGLM.𝐕[timesteps, :],
+                        𝐗 = mpGLM.𝐗[timesteps, :],
+                        𝐲 =mpGLM.𝐲[timesteps])
 end

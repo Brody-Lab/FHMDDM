@@ -421,8 +421,7 @@ end
 
 Index of each model parameter if all values that were being fitted were concatenated into a vector
 """
-@with_kw struct Indexθ{L<:Latentθ,
-					   VVG<:Vector{<:Vector{<:GLMθ}}}
+@with_kw struct Indexθ{L<:Latentθ, VVG<:Vector{<:Vector{<:GLMθ}}}
 	"parameters specifying the mixture of Poisson generalized linear model"
 	glmθ::VVG
 	"parameters specifying the latent variables"
@@ -443,41 +442,6 @@ Indices of trials and timesteps used for training and testing
 	testingtimesteps::VVI
 	"`trainingtimesteps[i]` indexes the time steps from the i-th trialset used for training"
 	trainingtimesteps::VVI
-end
-
-"""
-	CVResults
-
-Results of cross-validation
-"""
-@with_kw struct CVResults{VC<:Vector{<:CVIndices},
-							VL<:Vector{<:Latentθ},
-							VVVG<:Vector{<:Vector{<:Vector{<:GLMθ}}},
-							VVF<:Vector{<:Vector{<:AbstractFloat}},
-							VMF<:Vector{<:Matrix{<:AbstractFloat}},
-							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}}
-	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
-	cvindices::VC
-	"θ₀native[k] specify the initial values of the parameters of the latent variables in the k-th resampling"
-	θ₀native::VL
-	"θnative[k] specify the optimized values of the parameters of the latent variables in the k-th resampling"
-	θnative::VL
-	"glmθ[k][i][n] specify the optimized values of the parameters of the n-th neuron's GLM in the i-th trialset in the k-th resampling"
-	glmθ::VVVG
-	"out-of-sample expected spiking intensity in each time step of each trial. Element `λΔt[i][n][t]` corresponds to the t-timestep and the n-th neuron in the i-th trialset."
-	λΔt::VVVF
-	"out-of-sample expected probability of a right choice in each trial. Element `pchoice[i][m]` corresponds to the m-th trial in the i-th trialset"
-	pchoice::VVF
-	"rll_choice[i][m] indicate the log-likelihood of the choice in the m-th trial of the i-th trialset, relative to the baseline trial-average log-likelihood computed under a Bernoulli distribution parametrized by fraction of right responses"
-	rll_choice::VVF
-	"rll_spikes[i][n] indicate the time-averaged log-likelihood of the spike train of the n-th neuron in the -th trialset, relative to the baseline time-averaged log-likelihood computed under a Poisson distribution parametrized by mean spike train response"
-	rll_spikes::VVF
-	"L2 shrinkage coefficients"
-	𝛂::VVF
-	"L2 smoothing coefficients"
-	𝐬::VVF
-	"temporal basis functions for the tuning of the accumulated evidence"
-	Φ::VMF
 end
 
 """
@@ -1104,4 +1068,62 @@ end
 	λΔt_𝑑::VVVF
 	"number of samples used to compute the predictions"
 	nsamples::TI
+end
+
+"""
+	Summary
+
+Features of the model useful for analysis
+"""
+@with_kw struct Summary{F<:AbstractFloat, LT<:Latentθ, MF<:Matrix{<:AbstractFloat}, VI<:Vector{<:Integer}, VF<:Vector{<:AbstractFloat}, VMF<:Vector{<:Matrix{<:AbstractFloat}}, VVGT<:Vector{<:Vector{<:GLMθ}}, VVI<:Vector{<:Vector{<:Integer}}}
+	"the log of the likelihood of the data given the parameters"
+	loglikelihood::F
+	"the log of the posterior probability of the parameters"
+	logposterior::F
+	"values of the parameters of the latent variable in their native space"
+	θnative::LT
+	"values of the parameters of the latent variable mapped to real space"
+	θreal::LT
+	"initial values of parameters of the latent variable in their space"
+	θ₀native::LT
+	"parameters of each neuron's GLM. The element `θglm[i][n]` corresponds to the n-th neuron in the i-th trialset"
+	θglm::VVGT
+	"temporal basis vectors for accumulator encoding"
+	Φₐ::MF
+	"temporal basis vectors for the post-spike kernel"
+	Φₕ::MF
+	"temporal basis vectors for the pre-movement kernel"
+	Φₘ::MF
+	"temporal basis vectors for the post-stereoclick kernel"
+	Φₜ::MF
+	"temporal basis vectors for the photostimulus kernel"
+	Φₚ::MF
+	"time steps of the temporal basis vectors for the photostimulus kernel"
+	Φₚtimesteps::VI
+	"a vector of L2 penalty matrices"
+	𝐀::VMF
+	"index of the parameters regularized by the L2 penalty matrices"
+	index𝐀::VVI
+	"cofficients of the penalty matrices"
+	𝛂::VF
+	"precision matrix of the gaussian prior on the parameters"
+	𝚲::MF
+end
+
+"""
+	CVResults
+
+Results of cross-validation
+"""
+@with_kw struct CVResults{P<:Predictions, VC<:Vector{<:CVIndices}, VS<:Vector{<:Summary}, VVF<:Vector{<:Vector{<:AbstractFloat}}}
+	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
+	cvindices::VC
+	"out-of-sample predictions: a structure of the type `Predictions`"
+	predictions::P
+	"Difference between the log-likelihood of the behavioral choices under the model and under a null model. The null model is a homogeneous Bernoulli parametrized by the fraction of right choices in the training data. Element `rll_choice[i][m]` indicate the log-likelihood of the choice in the m-th trial of the i-th trialset"
+	rll_choice::VVF
+	"Difference between the log-likelihood of spike trains predicted under the model and under a null model, divided by the number of spikes in the spike train. The null model is a homogeneous Poisson whose intensity is compued by averaging the spike train in the training data. Element `rll_spikes[i][n]` has the unit of bits per spike and corresponds to the n-th neuron in the i-th trialset."
+	rll_spikes::VVF
+	"summaries of the training models"
+	trainingsummaries::VS
 end

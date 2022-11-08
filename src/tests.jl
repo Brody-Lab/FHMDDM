@@ -54,6 +54,10 @@ function test(datapath::String; maxabsdiff::Real=1e-8)
     println("testing saving model summary and predictions in `test.mat`")
 	analyzeandsave(Model(datapath); prefix="test")
 	printseparator()
+	println("testing cross-validation and saving results in `cvresults.mat`")
+	cvresults = crossvalidate(2, Model(datapath))
+	save(cvresults)
+	printseparator()
 	println("tests completed")
     return nothing
 end

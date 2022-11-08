@@ -410,7 +410,8 @@ function dictionary(θ::GLMθ)
 		"beta"=>θ.𝛃,
 		"uindices_hist"=>collect(θ.𝐮indices_hist),
 		"uindices_move"=>collect(θ.𝐮indices_move),
-		"uindices_time"=>collect(θ.𝐮indices_time))
+		"uindices_time"=>collect(θ.𝐮indices_time),
+		"uindices_phot"=>collect(θ.𝐮indices_phot))
 end
 
 """
@@ -432,53 +433,6 @@ function dictionary(θ::Latentθ)
 		"sigma2_i"=>θ.σ²ᵢ[1],
 		"sigma2_s"=>θ.σ²ₛ[1],
 		"w_h"=>θ.wₕ[1])
-end
-
-"""
-	dictionary(predictions)
-
-Package an instance `Predictions` as a dictionary
-"""
-function dictionary(predictions::Predictions)
-	Dict("pa" => predictions.p𝐚,
-        "pa_d" => predictions.p𝐚_𝑑,
-        "pa_Yd" => predictions.p𝐚_𝐘𝑑,
-        "pc_Yd" => predictions.p𝐜_𝐘𝑑,
-        "pd" => predictions.p𝑑,
-        "lambdaDeltat" => predictions.λΔt,
-        "lambdaDeltat_d" => predictions.λΔt_𝑑,
-		"nsamples" => predictions.nsamples)
-end
-
-"""
-	dictionary(cvindices)
-
-Convert an instance of 'CVIndices' to a dictionary
-"""
-function dictionary(cvindices::CVIndices)
-	Dict("testingtrials" => cvindices.testingtrials,
-		 "trainingtrials" => cvindices.trainingtrials,
-		 "testingtimesteps" => cvindices.testingtimesteps,
-		 "trainingtimesteps" => cvindices.trainingtimesteps)
-end
-
-"""
-	dictionary(cvresults)
-
-Convert an instance of `CVResults` to a dictionary
-"""
-function dictionary(cvresults::CVResults)
-	Dict("cvindices" => map(dictionary, cvresults.cvindices),
-		"theta0_native" => map(dictionary, cvresults.θ₀native),
-		"theta_native" => map(dictionary, cvresults.θnative),
-		"thetaglm" => map(glmθ->map(glmθ->map(glmθ->dictionary(glmθ), glmθ), glmθ), cvresults.glmθ),
-		"lambdaDeltat" => cvresults.λΔt,
-		"pchoice" => cvresults.pchoice,
-		"rll_choice"=>cvresults.rll_choice,
-		"rll_spikes"=>cvresults.rll_spikes,
-		"shrinkagecoefficients"=>cvresults.𝛂,
-		"smoothingcoefficients"=>cvresults.𝐬,
-		"Phi"=>cvresults.Φ)
 end
 
 """

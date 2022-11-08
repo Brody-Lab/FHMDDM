@@ -170,7 +170,7 @@ function photostimulusbasis(options::Options, 𝐭_onset_s::Vector{<:AbstractFlo
 	indices = map(𝐭_onset_s, 𝐭_offset_s) do t_on, t_off
 					!isnan(t_on) && !isnan(t_off)
 			  end
-	if sum(indices)==0
+	if (sum(indices)==0) || isnan(options.tbf_phot_hz)
 		Φ = zeros(0, 0)
 		Φtimesteps = 1:0
 		𝐔 = zeros(sum(𝐓), size(Φ,2))

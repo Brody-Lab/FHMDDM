@@ -515,7 +515,7 @@ function choiceLL!(memory::Memoryforgradient, P::Probabilityvector, θnative::La
 		end
 		f = Aᵃ*f
 	end
-	conditional_probability_of_choice!(f, trial.choice, θnative.ψ[1])
+	forward!(f, trial.choice, θnative.ψ[1])
 	ℓ[1] += log(sum(f))
 	return nothing
 end
@@ -577,7 +577,7 @@ function choiceLL(concatenatedθ::Vector{T}, indexθ::Latentθ, model::Model) wh
 				end
 				f = Aᵃ*f
 			end
-			conditional_probability_of_choice!(f, trial.choice, θnative.ψ[1])
+			forward!(f, trial.choice, θnative.ψ[1])
 			ℓ+=log(sum(f))
 		end
 	end
@@ -722,7 +722,8 @@ function ∇choiceLL!(memory::Memoryforgradient,
 		end
 		f[t] = Aᵃ * f[t-1]
 	end
-	p𝑑_a = conditional_probability_of_choice(trial.choice, θnative.ψ[1], Ξ)
+	p𝑑_a = zeros(Ξ)
+	conditionallikelihood!(p𝑑_a, trial.choice, θnative.ψ[1])
 	p𝑑 = dot(p𝑑_a, f[trial.ntimesteps])
 	ℓ[1] += log(p𝑑)
 	b = p𝑑_a./p𝑑 # backward term for the last time step
@@ -757,20 +758,19 @@ function ∇choiceLL!(memory::Memoryforgradient,
 end
 
 """
-    conditional_probability_of_choice(f, choice, ψ)
+    conditionallikelihood!(p, choice, ψ)
 
-Probability of a choice conditioned on the accumulator state
+In-place computation of the likelihood of a choice conditioned on the accumulator state
+
+MODIFIED ARGUMENT
+-`p`: Element `p[i]` represents the conditional likelihood of an observed choice given that the accumulator is in the i-th state.
 
 ARGUMENT
 -`choice`: the observed choice, either right (`choice`=true) or left.
 -`ψ`: the prior probability of a lapse state
-
-RETURN
-`p`: conditional probability of the choice
 """
-function conditional_probability_of_choice(choice::Bool, ψ::T, Ξ::Integer) where {T<:Real}
-	p = zeros(T, Ξ)
-	zeroindex = cld(Ξ,2)
+function conditionallikelihood!(p::Vector{<:T}, choice::Bool, ψ::T) where {T<:Real}
+	zeroindex = cld(length(p),2)
     p[zeroindex] = 0.5
     if choice
         p[1:zeroindex-1]   .= ψ/2
@@ -779,13 +779,13 @@ function conditional_probability_of_choice(choice::Bool, ψ::T, Ξ::Integer) whe
         p[1:zeroindex-1]   .= 1-ψ/2
         p[zeroindex+1:end] .= ψ/2
     end
-	p
+	return nothing
 end
 
 """
-    conditional_probability_of_choice!(f, choice, ψ)
+    forward!(f, choice, ψ)
 
-Probability of a choice conditioned on the accumulator state
+Multiply by the likelihood of an observed choice conditioned on the accumulator state
 
 MODIFIED ARGUMENT
 -`f`: the forward term
@@ -794,7 +794,7 @@ ARGUMENT
 -`choice`: the observed choice, either right (`choice`=true) or left.
 -`ψ`: the prior probability of a lapse state
 """
-function conditional_probability_of_choice!(f::Array{<:Real}, choice::Bool, ψ::Real)
+function forward!(f::Array{<:Real}, choice::Bool, ψ::Real)
 	Ξ = length(f)
 	zeroindex = cld(Ξ,2)
     f[zeroindex] *= 0.5
