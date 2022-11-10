@@ -183,6 +183,24 @@ function FHMDDM.copy(glmθ::GLMθ)
 end
 
 """
+	update!(dst, src)
+
+Copy the parameters in `src` into `dst`
+"""
+function update!(dst::GLMθ, src::GLMθ)
+	dst.b .= src.b
+	dst.𝐠 .= src.𝐠
+	dst.𝐮 .= src.𝐮
+	for k = 1:length(dst.𝐯)
+		dst.𝐯[k] .= src.𝐯[k]
+	end
+	for k = 1:length(dst.𝛃)
+		dst.𝛃[k] .= src.𝛃[k]
+	end
+	return nothing
+end
+
+"""
 	initialize_GLM_parameters!(model)
 
 Initialize the GLM parameters

@@ -146,7 +146,7 @@ Model settings
 	"total number of units across all trialsets"
 	nunits::TI
 	"value to maximized to learn the parameters"
-	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood"])
+	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
 	"where the results of the model fitting are to be saved"
     resultspath::TS=""
 	"whether to scale the log-likelihood of the choices to be of similar magnitude of the log-likelihood of the spike trains"

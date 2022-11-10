@@ -263,7 +263,13 @@ OUTPUT
 -`testmodel`: a structure containing only the test data and the parameters learned from the training data
 """
 function test(cvindices::CVIndices, model::Model, trainingmodel::Model)
-	Model(trialsets = testingset(cvindices, model.trialsets),
+    testtrialsets = testingset(cvindices, model.trialsets)
+	for i in eachindex(testtrialsets)
+		for n in eachindex(testtrialsets[i].mpGLMs)
+			update!(testtrialsets[i].mpGLMs[n].θ, trainingmodel.trialsets[i].mpGLMs[n].θ)
+		end
+	end
+	Model(trialsets = testtrialsets,
 		options = model.options,
 		gaussianprior = trainingmodel.gaussianprior,
 		θ₀native = trainingmodel.θ₀native,

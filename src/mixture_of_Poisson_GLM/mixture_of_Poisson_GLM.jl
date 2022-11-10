@@ -84,10 +84,11 @@ UNMODIFIED ARGUMENT
 -`τ`: timestep among time steps concatenated across all trials in a trialset
 """
 function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ::Integer)
-	@unpack Δt, θ, 𝐕, 𝐗, 𝐲 = mpGLM
+	@unpack Δt, θ, 𝐕, 𝐗, 𝐗columns_gain, 𝐲 = mpGLM
 	@unpack 𝐠, 𝐮 = θ
+	Gₜ = 𝐗[τ,𝐗columns_gain]
 	𝐔ₜ𝐮 = 0
-	offset𝐔 = length(𝐠)-1
+	offset𝐔 = maximum(𝐗columns_gain)
 	for i in eachindex(𝐮)
 		q = offset𝐔 + i
 		𝐔ₜ𝐮 += 𝐗[τ,q]*𝐮[i]
@@ -96,9 +97,10 @@ function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ:
 	K𝐠 = length(𝐠)
 	for k=1:K
 		gₖ = 𝐠[min(k,K𝐠)]
+		Gₜgₖ = Gₜ⋅gₖ
 		for j=1:Ξ
 			𝐰 = evidenceweight(j,k,mpGLM)
-			L = gₖ + 𝐔ₜ𝐮 + 𝐕[τ,:]⋅𝐰
+			L = Gₜgₖ + 𝐔ₜ𝐮 + 𝐕[τ,:]⋅𝐰
 			p[j,k] = poissonlikelihood(Δt, L, 𝐲[τ])
 		end
 	end

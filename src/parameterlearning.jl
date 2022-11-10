@@ -21,10 +21,11 @@ function learnparameters!(model::Model; initialize::Bool=true, iterations::Integ
 		output = maximizeposterior!(model; iterations=iterations)
 	elseif objective == "likelihood"
 		output = maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
+	elseif objective == "initialization"
 	else
 		error(objective, " is not a recognized objective.")
 	end
-	return output
+	return nothing
 end
 
 """
