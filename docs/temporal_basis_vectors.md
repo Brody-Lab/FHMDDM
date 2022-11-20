@@ -15,7 +15,7 @@ The functions to build each $\Phi$ and each $U$ are in the file `temporal_basis_
 * `scalefactor`: scale factor to multiply by the temporal basis vector so that the hessian of the log-likelihood is less ill-conditioned
 * `stretch`: the degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive.
 
-Using these [options](/src/types.jl), I first create a set of temporal basis vectors corresponding to overlapping cosine bumps, and then I rotate the matrix such that each temporal basis vector has the same norm, while spanning the same temporal space. The result is $\Phi$, which has the property that 
+Using these [options](https://github.com/Brody-Lab/FHMDDM/blob/master/src/types.jl), I first create a set of temporal basis vectors corresponding to overlapping cosine bumps, and then I rotate the matrix such that each temporal basis vector has the same norm, while spanning the same temporal space. The result is $\Phi$, which has the property that 
 
 $\Phi' * \Phi = s \cdot I$
 
