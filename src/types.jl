@@ -324,6 +324,10 @@ Mixture of Poisson generalized linear model
     𝐕::MF
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
+	"U"
+	𝐔::MF
+	"T"
+	𝐓::VI
     "columns corresponding to the gain input"
 	𝐗columns_gain::UI = 1:1
 	"columns corresponding to the spike history input"

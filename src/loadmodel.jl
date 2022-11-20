@@ -208,6 +208,7 @@ function Trialset(options::Options, trialset::Dict)
 	𝐮indices_phot = (isempty(𝐮indices_move) ? 0 : 𝐮indices_move[end]) .+ (1:size(Φₚ,2))
 	mpGLMs = map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
 				𝐗=hcat(𝐆, 𝐔ₕ, 𝐔ₜ, 𝐔ₘ, 𝐔ₚ, 𝐕)
+				𝐔=hcat(𝐔ₕ, 𝐔ₜ, 𝐔ₘ, 𝐔ₚ)
 				glmθ = GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_phot, 𝐮indices_time, 𝐕)
 				MixturePoissonGLM(Δt=options.Δt,
   								d𝛏_dB=d𝛏_dB,
@@ -219,6 +220,8 @@ function Trialset(options::Options, trialset::Dict)
 								Φₜ=Φₜ,
 								θ=glmθ,
 								𝐕=𝐕,
+								𝐔=𝐔,
+								𝐓=𝐓,
 								𝐗=𝐗,
 								𝐲=𝐲)
 			 end
