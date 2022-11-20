@@ -106,7 +106,7 @@ function GLMθ(glmθ::GLMθ, elementtype)
 		𝐮indices_hist = glmθ.𝐮indices_hist,
 		𝐮indices_move = glmθ.𝐮indices_move,
 		𝐮indices_phot = glmθ.𝐮indices_phot,
-		𝐮indices_time = glmθ.𝐮indices_time,)
+		𝐮indices_time = glmθ.𝐮indices_time)
 end
 
 """

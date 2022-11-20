@@ -4,9 +4,11 @@
 Update the conditional likelihood of the emissions (spikes and/or behavioral choice)
 
 MODIFIED ARGUMENT
--`p𝐘𝑑`: Conditional probability of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
+-`p𝐘𝑑`: Conditional likelihood of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)
+-`p𝑑_a`: a vector used for in-place computation of the conditional likelihood of the choice given 𝑎 for one trial
 
 UNMODIFIED ARGUMENT
+-`s`: scale factor of the conditional likelihood of the spike train
 -`trialsets`: data used to constrain the model
 -`ψ`: lapse rate
 
@@ -371,46 +373,44 @@ RETURN
 -`P`: a structure for computing the derivatives with respect to the drift-diffusion parameters, in case it is to be reused
 """
 function choiceposteriors!(memory::Memoryforgradient, model::Model)
-	P = update_for_choice_posteriors!(memory, model)
+	@unpack options, θnative, trialsets = model
+	@unpack K, Ξ = options
+	@unpack p𝑑_a, p𝐘𝑑 = memory
+	@inbounds for i in eachindex(p𝐘𝑑)
+		for m in eachindex(p𝐘𝑑[i])
+			choicelikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, θnative.ψ[1])
+			for j = 1:Ξ
+				for k = 1:K
+					p𝐘𝑑[i][m][end][j,k] = p𝑑_a[i][m][j]
+				end
+			end
+		end
+    end
+	P = update_for_latent_dynamics!(memory, options, θnative)
 	posteriors!(memory, P, model)
 	return P
 end
 
 """
-	update_for_choice_posteriors!(model, memory)
+	update_for_latent_dynamics!(memory, options, θnative)
 
-Update the model and the memory quantities according to new parameter values
+Update quantities for computing the prior and transition probabilities of the latent variables
 
 MODIFIED ARGUMENT
 -`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
 
-ARGUMENT
--`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
+UNMODIFIED ARGUMENT
+-`options`: settings of the model
+-`θnative`: values of the parameters that control the latent variables, in the parameters' native space
 
 RETURN
 -`P`: an instance of `Probabilityvector`
-```
 """
-function update_for_choice_posteriors!(memory::Memoryforgradient, model::Model)
-	@unpack options, θnative, trialsets = model
-	@unpack Δt, K, minpa, Ξ = options
-	@unpack p𝑑_a, p𝐘𝑑 = memory
-	@inbounds for i in eachindex(p𝐘𝑑)
-		for m in eachindex(p𝐘𝑑[i])
-			choicelikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, θnative.ψ[1])
-			p𝐘𝑑[i][m][end] .*= p𝑑_a[i][m]
-		end
-    end
-	P = Probabilityvector(Δt, minpa, θnative, Ξ)
-	update_for_∇transition_probabilities!(P)
+function update_for_latent_dynamics!(memory::Memoryforgradient, options::Options, θnative::Latentθ)
+	P = Probabilityvector(options.Δt, options.minpa, θnative, options.Ξ)
+	update_for_transition_probabilities!(P)
 	transitionmatrix!(memory.Aᵃsilent, P)
-	if K == 2
-		Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
-		Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
-		πᶜ₁ = θnative.πᶜ₁[1]
-		memory.Aᶜ .= [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
-		memory.πᶜ .= [πᶜ₁, 1-πᶜ₁]
-	end
+	updatecoupling!(memory, θnative)
 	return P
 end
 
@@ -442,10 +442,10 @@ end
 
 Create random posterior probabilities of the latent variables for testing
 
-INPUT
+ARGUMENT
 -`mpGLM`: a mixture of Poisson GLM
 
-OPTIONAL INPUT
+OPTIONAL ARGUMENT
 -`rng`: random number generator
 
 RETURN
@@ -466,4 +466,56 @@ function randomposterior(mpGLM::MixturePoissonGLM; rng::AbstractRNG=MersenneTwis
 		end
 	end
 	γ
+end
+
+"""
+	posteriors!(memory, i, n, model)
+
+Posterior probability of the latent variables conditioned on the spike train of one neuron
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+
+UNMODIFIED ARGUMENT
+-`i`: index of the trialset containing the neuron
+-`n`: index of the neuron in the trialset
+-`model`: structure containing the data, parameters, and hyperparameters
+
+RETURN
+-`γ`: posterior probability of the latent variables. The element `γ[j,k][τ]` corresponds to the posterior probability of the accumulator in the j-th state, the coupling in the k-th state, for the τ-timestep in the trialset.
+"""
+function posteriors!(memory::Memoryforgradient, i::Integer, n::Integer, model::Model)
+	p𝐲 = memory.p𝐘𝑑[i]
+	likelihood!(p𝐲, model.trialsets[i].mpGLMs[n])
+	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
+	posteriors!(memory, P, model)
+	return memory.γ[i]
+end
+
+"""
+	likelihood!(p𝐲, mpGLM)
+
+Conditional likelihood of the spiking of one neuron
+
+MODIFIED ARGUMENT
+-`p𝐲`: A nested array whose element `p𝐲[m][t][j,k]` corresponds to the conditional likelihood of the spiking given the coupling in the k-th state and the accumulator in the j-th state, at the t-th time step of the m-th trial
+
+UNMODIFIED ARGUMENT
+-`mpGLM`: structure containing the data and parameters of the mixture Poisson GLM of one neuron
+"""
+function likelihood!(p𝐲::Vector{<:Vector{<:Matrix{<:Real}}}, mpGLM::MixturePoissonGLM)
+	(Ξ,K) = size(p𝐲[1][end])
+	for j = 1:Ξ
+		for k = 1:K
+			p𝐲_jk = scaledlikelihood(mpGLM, j, k, 1.0)
+			τ = 0
+			for m in eachindex(p𝐲)
+				for t in eachindex(p𝐲[m])
+					τ += 1
+					p𝐲[m][t][j,k] = p𝐲_jk[τ]
+				end
+			end
+		end
+	end
+	return nothing
 end

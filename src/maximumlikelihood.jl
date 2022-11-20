@@ -659,17 +659,53 @@ function update!(memory::Memoryforgradient, model::Model, concatenatedθ::Vector
 	if !isempty(memory.p𝐘𝑑[1][1][1])
 	    scaledlikelihood!(memory.p𝐘𝑑, memory.p𝑑_a, sf_y, model.trialsets, θnative.ψ[1])
 	end
-	P = Probabilityvector(Δt, minpa, θnative, Ξ)
+	P = update_for_∇latent_dynamics!(memory, options, θnative)
+	return P
+end
+
+"""
+	update_for_∇latent_dynamics!(memory, options, θnative)
+
+Update quantities for computing the gradient of the prior and transition probabilities of the latent variables
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+
+UNMODIFIED ARGUMENT
+-`options`: settings of the model
+-`θnative`: values of the parameters that control the latent variables, in the parameters' native space
+
+RETURN
+-`P`: an instance of `Probabilityvector`
+"""
+function update_for_∇latent_dynamics!(memory::Memoryforgradient, options::Options, θnative::Latentθ)
+	P = Probabilityvector(options.Δt, options.minpa, θnative, options.Ξ)
 	update_for_∇transition_probabilities!(P)
 	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
-	if K == 2
+	updatecoupling!(memory, θnative)
+	return P
+end
+
+"""
+	updatecoupling!(memory, θnative)
+
+Update quantities for computing the prior and transition probability of the coupling variables
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+
+UNMODIFIED ARGUMENT
+-`θnative`: values of the parameters that control the latent variables, in the parameters' native space
+"""
+function updatecoupling!(memory::Memoryforgradient, θnative::Latentθ)
+	if memory.K == 2
 		Aᶜ₁₁ = θnative.Aᶜ₁₁[1]
 		Aᶜ₂₂ = θnative.Aᶜ₂₂[1]
 		πᶜ₁ = θnative.πᶜ₁[1]
 		memory.Aᶜ .= [Aᶜ₁₁ 1-Aᶜ₂₂; 1-Aᶜ₁₁ Aᶜ₂₂]
 		memory.πᶜ .= [πᶜ₁, 1-πᶜ₁]
 	end
-	return P
+	return nothing
 end
 
 """

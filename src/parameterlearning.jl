@@ -37,14 +37,6 @@ The parameters specifying the transition probability of the coupling variable ar
 
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_15b_test/T176_2018_05_03/data.mat"
-julia> model = Model(datapath)
-julia> FHMDDM.initializeparameters!(model)
-```
 """
 function initializeparameters!(model::Model; Msteps::Integer=5, show_trace::Bool=true, show_GLM_optimization_trace::Bool=false)
 	if !isempty(concatenate_latent_parameters(model)[1])
