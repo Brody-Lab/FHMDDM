@@ -519,3 +519,60 @@ function likelihood!(p𝐲::Vector{<:Vector{<:Matrix{<:Real}}}, mpGLM::MixturePo
 	end
 	return nothing
 end
+
+"""
+	posterior_on_spikes!(memory, model)
+
+Posterior probability of the latent variables conditioned on only the spiking and not the choice
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+
+UNMODIFIED ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters
+"""
+function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
+	p𝐘 = memory.p𝐘𝑑
+	for i in eachindex(p𝐘)
+		scaledlikelihood!(p𝐘[i], model.options.sf_y, model.trialsets[i])
+	end
+	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
+	posteriors!(memory, P, model)
+	return nothing
+end
+
+"""
+    scaledlikelihood!(p𝐘, s, trialset)
+
+In-place computation the conditional likelihood of the simultaneous spike response
+
+MODIFIED ARGUMENT
+-`p𝐘`: Conditional likelihood of the spike response at each time step. Element `p𝐘[m][t][j,k] `corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, cₜ=k) across N neurons at the t-th time step in the m-th trial.
+
+UNMODIFIED ARGUMENT
+-`s`: scale factor of the conditional likelihood of the spike train
+-`trialset`: a group of trials in which the neurons are simultaneously recorded
+
+RETURN
+-`nothing`
+"""
+function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, s::Real, trialset::Trialset)
+	(Ξ,K) = size(p𝐘[1][end])
+	N = length(trialset.mpGLMs)
+    for j = 1:Ξ
+        for k = 1:K
+			𝐩 = scaledlikelihood(trialset.mpGLMs[1], j, k, s)
+            for n = 2:N
+			    scaledlikelihood!(𝐩, trialset.mpGLMs[n], j, k, s)
+            end
+            τ = 0
+            for m in eachindex(p𝐘)
+                for t in eachindex(p𝐘[m])
+                    τ += 1
+                    p𝐘[m][t][j,k] = 𝐩[τ]
+                end
+            end
+        end
+    end
+    return nothing
+end

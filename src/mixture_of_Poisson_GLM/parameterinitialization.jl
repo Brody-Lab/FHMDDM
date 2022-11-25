@@ -203,10 +203,15 @@ end
 """
 	initialize_GLM_parameters!(model)
 
-Initialize the GLM parameters
+Initialize the GLM parameters using expectation-maximization.
+
+In the E-step, the posterior probability of the accumulator is computed by conditioning on only the behavioral choices. In the M-step, only the GLM parameters are updated. The E- and M-steps assume the coupling variable have only one state. After performing these two steps, if there are multiple coupling states, and the gain is state-dependent, it is randomly initialized. If there are multiple coupling states, and the encoding of the accumulated evidence is state-dependent, then the weight in the first state is set to be three times of the initialized value, and the weight in the second state is set to be the negative of the initialized value.
 
 MODIFIED ARGUMENT
--`model`: an instance of the factorial hidden Markov drift-diffusion model
+-`model`: structure containing the data, parameters, and hyperparameters
+
+OPTIONAL ARGUMENT
+-`show_trace`: whether the details of the M-step should be shown
 """
 function initialize_GLM_parameters!(model::Model; show_trace::Bool=false)
 	memory = FHMDDM.Memoryforgradient(model)
