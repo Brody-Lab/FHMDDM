@@ -239,6 +239,56 @@ function initialize_GLM_parameters!(model::Model; show_trace::Bool=false)
 			end
 		end
 	end
+	if show_trace
+		printseparator()
+		println("\nLearning the weights of each neuron's Poison mixture generalized linear model")
+		printseparator()
+	end
+	for i in eachindex(model.trialsets)
+		for n in eachindex(model.trialsets[i].mpGLMs)
+			show_trace && println("trialset "*string(i)*" neuron "*string(n))
+			stats = @timed fitweights!(memory, model, i, n)
+			show_trace && println("  took ", stats.time, " seconds")
+		end
+	end
+end
+
+"""
+	fitweights!(memory, model, i, n)
+
+Learn the weights of a neuron's Poisson mixture generalized linear model
+
+ARGUMENT
+-`memory`: structure containing quantities for in-place computations of the gradient of the model
+-`model`: structure containing the data, parameters, and hyperparameters of the model
+-`i`: index of the trialset to which the neuron belong
+-`n`: index of the neuron in the trialset
+
+OPTIONAL ARGUMENT
+-`g_tol`: tolerance of the gradient. Optimization terminates either when the maximum absolute value of the gradient is belong is value, or when the decrease in the maximum absolute of the current gradient from that of the previous gradient is less than this value
+-`iterations`: maximum number of iterations of expectation-maximization to perform
+-`show_trace`: whether to display information about the gradient at each iteration
+"""
+function fitweights!(memory::Memoryforgradient, model::Model, i::Integer, n::Integer; g_tol::AbstractFloat=1e-6, iterations::Integer=100, show_trace::Bool=false)
+	previous_maxabsgrad = Inf
+	for m = 1:iterations
+		posteriors!(memory, i, n, model)
+		expectation_∇loglikelihood!(memory.∇ℓglm[i][n], memory.γ[i], model.trialsets[i].mpGLMs[n])
+		gradient = concatenateparameters(memory.∇ℓglm[i][n]; initialization=true)
+		maxabsgrad = maximum(abs.(gradient))
+		Δrelative_maxabsgrad = (previous_maxabsgrad-maxabsgrad)/maxabsgrad
+		stop = (maxabsgrad<g_tol) || (Δrelative_maxabsgrad<g_tol)
+		if show_trace
+	        println("iteration: "*string(m))
+			println("   max(∣gradient∣) = ", maxabsgrad)
+			println("   Δrelative{max(∣gradient∣)} = ", Δrelative_maxabsgrad)
+			stop && println("  	tolerance{max(∣gradient∣)} = ", g_tol)
+			(m==iterations) && println("  	maximum iterations reached")
+		end
+		stop && break
+		maximize_expectation_of_loglikelihood!(model.trialsets[i].mpGLMs[n], memory.γ[i])
+	end
+	return nothing
 end
 
 """

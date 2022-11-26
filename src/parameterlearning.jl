@@ -38,27 +38,13 @@ The parameters specifying the transition probability of the coupling variable ar
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
 """
-function initializeparameters!(model::Model; Msteps::Integer=5, show_trace::Bool=true, show_GLM_optimization_trace::Bool=false)
+function initializeparameters!(model::Model; show_trace::Bool=true)
 	if !isempty(concatenate_latent_parameters(model)[1])
 		fitonlychoices!(model; show_trace=show_trace)
 	end
 	println("Initializing GLM parameters")
-	stats = @timed initialize_GLM_parameters!(model; show_trace=show_GLM_optimization_trace)
+	stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
 	println("Initializing the GLM parameters took ", stats.time, " seconds")
-	if Msteps > 0
-		memory = FHMDDM.Memoryforgradient(model)
-	end
-	for m = 1:Msteps
-		printseparator()
-		println("\nMstep: "*string(m,pad=2)*"\n")
-	    P = update!(memory, model, FHMDDM.concatenateparameters(model)[1])
-	    posteriors!(memory, P, model)
-	    for (trialset, γᵢ) in zip(model.trialsets, memory.γ)
-		    for mpGLM in trialset.mpGLMs
-		        FHMDDM.maximize_expectation_of_loglikelihood!(mpGLM, γᵢ)
-		    end
-		end
-	end
 	return nothing
 end
 
