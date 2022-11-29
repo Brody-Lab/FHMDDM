@@ -72,9 +72,9 @@ function Model(options::Options, resultspath::String, trialsets::Vector{<:Trials
     precisionmatrix!(gaussianprior)
 	Model(options=options,
 		   gaussianprior=gaussianprior,
-		   θnative=Latentθ(read(resultsMAT, "theta_native")),
-		   θreal=Latentθ(read(resultsMAT, "theta_real")),
-		   θ₀native=Latentθ(read(resultsMAT, "theta0_native")),
+		   θnative=Latentθ(read(resultsMAT, "thetanative")),
+		   θreal=Latentθ(read(resultsMAT, "thetareal")),
+		   θ₀native=Latentθ(read(resultsMAT, "theta0native")),
 		   trialsets=trialsets)
 end
 

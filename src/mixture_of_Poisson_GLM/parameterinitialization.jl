@@ -213,7 +213,7 @@ MODIFIED ARGUMENT
 OPTIONAL ARGUMENT
 -`show_trace`: whether the details of the M-step should be shown
 """
-function initialize_GLM_parameters!(model::Model; show_trace::Bool=false)
+function initialize_GLM_parameters!(model::Model; iterations::Integer=5, show_trace::Bool=false)
 	memory = FHMDDM.Memoryforgradient(model)
 	P = choiceposteriors!(memory, model)
 	for (trialset, γᵢ) in zip(model.trialsets, memory.γ)
@@ -244,11 +244,12 @@ function initialize_GLM_parameters!(model::Model; show_trace::Bool=false)
 		println("\nLearning the weights of each neuron's Poison mixture generalized linear model")
 		printseparator()
 	end
-	for i in eachindex(model.trialsets)
-		for n in eachindex(model.trialsets[i].mpGLMs)
-			show_trace && println("trialset "*string(i)*" neuron "*string(n))
-			stats = @timed fitweights!(memory, model, i, n)
-			show_trace && println("  took ", stats.time, " seconds")
+	for j = 1:iterations
+		posterior_on_spikes!(memory, model)
+		for i in eachindex(model.trialsets)
+			for n in eachindex(model.trialsets[i].mpGLMs)
+				maximize_expectation_of_loglikelihood!(model.trialsets[i].mpGLMs[n], memory.γ[i])
+			end
 		end
 	end
 end

@@ -1056,12 +1056,16 @@ end
 	p𝐚::VVVVF
 	"posterior probability of the accumulator variable conditioned on the behavioral choice"
 	p𝐚_𝑑::VVVVF
+	"posterior probability of the accumulator variable conditioned on the spike trains"
+	p𝐚_𝐘::VVVVF
 	"posterior probability of the accumulator variable conditioned on both the behavioral choice and the spiking"
 	p𝐚_𝐘𝑑::VVVVF
 	"posterior probability of the coupling variable conditioned on both the behavioral choice and the spiking"
 	p𝐜_𝐘𝑑::VVVVF
 	"expected probability of a right choice, estimated as the mean across samples"
 	p𝑑::VVF
+	"expected probability of a right choice conditioned on the spike trains"
+	p𝑑_𝐘::VVF
 	"expected spike response, estimated as the mean across samples"
 	λΔt::VVVF
 	"expected spike response conditioned on the observed behavioral choice. This is computed by first calculating the conditional probability of the accumulator at the last time step, given the observed choice, and then generating values of the accumulator backward in time."

@@ -485,8 +485,7 @@ RETURN
 -`γ`: posterior probability of the latent variables. The element `γ[j,k][τ]` corresponds to the posterior probability of the accumulator in the j-th state, the coupling in the k-th state, for the τ-timestep in the trialset.
 """
 function posteriors!(memory::Memoryforgradient, i::Integer, n::Integer, model::Model)
-	p𝐲 = memory.p𝐘𝑑[i]
-	likelihood!(p𝐲, model.trialsets[i].mpGLMs[n])
+	likelihood!(memory.p𝐘𝑑[i], model.trialsets[i].mpGLMs[n])
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	posteriors!(memory, P, model)
 	return memory.γ[i]
@@ -498,21 +497,21 @@ end
 Conditional likelihood of the spiking of one neuron
 
 MODIFIED ARGUMENT
--`p𝐲`: A nested array whose element `p𝐲[m][t][j,k]` corresponds to the conditional likelihood of the spiking given the coupling in the k-th state and the accumulator in the j-th state, at the t-th time step of the m-th trial
+-`𝐩`: A nested array whose element `𝐩[m][t][j,k]` corresponds to the conditional likelihood of the spiking given the coupling in the k-th state and the accumulator in the j-th state, at the t-th time step of the m-th trial
 
 UNMODIFIED ARGUMENT
 -`mpGLM`: structure containing the data and parameters of the mixture Poisson GLM of one neuron
 """
-function likelihood!(p𝐲::Vector{<:Vector{<:Matrix{<:Real}}}, mpGLM::MixturePoissonGLM)
-	(Ξ,K) = size(p𝐲[1][end])
+function likelihood!(𝐩::Vector{<:Vector{<:Matrix{<:Real}}}, mpGLM::MixturePoissonGLM)
+	(Ξ,K) = size(𝐩[1][end])
 	for j = 1:Ξ
 		for k = 1:K
 			p𝐲_jk = scaledlikelihood(mpGLM, j, k, 1.0)
 			τ = 0
-			for m in eachindex(p𝐲)
-				for t in eachindex(p𝐲[m])
+			for m in eachindex(𝐩)
+				for t in eachindex(𝐩[m])
 					τ += 1
-					p𝐲[m][t][j,k] = p𝐲_jk[τ]
+					𝐩[m][t][j,k] = p𝐲_jk[τ]
 				end
 			end
 		end

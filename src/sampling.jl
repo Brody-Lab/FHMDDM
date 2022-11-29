@@ -173,7 +173,7 @@ OUTPUT
 """
 function Predictions(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model})
 	predictions_each_fold = collect(Predictions(testmodel) for testmodel in testmodels)
-	collected_predictions = (FHMDDM.collectpredictions(cvindices, collect(getfield(predictions, field) for predictions in predictions_each_fold)) for field in (:p𝐚, :p𝐚_𝑑, :p𝐚_𝐘𝑑, :p𝐜_𝐘𝑑, :p𝑑, :λΔt, :λΔt_𝑑))
+	collected_predictions = (FHMDDM.collectpredictions(cvindices, collect(getfield(predictions, field) for predictions in predictions_each_fold)) for field in (:p𝐚, :p𝐚_𝑑, :p𝐚_𝐘, :p𝐚_𝐘𝑑, :p𝐜_𝐘𝑑, :p𝑑, :p𝑑_𝐘, :λΔt, :λΔt_𝑑))
 	return Predictions(collected_predictions..., predictions_each_fold[1].nsamples)
 end
 
@@ -205,10 +205,11 @@ function Predictions(model::Model; nsamples::Integer=100)
 				collect(zeros(K) for t=1:trial.ntimesteps)
 			end
 		  end
-	p𝐚_𝑑, p𝐚_𝐘𝑑 = deepcopy(p𝐚), deepcopy(p𝐚)
+	p𝐚_𝑑, p𝐚_𝐘, p𝐚_𝐘𝑑 = deepcopy(p𝐚), deepcopy(p𝐚), deepcopy(p𝐚)
 	p𝑑 = collect(zeros(trialset.ntrials) for trialset in trialsets)
+	p𝑑_𝐘 = deepcopy(p𝑑)
 	memory = Memoryforgradient(model)
-	P = FHMDDM.update!(memory, model, concatenateparameters(model)[1])
+	P = update!(memory, model, concatenateparameters(model)[1])
 	@unpack Aᵃinput, Aᵃsilent, Aᶜ, p𝐚₁, πᶜ = memory
 	f⨀b = memory.f
 	p𝑑_𝐚 = ones(Ξ)
@@ -220,18 +221,27 @@ function Predictions(model::Model; nsamples::Integer=100)
 				return externalinput(mpGLM), postspikefilter(mpGLM), transformaccumulator(mpGLM)
 			end
 		end
+	memory_𝐘 = Memoryforgradient(model)
+	p𝐘 = memory_𝐘.p𝐘𝑑
+	for i in eachindex(p𝐘)
+		scaledlikelihood!(p𝐘[i], model.options.sf_y, model.trialsets[i])
+	end
+	update_for_latent_dynamics!(memory_𝐘, model.options, model.θnative)
     for trialset in trialsets
 		for trial in trialset.trials
 			i = trial.trialsetindex
 			m = trial.index_in_trialset
 			𝛕 = trial.τ₀ .+ (1:trial.ntimesteps)
 			forward!(memory, P, θnative, trial)
+			forward!(memory_𝐘, P, θnative, trial)
 			backward!(memory, P, trial)
+			backward!(memory_𝐘, P, trial)
 			accumulatorprobability!(p𝐚[i][m], p𝐚₁, Aᵃinput, Aᵃsilent, trial)
 			accumulator_probability_given_choice!(p𝐚_𝑑[i][m], p𝑑_𝐚, Aᵃinput, Aᵃsilent, p𝐚[i][m], θnative.ψ[1], trial)
 			for t = 1:trial.ntimesteps
 				p𝐚_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=2), dims=2)
 				p𝐜_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=1), dims=1)
+				p𝐚_𝐘[i][m][t] = dropdims(sum(memory_𝐘.f[t], dims=2), dims=2)
 			end
 			for s = 1:nsamples
 				samplecoupling!(c, Aᶜ, trial.ntimesteps, πᶜ)
@@ -244,14 +254,18 @@ function Predictions(model::Model; nsamples::Integer=100)
 				 for (𝐄𝐞_𝐡_𝛚, λΔt_𝑑, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt_𝑑[i], trialset.mpGLMs)
 					λΔt_𝑑[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
 				end
+				a_T_𝐘 = findfirst(rand() .< cumsum(p𝐚_𝐘𝑑[i][m][trial.ntimesteps]))
+				p𝑑_𝐘[i][m] += sample(a_T_𝐘, θnative.ψ[1], Ξ)/nsamples
 			end
 		end
 	end
     return Predictions(	p𝐚 = p𝐚,
 						p𝐚_𝑑 = p𝐚_𝑑,
+						p𝐚_𝐘 = p𝐚_𝐘,
 						p𝐚_𝐘𝑑 = p𝐚_𝐘𝑑,
 						p𝐜_𝐘𝑑 = p𝐜_𝐘𝑑,
 						p𝑑 = p𝑑,
+						p𝑑_𝐘 = p𝑑_𝐘,
 						λΔt = λΔt,
 						λΔt_𝑑 = λΔt_𝑑,
 						nsamples = nsamples)

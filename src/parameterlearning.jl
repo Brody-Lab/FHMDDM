@@ -12,9 +12,9 @@ RETURN
 -depending on the `model.options.objective`, output of `maximizeevidence!`, `maximizeposterior!`, or `maximizelikelihood!`
 ```
 """
-function learnparameters!(model::Model; initialize::Bool=true, iterations::Integer=500, show_GLM_optimization_trace::Bool=false)
+function learnparameters!(model::Model; initialize::Bool=true, iterations::Integer=500, show_trace::Bool=false)
 	@unpack objective = model.options
-	initialize && initializeparameters!(model; show_GLM_optimization_trace=show_GLM_optimization_trace)
+	initialize && initializeparameters!(model; show_trace=show_trace)
 	if objective == "evidence"
 		output = maximizeevidence!(model;iterations=iterations)
 	elseif objective == "posterior"

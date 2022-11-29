@@ -116,13 +116,12 @@ ARGUMENT
 
 """
 function save(predictions::Predictions, options::Options; folderpath::String=dirname(options.datapath), prefix::String="results")
-	dict = dictionary(predictions)
-    matwrite(joinpath(folderpath, prefix*"_pa"*".mat"), Dict("pa" => dict["pa"]))
-    matwrite(joinpath(folderpath, prefix*"_pa_d"*".mat"), Dict("pa_d" => dict["pa_d"]))
-    matwrite(joinpath(folderpath, prefix*"_pa_Yd"*".mat"), Dict("pa_Yd" => dict["pa_Yd"]))
-    matwrite(joinpath(folderpath, prefix*"_pd"*".mat"), Dict("pd" => dict["pd"]))
-    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat"*".mat"), Dict("lambdaDeltat" => dict["lambdaDeltat"]))
-    matwrite(joinpath(folderpath, prefix*"_lambdaDeltat_d"*".mat"), Dict("lambdaDeltat_d" => dict["lambdaDeltat_d"]))
+	dict = FHMDDM.Dict(predictions)
+	for key in keys(dict)
+		if key != "nsamples"
+    		matwrite(joinpath(folderpath, prefix*"_"*key*".mat"), Dict(key =>dict[key]))
+		end
+	end
     return nothing
 end
 
@@ -131,12 +130,14 @@ end
 
 Package an instance `Predictions` as a dictionary
 """
-function dictionary(predictions::Predictions)
+function FHMDDM.Dict(predictions::Predictions)
 	Dict("pa" => predictions.p𝐚,
         "pa_d" => predictions.p𝐚_𝑑,
+        "pa_Y" => predictions.p𝐚_𝐘,
         "pa_Yd" => predictions.p𝐚_𝐘𝑑,
         "pc_Yd" => predictions.p𝐜_𝐘𝑑,
         "pd" => predictions.p𝑑,
+        "pd_Y" => predictions.p𝑑_𝐘,
         "lambdaDeltat" => predictions.λΔt,
         "lambdaDeltat_d" => predictions.λΔt_𝑑,
 		"nsamples" => predictions.nsamples)
