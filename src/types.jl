@@ -1064,7 +1064,7 @@ end
 	p𝐜_𝐘𝑑::VVVVF
 	"expected probability of a right choice, estimated as the mean across samples"
 	p𝑑::VVF
-	"expected probability of a right choice conditioned on the spike trains"
+	"probability of a right choice conditioned on the spike trains"
 	p𝑑_𝐘::VVF
 	"expected spike response, estimated as the mean across samples"
 	λΔt::VVVF

@@ -349,11 +349,11 @@ ARGUMENT
 -`cvresults`: an instance of `CVResults`, a drift-diffusion linear model
 """
 function save(cvresults::CVResults, options::Options; folderpath::String=dirname(options.datapath), prefix::String="cvresults")
-	save(cvresults.predictions, options; folderpath=folderpath, prefix=prefix)
 	dict = Dict("cvindices" => map(dictionary, cvresults.cvindices),
 				"rll_choice"=>cvresults.rll_choice,
 				"rll_spikes"=>cvresults.rll_spikes,
 				"trainingsummaries"=>map(dictionary, cvresults.trainingsummaries))
     matwrite(joinpath(folderpath, prefix*".mat"), dict)
+	save(cvresults.predictions, options; folderpath=folderpath, prefix=prefix)
     return nothing
 end

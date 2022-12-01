@@ -232,6 +232,8 @@ function Predictions(model::Model; nsamples::Integer=100)
 			i = trial.trialsetindex
 			m = trial.index_in_trialset
 			𝛕 = trial.τ₀ .+ (1:trial.ntimesteps)
+			memory.ℓ[1] = 0.0
+			memory_𝐘.ℓ[1] = 0.0
 			forward!(memory, P, θnative, trial)
 			forward!(memory_𝐘, P, θnative, trial)
 			backward!(memory, P, trial)
@@ -243,6 +245,8 @@ function Predictions(model::Model; nsamples::Integer=100)
 				p𝐜_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=1), dims=1)
 				p𝐚_𝐘[i][m][t] = dropdims(sum(memory_𝐘.f[t], dims=2), dims=2)
 			end
+			pchoice = exp(memory.ℓ[1] - memory_𝐘.ℓ[1])
+			p𝑑_𝐘[i][m] = trial.choice ? pchoice : 1.0-pchoice
 			for s = 1:nsamples
 				samplecoupling!(c, Aᶜ, trial.ntimesteps, πᶜ)
 				sampleaccumulator!(a, Aᵃinput, Aᵃsilent, p𝐚₁, trial)
@@ -254,8 +258,6 @@ function Predictions(model::Model; nsamples::Integer=100)
 				 for (𝐄𝐞_𝐡_𝛚, λΔt_𝑑, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt_𝑑[i], trialset.mpGLMs)
 					λΔt_𝑑[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
 				end
-				a_T_𝐘 = findfirst(rand() .< cumsum(p𝐚_𝐘𝑑[i][m][trial.ntimesteps]))
-				p𝑑_𝐘[i][m] += sample(a_T_𝐘, θnative.ψ[1], Ξ)/nsamples
 			end
 		end
 	end
