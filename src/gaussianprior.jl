@@ -131,12 +131,12 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 				𝛂max = vcat(𝛂max, options.L2_v_max)
 				𝛂min = vcat(𝛂min, options.L2_v_min)
 			end
-			if indexᵢₙ.fit_𝛃
-				for indexᵢₙ𝛃ₖ in indexᵢₙ.𝛃
+			if indexᵢₙ.fit_Δ𝐯
+				for indexᵢₙΔ𝐯ₖ in indexᵢₙ.Δ𝐯
 					𝐀 = vcat(𝐀, [Aaccu])
-					index𝐀 = vcat(index𝐀, [indexᵢₙ𝛃ₖ])
-					𝛂max = vcat(𝛂max, options.L2_beta_max)
-					𝛂min = vcat(𝛂min, options.L2_beta_min)
+					index𝐀 = vcat(index𝐀, [indexᵢₙΔ𝐯ₖ])
+					𝛂max = vcat(𝛂max, options.L2_Δ𝐯_max)
+					𝛂min = vcat(𝛂min, options.L2_Δ𝐯_min)
 				end
 			end
 		end

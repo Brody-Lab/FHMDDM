@@ -63,7 +63,7 @@ function Model(options::Options, resultspath::String, trialsets::Vector{<:Trials
 				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
 			end
 			for k in eachindex(glmθ[i][n]["beta"])
-				trialsets[i].mpGLMs[n].θ.𝛃[k] .= glmθ[i][n]["beta"][k]
+				trialsets[i].mpGLMs[n].θ.Δ𝐯[k] .= glmθ[i][n]["Deltav"][k]
 			end
 		end
 	end

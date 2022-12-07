@@ -59,7 +59,7 @@ Model settings
 	"whether to fit the parameter for transforming the accumulator"
 	fit_b::TB=true
 	"whether to fit separate encoding weights for when the accumulator is at the bound"
-	fit_𝛃::TB=true
+	fit_Δ𝐯::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=true
 	"whether to fit the parameter specifying leak or instability"
@@ -87,12 +87,12 @@ Model settings
 	"maximum and minimum L2 shrinkage penalty for the accumulator transformation parameter"
 	L2_b_max::TF=1e2
 	L2_b_min::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty for the weight of the post-commitment encoding of accumulated evidence"
-	L2_beta_max::TF=1e2
-	L2_beta_min::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
 	L2_choices_max::TF=1e2
 	L2_choices_min::TF=1e-2
+	"maximum and minimum L2 shrinkage penalty for the change in the encoding weight accumulated evidence after commitment"
+	L2_Δ𝐯_max::TF=1e2
+	L2_Δ𝐯_min::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for the state-dependent gain"
 	L2_gain_max::TF=1e2
 	L2_gain_min::TF=1e-2
@@ -271,7 +271,7 @@ Parameters of a mixture of Poisson generalized linear model
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
-	fit_𝛃::B
+	fit_Δ𝐯::B
     "state-dependent gain"
     𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
@@ -287,7 +287,7 @@ Parameters of a mixture of Poisson generalized linear model
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
 	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
-	𝛃::VVR=deepcopy(𝐯)
+	Δ𝐯::VVR=deepcopy(𝐯)
 end
 
 """

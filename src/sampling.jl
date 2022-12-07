@@ -405,7 +405,7 @@ RETURN
 """
 function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
 	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
-	@unpack 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
+	@unpack 𝐠, 𝐮, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
 	max_spikehistory_lag = length(𝐡)
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
@@ -416,10 +416,11 @@ function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:A
         j = a[t]
         k = c[t]
 		gₖ = 𝐠[min(k, K𝐠)]
-		if fit_𝛃 && (j==1 || j==Ξ)
-			𝐰ₖ = 𝛃[min(k, K𝐯)]
+		kᵥ = min(k, K𝐯)
+		if fit_Δ𝐯 && (j==1 || j==Ξ)
+			𝐰ₖ = 𝐯[kᵥ] .+ Δ𝐯[kᵥ]
 		else
-			𝐰ₖ = 𝐯[min(k, K𝐯)]
+			𝐰ₖ = 𝐯[kᵥ]
 		end
 		L = gₖ + 𝐄𝐞[τ]
 		for i in eachindex(𝐰ₖ)

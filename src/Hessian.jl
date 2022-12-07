@@ -580,7 +580,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										d²𝛚_db²::Vector{<:Real},
 										τ::Integer)
 	@unpack 𝐗, Ξ, 𝐕, 𝐲 = mpGLM
-	@unpack b, 𝐠, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
+	@unpack b, 𝐠, 𝐮, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
 	K𝐠 = length(𝐠)
 	K𝐯 = length(𝐯)
 	K = max(K𝐠, K𝐯)
@@ -603,7 +603,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 		for j = 1:K
 			d²ℓ_dL², dℓ_dL = FHMDDM.differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
 			offset𝐯 = n𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
-			offset𝛃 = n𝐠𝐮𝐯 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
+			offsetΔ𝐯 = n𝐠𝐮𝐯 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
 			if i==1 || i==Ξ
 				∇logpy[1][i,j] = 0 # because d𝛚_db = 0
 				for q = 1:nparameters
@@ -636,14 +636,13 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 				s = offset𝐮+q
 				∇logpy[s][i,j] = dℓ_dL*𝐗[τ,1+q]
 			end
-			if fit_𝛃 && (i==1 || i==Ξ)
+			for q=1:n𝐯
+				s = offset𝐯 + q
+				∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
+			end
+			if fit_Δ𝐯 && (i==1 || i==Ξ)
 				for q=1:n𝐯
-					s = offset𝛃 + q
-					∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
-				end
-			else
-				for q=1:n𝐯
-					s = offset𝐯 + q
+					s = offsetΔ𝐯 + q
 					∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
 				end
 			end
@@ -654,14 +653,13 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 					t = offset𝐮 + r
 					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+r]
 				end
-				if fit_𝛃 && (i==1 || i==Ξ)
+				for r=1:n𝐯
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
+				end
+				if fit_Δ𝐯 && (i==1 || i==Ξ)
 					for r=1:n𝐯
-						t = offset𝛃 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
-					end
-				else
-					for r=1:n𝐯
-						t = offset𝐯 + r
+						t = offsetΔ𝐯 + r
 						∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
 					end
 				end
@@ -672,34 +670,41 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 					t = offset𝐮 + r
 					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*𝐗[τ,1+r]
 				end
-				if fit_𝛃 && (i==1 || i==Ξ)
+				for r=1:n𝐯
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
+				end
+				if fit_Δ𝐯 && (i==1 || i==Ξ)
 					for r=1:n𝐯
-						t = offset𝛃 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
-					end
-				else
-					for r=1:n𝐯
-						t = offset𝐯 + r
+						t = offsetΔ𝐯 + r
 						∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
 					end
 				end
 			end
-			if fit_𝛃 && (i==1 || i==Ξ)
+			for q=1:n𝐯
+				for r=q:n𝐯
+					s = offset𝐯 + q
+					t = offset𝐯 + r
+					∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
+				end
+			end
+			if fit_Δ𝐯 && (i==1 || i==Ξ)
 				for q=1:n𝐯
 					for r=q:n𝐯
-						s = offset𝛃 + q
-						t = offset𝛃 + r
+						s = offset𝐯 + q
+						t = offsetΔ𝐯 + r
+						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
+					end
+				end
+				for q=1:n𝐯
+					for r=q:n𝐯
+						s = offsetΔ𝐯 + q
+						t = offsetΔ𝐯 + r
 						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
 					end
 				end
 			else
-				for q=1:n𝐯
-					for r=q:n𝐯
-						s = offset𝐯 + q
-						t = offset𝐯 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
-					end
-				end
+
 			end
 		end
 	end

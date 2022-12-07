@@ -57,17 +57,17 @@ RETURN
 """
 function evidenceweight(j::Integer, k::Integer, mpGLM::MixturePoissonGLM)
 	@unpack d𝛏_dB, Ξ = mpGLM
-    @unpack b, b_scalefactor, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
-	if j == 1 || j == Ξ
-		if fit_𝛃
-			𝛃[min(length(𝛃), k)].*d𝛏_dB[j]
-		else
-			𝐯[min(length(𝐯), k)].*d𝛏_dB[j]
-		end
+    @unpack b, b_scalefactor, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
+	kᵥ = min(length(𝐯), k)
+	if (j == 1 || j == Ξ) && fit_Δ𝐯
+		𝐯ₖ = 𝐯[kᵥ] .+ Δ𝐯[kᵥ]
 	else
-		𝐯ₖ = 𝐯[min(length(𝐯), k)]
-		transformedξ = transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-		𝐯ₖ.*transformedξ
+		𝐯ₖ = 𝐯[kᵥ]
+	end
+	if b != 0.0
+		𝐯ₖ.*transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
+	else
+		𝐯ₖ.*d𝛏_dB[j]
 	end
 end
 
@@ -181,28 +181,19 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	if ∇Q.fit_b
 		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
 	end
-	if ∇Q.fit_𝛃
+	if ∇Q.fit_Δ𝐯
 		∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
 	end
 	@inbounds for k = 1:K
-		for i = (1,Ξ)
-			𝐋 = linearpredictor(mpGLM,i,k)
-			for t=1:T
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
-				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				if ∇Q.fit_𝛃
-					∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
-				else
-					∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
-				end
-			end
-		end
-		for i = 2:Ξ-1
+		for i = 1:Ξ
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
 				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
 				∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+				if ∇Q.fit_Δ𝐯 && (i==1 || i==Ξ)
+					∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+				end
 				if ∇Q.fit_b
 					∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k][t] += dQᵢₖ_dLᵢₖ*d𝛚_db[i]
 				end
@@ -232,13 +223,13 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 			∇Q.b[1] = dot(sum(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db), 𝐕, 𝐯[k])
 		end
 	end
-	if ∇Q.fit_𝛃
-		if length(∇Q.𝛃) == K
+	if ∇Q.fit_Δ𝐯
+		if length(∇Q.Δ𝐯) == K
 			@inbounds for k = 1:K
-				mul!(∇Q.𝛃[k], 𝐕', ∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+				mul!(∇Q.Δ𝐯[k], 𝐕', ∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 			end
 		else
-			mul!(∇Q.𝛃[1], 𝐕', sum(∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ))
+			mul!(∇Q.Δ𝐯[1], 𝐕', sum(∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ))
 		end
 	end
 	return nothing
@@ -310,11 +301,11 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real}, ∇ℓglm::Vector{<:
 					∇nℓ[counter] = -v
 				end
 			end
-			if ∇ℓglm.fit_𝛃
-				for 𝛃ₖ in ∇ℓglm.𝛃
-					for β in 𝛃ₖ
+			if ∇ℓglm.fit_Δ𝐯
+				for Δ𝐯ₖ in ∇ℓglm.Δ𝐯
+					for Δv in Δ𝐯ₖ
 						counter+=1
-						∇nℓ[counter] = -β
+						∇nℓ[counter] = -Δv
 					end
 				end
 			end

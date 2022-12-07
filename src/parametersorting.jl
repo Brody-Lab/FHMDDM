@@ -97,12 +97,12 @@ function concatenate_glm_parameters(offset::Integer, trialsets::Vector{<:Trialse
 					indexθ[i][n].𝐯[k][q] = offset + counter
 				end
 			end
-			if θ.fit_𝛃
-				for k in eachindex(θ.𝛃)
-					for q in eachindex(θ.𝛃[k])
+			if θ.fit_Δ𝐯
+				for k in eachindex(θ.Δ𝐯)
+					for q in eachindex(θ.Δ𝐯[k])
 						counter += 1
-						concatenatedθ[counter] = θ.𝛃[k][q]
-						indexθ[i][n].𝛃[k][q] = offset + counter
+						concatenatedθ[counter] = θ.Δ𝐯[k][q]
+						indexθ[i][n].Δ𝐯[k][q] = offset + counter
 					end
 				end
 			end
@@ -195,11 +195,11 @@ function concatenateparameters(θ::GLMθ; includeunfit::Bool=false, initializati
 			concatenatedθ[counter] = θ.𝐯[k][q]
 		end
 	end
-	if includeunfit || θ.fit_𝛃
-		for k in eachindex(θ.𝛃)
-			for q in eachindex(θ.𝛃[k])
+	if includeunfit || θ.fit_Δ𝐯
+		for k in eachindex(θ.Δ𝐯)
+			for q in eachindex(θ.Δ𝐯[k])
 				counter += 1
-				concatenatedθ[counter] = θ.𝛃[k][q]
+				concatenatedθ[counter] = θ.Δ𝐯[k][q]
 			end
 		end
 	end
@@ -347,7 +347,7 @@ ARGUMENT
 -`glmθ`: a struct containing the parameters of a GLMs
 
 OPTIONAL ARGUMENT
--`intialization`: whether only the parameters included in the initialization are counted (thereby excluding `b` and `𝛃`)
+-`intialization`: whether only the parameters included in the initialization are counted (thereby excluding `b` and `Δ𝐯`)
 -`includeunfit`: whether parameters that are not to be fit are to be included
 
 RETURN
@@ -360,9 +360,9 @@ function countparameters(glmθ::GLMθ; initialization::Bool=false, includeunfit:
 	for 𝐯ₖ in glmθ.𝐯
 		counter += length(𝐯ₖ)
 	end
-	if includeunfit || glmθ.fit_𝛃
-		for 𝛃ₖ in glmθ.𝛃
-			counter += length(𝛃ₖ)
+	if includeunfit || glmθ.fit_Δ𝐯
+		for Δ𝐯ₖ in glmθ.Δ𝐯
+			counter += length(Δ𝐯ₖ)
 		end
 	end
 	return counter
@@ -526,11 +526,11 @@ function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; offset::Inte
 			θ.𝐯[k][q] = concatenatedθ[counter]
 		end
 	end
-	if θ.fit_𝛃
-		for k in eachindex(θ.𝛃)
-			for q in eachindex(θ.𝛃[k])
+	if θ.fit_Δ𝐯
+		for k in eachindex(θ.Δ𝐯)
+			for q in eachindex(θ.Δ𝐯[k])
 				counter+=1
-				θ.𝛃[k][q] = concatenatedθ[counter]
+				θ.Δ𝐯[k][q] = concatenatedθ[counter]
 			end
 		end
 	end
@@ -564,10 +564,10 @@ function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}, index::GLMθ
 			θ.𝐯[k][q] = concatenatedθ[index.𝐯[k][q]]
 		end
 	end
-	if θ.fit_𝛃
-		for k in eachindex(θ.𝛃)
-			for q in eachindex(θ.𝛃[k])
-				θ.𝛃[k][q] = concatenatedθ[index.𝛃[k][q]]
+	if θ.fit_Δ𝐯
+		for k in eachindex(θ.Δ𝐯)
+			for q in eachindex(θ.Δ𝐯[k])
+				θ.Δ𝐯[k][q] = concatenatedθ[index.Δ𝐯[k][q]]
 			end
 		end
 	end
@@ -654,11 +654,11 @@ function sortparameters!(θall::Vector{<:Real}, index::GLMθ, θglm::Vector{<:Re
 			θall[index.𝐯[k][q]] = θglm[counter]
 		end
 	end
-	if fit_𝛃
-		for k in eachindex(θ.𝛃)
-			for q in eachindex(index.𝛃[k])
+	if fit_Δ𝐯
+		for k in eachindex(θ.Δ𝐯)
+			for q in eachindex(index.Δ𝐯[k])
 				counter+=1
-				θall[index.𝛃[k][q]] = θglm[counter]
+				θall[index.Δ𝐯[k][q]] = θglm[counter]
 			end
 		end
 	end
