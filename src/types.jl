@@ -246,6 +246,10 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	movementtime_s::TF
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
+	"time when the offset ramp of the photostimulus began"
+	photostimulus_decline_on_s::TF
+	"time when the onset ramp of the photostimulus began"
+	photostimulus_incline_on_s::TF
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
 	"number of timesteps in the trialset preceding this trial"
@@ -387,7 +391,7 @@ Information on the zero-meaned Gaussian prior distribution on the values of the 
 	index𝚽::VI = sort(union(index𝐀...))
 	"square submatrix of the precision matrix after deleting the columns and rows corresponding to the dimensions with infinite variance"
 	𝚽::MR= 𝚲[index𝚽,index𝚽]
-	"indices of 𝐒 within `index𝚽`"
+	"indices of 𝐀 within `index𝚽`"
 	index𝐀_in_index𝚽::VVI = map(indexA->map(indexAᵢⱼ->findfirst(index𝚽.==indexAᵢⱼ), indexA), index𝐀)
 end
 

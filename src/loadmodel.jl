@@ -29,7 +29,7 @@ function Model(datapath::String; prefix::String="results")
     options = Options(nunits, dataMAT["options"])
 	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
 	resultspath = joinpath(dirname(options.datapath), prefix*".mat")
-    if isfile(resultspath)
+    if isfile(resultspath) && !isempty(prefix)
         Model(options, resultspath, trialsets)
     else
         Model(options, trialsets)
@@ -62,7 +62,7 @@ function Model(options::Options, resultspath::String, trialsets::Vector{<:Trials
 			for k in eachindex(glmθ[i][n]["v"])
 				trialsets[i].mpGLMs[n].θ.𝐯[k] .= glmθ[i][n]["v"][k]
 			end
-			for k in eachindex(glmθ[i][n]["beta"])
+			for k in eachindex(glmθ[i][n]["Deltav"])
 				trialsets[i].mpGLMs[n].θ.Δ𝐯[k] .= glmθ[i][n]["Deltav"][k]
 			end
 		end
@@ -240,6 +240,8 @@ function Trialset(options::Options, trialset::Dict)
                       choice=rawtrial["choice"],
 					  movementtime_s=rawtrial["movementtime_s"],
                       ntimesteps=convert(inttype, rawtrial["ntimesteps"]),
+					  photostimulus_incline_on_s=rawtrial["photostimulus_incline_on_s"],
+					  photostimulus_decline_on_s=rawtrial["photostimulus_decline_on_s"],
                       previousanswer=convert(inttype, rawtrial["previousanswer"]),
 					  index_in_trialset = index_in_trialset,
 					  τ₀ = preceding_timesteps,

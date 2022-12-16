@@ -206,6 +206,8 @@ function packagedata(trial::Trial, a_latency_s::AbstractFloat)
 	Dict("choice" => trial.choice,
          "clicktimes" => packagedata(trial.clicks, a_latency_s),
 		 "movementtime_s"=> trial.movementtime_s,
+		 "photostimulus_decline_on_s"=> trial.photostimulus_decline_on_s,
+		 "photostimulus_incline_on_s"=> trial.photostimulus_incline_on_s,
 		 "ntimesteps"=> trial.ntimesteps,
 		 "previousanswer" => trial.previousanswer)
 end

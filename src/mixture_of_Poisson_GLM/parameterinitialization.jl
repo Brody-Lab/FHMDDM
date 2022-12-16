@@ -67,7 +67,11 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 		end
 	else
 		θ.𝐯[1] .= 1.0 .- 2rand(length(θ.𝐯[1]))
-		θ.Δ𝐯[1] .= -θ.𝐯[1]
+		if θ.fit_Δ𝐯
+			θ.Δ𝐯[1] .= -θ.𝐯[1]
+		else
+			θ.Δ𝐯[1] .= 0.0
+		end
 	end
 	for k = 1:length(θ.𝐯)
 		θ.𝐯[k] ./= options.tbf_accu_scalefactor
@@ -246,7 +250,7 @@ function initialize_GLM_parameters!(model::Model; iterations::Integer=5, show_tr
 		printseparator()
 	end
 	for j = 1:iterations
-		posterior_on_spikes!(memory, model)
+		posteriors!(memory, P, model)
 		for i in eachindex(model.trialsets)
 			for n in eachindex(model.trialsets[i].mpGLMs)
 				maximize_expectation_of_loglikelihood!(model.trialsets[i].mpGLMs[n], memory.γ[i])

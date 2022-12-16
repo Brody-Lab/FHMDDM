@@ -452,14 +452,14 @@ function sample(model::Model; folderpath::String = dirname(model.options.datapat
 	predictions = Predictions(model; nsamples=1)
 	newtrialsets = 	map(model.trialsets, predictions.p𝑑, predictions.λΔt) do trialset, p𝑑, λΔt
 						newtrials =	map(trialset.trials, p𝑑) do oldtrial, p𝑑
-										Trial(clicks=oldtrial.clicks,
-						                      choice=Bool(p𝑑),
-											  movementtime_s=oldtrial.movementtime_s,
-						                      ntimesteps=oldtrial.ntimesteps,
-						                      previousanswer=oldtrial.previousanswer,
-											  index_in_trialset=oldtrial.index_in_trialset,
-											  τ₀=oldtrial.τ₀,
-											  trialsetindex=oldtrial.trialsetindex)
+										values = map(fieldnames(Trial)) do fieldname
+													if fieldname == :choice
+														Bool(p𝑑)
+													else
+														getfield(oldtrial, fieldname)
+													end
+												end
+										Trial(values...)
 									end
 						new_mpGLMs = map(trialset.mpGLMs, λΔt) do old_mpGLM, λΔt
 										values = map(fieldnames(MixturePoissonGLM)) do fieldname
@@ -494,21 +494,25 @@ Generate and save samples of the data
 ARGUMENT
 -`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
 -`nsamples`: number of samples to make
+
+RETURN
+-`samplepaths`: a vector of String indicating the path to the data of each sample
 """
 function samples(model::Model, nsamples::Integer)
 	@assert nsamples > 0
 	pad = ceil(Int, log10(nsamples))
 	open(joinpath(dirname(model.options.datapath), "samplepaths.txt"), "w") do io
+		samplepaths = Vector{String}(undef, nsamples)
 	    for i=1:nsamples
 	        folderpath = joinpath(dirname(model.options.datapath),"sample"*string(i;pad=pad))
 	        !isdir(folderpath) && mkdir(folderpath)
-	        filepath = joinpath(folderpath, "data.mat")
-	        println(io, filepath)
+	        samplepaths[i] = joinpath(folderpath, "data.mat")
+	        println(io, samplepaths[i])
 	        sampledmodel = sample(model; folderpath=folderpath)
 	        savedata(sampledmodel)
 	    end
+		return samplepaths
 	end
-	return nothing
 end
 
 """

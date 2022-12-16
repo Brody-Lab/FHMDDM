@@ -7,20 +7,17 @@ The value maximized in the optimization is specified in `model.options.objective
 
 MODIFIED ARGUMENT
 -`model`
-
-RETURN
--depending on the `model.options.objective`, output of `maximizeevidence!`, `maximizeposterior!`, or `maximizelikelihood!`
 ```
 """
 function learnparameters!(model::Model; initialize::Bool=true, iterations::Integer=500, show_trace::Bool=false)
 	@unpack objective = model.options
 	initialize && initializeparameters!(model; show_trace=show_trace)
 	if objective == "evidence"
-		output = maximizeevidence!(model;iterations=iterations)
+		maximizeevidence!(model;iterations=iterations)
 	elseif objective == "posterior"
-		output = maximizeposterior!(model; iterations=iterations)
+		maximizeposterior!(model; iterations=iterations)
 	elseif objective == "likelihood"
-		output = maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
+		maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=iterations)
 	elseif objective == "initialization"
 	else
 		error(objective, " is not a recognized objective.")
