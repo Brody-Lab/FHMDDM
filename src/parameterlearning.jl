@@ -35,7 +35,7 @@ The parameters specifying the transition probability of the coupling variable ar
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
 """
-function initializeparameters!(model::Model; show_trace::Bool=true)
+function initializeparameters!(model::Model; show_trace::Bool=false)
 	if !isempty(concatenate_latent_parameters(model)[1])
 		fitonlychoices!(model; show_trace=show_trace)
 	end
