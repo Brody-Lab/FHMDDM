@@ -84,34 +84,42 @@ Model settings
 	gain_state_dependent::TB=true
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty for the accumulator transformation parameter"
+	"whether the L2 shrinkage penalty for the accumulator transformation parameter is learned, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum. "
+	L2_b_fit::TB=true
 	L2_b_max::TF=1e2
 	L2_b_min::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
 	L2_choices_max::TF=1e2
 	L2_choices_min::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty for the change in the encoding weight accumulated evidence after commitment"
+	"whether the L2 shrinkage penalty for the change in the encoding weight accumulated evidence after commitment is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_Δ𝐯_fit::TB=true
 	L2_Δ𝐯_max::TF=1e2
 	L2_Δ𝐯_min::TF=1e-2
 	"maximum and minimum L2 shrinkage penalty for the state-dependent gain"
 	L2_gain_max::TF=1e2
 	L2_gain_min::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty of the weight of the post-spike filter"
+	"whether the L2 shrinkage penalty of the weight of the post-spike filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_hist_fit::TB=true
 	L2_hist_max::TF=1e1
 	L2_hist_min::TF=1e-3
-	"maximum and minimum L2 shrinkage penalty of the weight of the pre-movement filter"
+	"whether the L2 shrinkage penalty of the weight of the pre-movement filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_move_fit::TB=true
 	L2_move_max::TF=1e1
 	L2_move_min::TF=1e-3
-	"maximum and minimum L2 shrinkage penalty of the weight of the post-photostimulus filter"
+	"whether the L2 shrinkage penalty of the weight of the post-photostimulus filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_phot_fit::TB=true
 	L2_phot_max::TF=1e1
 	L2_phot_min::TF=1e-3
-	"maximum and minimum L2 shrinkage penalty of the weight of the post-stereoclick filter"
+	"whether the L2 shrinkage penalty of the weight of the post-stereoclick filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_time_fit::TB=true
 	L2_time_max::TF=1e1
 	L2_time_min::TF=1e-3
-	"maximum and minimum L2 shrinkage penalty for a latent variable parameter"
+	"whether the L2 shrinkage penalty for a latent variable parameter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_latent_fit::TB=true
 	L2_latent_max::TF=1e2
 	L2_latent_min::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty for the weight of the pre-commitment encoding of accumulated evidence"
+	"whether the L2 shrinkage penalty for the weight of the pre-commitment encoding of accumulated evidence is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_v_fit::TB=true
 	L2_v_max::TF=1e2
 	L2_v_min::TF=1e-2
 	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"

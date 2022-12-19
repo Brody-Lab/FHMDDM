@@ -12,7 +12,7 @@ OUTPUT
 """
 function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
     indexθ = indexparameters(options, trialsets)
-	𝐀, index𝐀 = shrinkagematrices(indexθ.latentθ)
+	𝐀, index𝐀 = shrinkagematrices(indexθ.latentθ, options)
 	𝛂max = options.L2_latent_max .*ones(length(𝐀))
 	𝛂min = options.L2_latent_min .*ones(length(𝐀))
 	for glmθs_each_trialset in indexθ.glmθ
@@ -29,26 +29,29 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 end
 
 """
-	shrinkagematrices(indexθlatent)
+	shrinkagematrices(indexθlatent, options)
 
 Return the sum of squares matrix of the latent variable parameters
 
 ARGUMENT
 -`indexθlatent`: structure indicating the order of each latent variable parameter if all parameters were concatenated into a vector
+-`options`: settings of the model
 
 RETURN
 -`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
 -`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 """
-function shrinkagematrices(indexθlatent::Latentθ)
+function shrinkagematrices(indexθlatent::Latentθ, options::Options)
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
-	for field in fieldnames(Latentθ)
-		i = getfield(indexθlatent, field)[1]
-		if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
-		else
-			𝐀 = vcat(𝐀, [ones(1,1)])
-			index𝐀 = vcat(index𝐀, [[i]])
+	if options.L2_latent_fit
+		for field in fieldnames(Latentθ)
+			i = getfield(indexθlatent, field)[1]
+			if i == 0 || field == :Aᶜ₁₁ || field == :Aᶜ₂₂ || field == :πᶜ₁
+			else
+				𝐀 = vcat(𝐀, [ones(1,1)])
+				index𝐀 = vcat(index𝐀, [[i]])
+			end
 		end
 	end
 	return 𝐀, index𝐀
@@ -88,7 +91,7 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	𝛂max = typeof(1.0)[]
 	𝛂min = typeof(1.0)[]
 	for indexᵢₙ in indexθglm
-		if indexᵢₙ.fit_b
+		if indexᵢₙ.fit_b & options.L2_b_fit
 			𝐀 = vcat(𝐀, [Aevtr])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
 			𝛂max = vcat(𝛂max, options.L2_b_max)
@@ -100,37 +103,39 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 			𝛂max = vcat(𝛂max, options.L2_gain_max)
 			𝛂min = vcat(𝛂min, options.L2_gain_min)
 		end
-		if nbaseshist > 0
+		if nbaseshist > 0 & options.L2_hist_fit
 			𝐀 = vcat(𝐀, [Ahist])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_hist]])
 			𝛂max = vcat(𝛂max, options.L2_hist_max)
 			𝛂min = vcat(𝛂min, options.L2_hist_min)
 		end
-		if nbasestime > 0
+		if nbasestime > 0 & options.L2_time_fit
 			𝐀 = vcat(𝐀, [Atime])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_time]])
 			𝛂max = vcat(𝛂max, options.L2_time_max)
 			𝛂min = vcat(𝛂min, options.L2_time_min)
 		end
-		if nbasesmove > 0
+		if nbasesmove > 0 & options.L2_move_fit
 			𝐀 = vcat(𝐀, [Amove])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_move]])
 			𝛂max = vcat(𝛂max, options.L2_move_max)
 			𝛂min = vcat(𝛂min, options.L2_move_min)
 		end
-		if nbasesphot > 0
+		if nbasesphot > 0 options.L2_phot_fit
 			𝐀 = vcat(𝐀, [Aphot])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_phot]])
 			𝛂max = vcat(𝛂max, options.L2_phot_max)
 			𝛂min = vcat(𝛂min, options.L2_phot_min)
 		end
-		if nbasesaccu > 0
+		if options.L2_v_fit
 			for indexᵢₙ𝐯ₖ in indexᵢₙ.𝐯
 				𝐀 = vcat(𝐀, [Aaccu])
 				index𝐀 = vcat(index𝐀, [indexᵢₙ𝐯ₖ])
 				𝛂max = vcat(𝛂max, options.L2_v_max)
 				𝛂min = vcat(𝛂min, options.L2_v_min)
 			end
+		end
+		if options.L2_Δ𝐯_fit
 			if indexᵢₙ.fit_Δ𝐯
 				for indexᵢₙΔ𝐯ₖ in indexᵢₙ.Δ𝐯
 					𝐀 = vcat(𝐀, [Aaccu])
