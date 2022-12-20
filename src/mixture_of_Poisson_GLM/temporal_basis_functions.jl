@@ -111,11 +111,11 @@ function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, ends0::Bool
 	if isnan(hz) || (Tmax < 1)
 		return fill(1.0, 0, 0)
 	else
-		D = max(1, ceil(Int, hz*(Tmax*Δt)))
-	    if D == 1
+	    if hz == 0
 			x = scalefactor/sqrt(Tmax)
 	        Φ = fill(x,Tmax,1)
 	    else
+			D = max(1, ceil(Int, hz*(Tmax*Δt)))
 	        Φ = unitarybasis(begins0, ends0, D, Tmax, period, stretch).*scalefactor
 	    end
 	    return Φ
@@ -400,13 +400,9 @@ julia> maximum(abs.(Φ'*Φ - I))
 ```
 """
 function unitarybasis(begins0::Bool, ends0::Bool, D::Integer, nbins::Integer, period::Real, stretch::Real)
-	if D == 1
-		fill(1/√nbins, nbins, 1)
-	else
-		Φ = raisedcosines(begins0, ends0, D, nbins, period, stretch)
-		F = svd(Φ)
-		F.U[:,1:D]
-	end
+	Φ = raisedcosines(begins0, ends0, D, nbins, period, stretch)
+	F = svd(Φ)
+	F.U[:,1:D]
 end
 
 """
