@@ -35,13 +35,15 @@ The parameters specifying the transition probability of the coupling variable ar
 MODIFIED ARGUMENT
 -`model`: an instance of the factorial hidden Markov drift-diffusion model
 """
-function initializeparameters!(model::Model; show_trace::Bool=false)
-	if !isempty(concatenate_latent_parameters(model)[1])
+function initializeparameters!(model::Model; printtime::Bool=true, show_trace::Bool=false)
+	latentθfit = concatenateparameters(model.θreal, model.options)
+	if !isempty(latentθfit)
 		fitonlychoices!(model; show_trace=show_trace)
 	end
-	println("Initializing GLM parameters")
-	stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
-	println("Initializing the GLM parameters took ", stats.time, " seconds")
+	if printtime
+		stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
+		println("Initializing the GLM parameters took ", stats.time, " seconds")
+	end
 	return nothing
 end
 
@@ -96,7 +98,7 @@ function maximizeposterior!(model::Model;
                                   show_trace=show_trace,
 								  store_trace=store_trace,
                                   x_tol=x_tol)
-	θ₀ = concatenateparameters(model)[1]
+	θ₀ = concatenateparameters(model)
 	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
     θₘₐₚ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₐₚ, memory.indexθ)
@@ -118,7 +120,7 @@ end
 
 Log of the posterior probability of the parameters given the data
 """
-logposterior(model::Model) = logposterior!(model, Memoryforgradient(model), concatenateparameters(model)[1])
+logposterior(model::Model) = logposterior!(model, Memoryforgradient(model), concatenateparameters(model))
 
 """
 	logposterior!(model, memory, concatenatedθ)

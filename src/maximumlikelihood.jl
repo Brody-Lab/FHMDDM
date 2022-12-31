@@ -42,7 +42,7 @@ function maximizelikelihood!(model::Model,
                                   show_trace=show_trace,
 								  store_trace=store_trace,
                                   x_tol=x_tol)
-	θ₀ = concatenateparameters(model)[1]
+	θ₀ = concatenateparameters(model)
 	optimizationresults = Optim.optimize(f, g!, θ₀, optimizer, Optim_options)
     θₘₗ = Optim.minimizer(optimizationresults)
 	sortparameters!(model, θₘₗ, memory.indexθ)
@@ -79,7 +79,7 @@ RETURN
 """
 function maximizelikelihood!(model::Model, optimizer::Flux.Optimise.AbstractOptimiser; iterations::Integer = 3000)
 	memory = Memoryforgradient(model)
-	θ = concatenateparameters(model)[1]
+	θ = concatenateparameters(model)
 	∇ = similar(θ)
 	local x, min_err, min_θ
 	min_err = typemax(eltype(θ)) #dummy variables
@@ -111,7 +111,7 @@ end
 
 Log of the likelihood of the data given the parameters
 """
-loglikelihood(model::Model) = loglikelihood!(model, Memoryforgradient(model), concatenateparameters(model)[1])
+loglikelihood(model::Model) = loglikelihood!(model, Memoryforgradient(model), concatenateparameters(model))
 
 """
     loglikelihood!(model, memory, concatenatedθ)
@@ -324,7 +324,10 @@ function ∇negativeloglikelihood!(∇nℓ::Vector{<:Real},
 		end
 	end
 	native2real!(∇nℓ, memory.indexθ.latentθ, model)
-	∇negativeloglikelihood!(∇nℓ, memory.∇ℓglm, indexfit)
+	∇ℓglm = vcat((vcat((concatenateparameters(∇) for ∇ in ∇s)...) for ∇s in memory.∇ℓglm)...)
+	for i in eachindex(∇ℓglm)
+		∇nℓ[indexfit+i] = -∇ℓglm[i]
+	end
 	return nothing
 end
 
@@ -497,13 +500,6 @@ ARGUMENT
 
 OUTPUT
 -an instance of the custom type `Memoryforgradient`, which contains the memory quantities
--`P`: an instance of `Probabilityvector`
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_27_test/data.mat"; randomize=true);
-julia> memory = FHMDDM.Memoryforgradient(model)
 ```
 """
 function Memoryforgradient(model::Model; choicemodel::Bool=false)
@@ -529,7 +525,8 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 		concatenatedθ, indexθ = concatenate_choice_related_parameters(model)
 		f = collect(zeros(Ξ,1) for t=1:maxtimesteps)
 	else
-		concatenatedθ, indexθ = concatenateparameters(model)
+		concatenatedθ = concatenateparameters(model)
+		indexθ = indexparameters(model)
 		f = collect(zeros(Ξ,K) for t=1:maxtimesteps)
 	end
 	indexθ_pa₁ = [3,6,11,13]
@@ -541,7 +538,7 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 	nθ_paₜaₜ₋₁ = length(indexθ_paₜaₜ₋₁)
 	∇ℓglm = map(model.trialsets) do trialset
 				map(trialset.mpGLMs) do mpGLM
-					initialize(mpGLM.θ)
+					GLMθ(eltype(mpGLM.θ.𝐮), mpGLM.θ)
 				end
 			end
 	one_minus_Ξminpa = 1.0 - Ξ*minpa
@@ -633,6 +630,23 @@ function maximum_number_of_time_steps(model::Model)
 	end
 	return maxtimesteps
 end
+
+"""
+	update!(memory, model)
+
+Update the memory quantities
+
+MODIFIED ARGUMENT
+-`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
+
+UNMODIFIED ARGUMENT
+-`model`: structure with information concerning a factorial hidden Markov drift-diffusion model
+
+RETURN
+-`P`: a composite of the type `Probabilityvector` that contains quantifies used for computing the probability vectors of the accumulator variables and its first and second derivatives
+"""
+
+update!(memory::Memoryforgradient, model::Model) = update!(memory, model, concatenateparameters(model))
 
 """
 	update!(model, memory, concatenatedθ)

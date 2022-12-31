@@ -22,8 +22,8 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 		𝛂max = vcat(𝛂max, 𝛂max_glm)
 		𝛂min = vcat(𝛂min, 𝛂min_glm)
 	end
-	N = countparameters(options, trialsets)
-    gaussianprior = GaussianPrior(𝐀=𝐀, 𝛂=sqrt.(𝛂min.*𝛂max), 𝛂min=𝛂min, 𝛂max=𝛂max, index𝐀=index𝐀, 𝚲=zeros(N,N))
+	nparameters = concatenate(indexθ)[end]
+    gaussianprior = GaussianPrior(𝐀=𝐀, 𝛂=sqrt.(𝛂min.*𝛂max), 𝛂min=𝛂min, 𝛂max=𝛂max, index𝐀=index𝐀, 𝚲=zeros(nparameters,nparameters))
     precisionmatrix!(gaussianprior)
     return gaussianprior
 end
@@ -79,7 +79,6 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	nbasesmove = length(𝐮indices_move)
 	nbasesphot = length(𝐮indices_phot)
 	nbasesaccu = length(indexθglm[1].𝐯[1])
-	Again = ones(1,1).*options.tbf_time_scalefactor^2
 	Ahist = zeros(nbaseshist,nbaseshist) + options.tbf_hist_scalefactor^2*I # computations with `Diagonal` are slower
 	Atime = zeros(nbasestime,nbasestime) + options.tbf_time_scalefactor^2*I
 	Amove = zeros(nbasesmove,nbasesmove) + options.tbf_move_scalefactor^2*I
@@ -91,18 +90,6 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 	𝛂max = typeof(1.0)[]
 	𝛂min = typeof(1.0)[]
 	for indexᵢₙ in indexθglm
-		if indexᵢₙ.fit_b & options.L2_b_fit
-			𝐀 = vcat(𝐀, [Aevtr])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
-			𝛂max = vcat(𝛂max, options.L2_b_max)
-			𝛂min = vcat(𝛂min, options.L2_b_min)
-		end
-		for k = 2:length(indexᵢₙ.𝐠)
-			𝐀 = vcat(𝐀, [Again])
-			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐠[k:k]])
-			𝛂max = vcat(𝛂max, options.L2_gain_max)
-			𝛂min = vcat(𝛂min, options.L2_gain_min)
-		end
 		if nbaseshist > 0 & options.L2_hist_fit
 			𝐀 = vcat(𝐀, [Ahist])
 			index𝐀 = vcat(index𝐀, [indexᵢₙ.𝐮[𝐮indices_hist]])
@@ -144,6 +131,12 @@ function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
 					𝛂min = vcat(𝛂min, options.L2_Δ𝐯_min)
 				end
 			end
+		end
+		if indexᵢₙ.fit_b & options.L2_b_fit
+			𝐀 = vcat(𝐀, [Aevtr])
+			index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
+			𝛂max = vcat(𝛂max, options.L2_b_max)
+			𝛂min = vcat(𝛂min, options.L2_b_min)
 		end
 	end
 	return 𝐀, index𝐀, 𝛂max, 𝛂min

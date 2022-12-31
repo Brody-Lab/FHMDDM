@@ -9,13 +9,6 @@ ARGUMENT
 function test(datapath::String; maxabsdiff::Real=1e-8)
 	println("testing `"*datapath*"`")
 	printseparator()
-	println("testing evidence optimization")
-	maximizeevidence!(Model(datapath))
-	printseparator()
-	println("testing hessian of the log-likelihood of all the data")
-	println("	- `∇∇loglikelihood(model)`")
-	test_∇∇loglikelihood(datapath; maxabsdiff=maxabsdiff)
-	printseparator()
     println("testing the hessian of the expectation of the log-likelihood of one neuron's spike train")
     println("	- `expectation_of_∇∇loglikelihood(γ, mpGLM, x)`")
     println("	- used for parameter initialization")
@@ -34,6 +27,10 @@ function test(datapath::String; maxabsdiff::Real=1e-8)
 	println("	- `∇negativelogposterior(model)`")
 	test_∇negativelogposterior(datapath; maxabsdiff=maxabsdiff)
 	printseparator()
+	println("testing hessian of the log-likelihood of all the data")
+	println("	- `∇∇loglikelihood(model)`")
+	test_∇∇loglikelihood(datapath; maxabsdiff=maxabsdiff)
+	printseparator()
     println("testing gradient of log evidence of all the data")
 	println("	- `∇logevidence(model)`")
     test_∇logevidence(datapath; maxabsdiff=maxabsdiff, simulate=false)
@@ -50,6 +47,9 @@ function test(datapath::String; maxabsdiff::Real=1e-8)
 	printseparator()
 	println("testing maximum a posteriori estimation")
 	maximizeposterior!(Model(datapath))
+	printseparator()
+	println("testing evidence optimization")
+	maximizeevidence!(Model(datapath))
     printseparator()
     println("saving model summary and predictions in `test.mat`")
 	analyzeandsave(Model(datapath); prefix="test")
@@ -127,12 +127,12 @@ function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1
             mpGLM.θ.b[1] = 1 - 2rand()
         end
     end
-    γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
-    ∇Q = FHMDDM.GLMθ(mpGLM.θ, eltype(mpGLM.θ.𝐮))
-    FHMDDM.expectation_∇loglikelihood!(∇Q, γ, mpGLM)
-    ghand = FHMDDM.concatenateparameters(∇Q)
-    concatenatedθ = FHMDDM.concatenateparameters(mpGLM.θ)
-    f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x)
+    γ = randomposterior(mpGLM; rng=MersenneTwister(1234))
+    ∇Q = GLMθ(eltype(mpGLM.θ.𝐮), mpGLM.θ)
+    expectation_∇loglikelihood!(∇Q, γ, mpGLM)
+    ghand = concatenateparameters(∇Q)
+    concatenatedθ = concatenateparameters(mpGLM.θ)
+    f(x) = expectation_of_loglikelihood(γ, mpGLM, x)
     gauto = ForwardDiff.gradient(f, concatenatedθ)
 	maxabsΔ∇Q = maximum(abs.(gauto .- ghand))
     println("   max(|Δgradient|): ", maxabsΔ∇Q)
@@ -158,7 +158,8 @@ function test_∇negativeloglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
             end
         end
     end
-    concatenatedθ, indexθ = concatenateparameters(model)
+    concatenatedθ = concatenateparameters(model)
+	indexθ = indexparameters(model)
     ∇nℓ = similar(concatenatedθ)
     memory = FHMDDM.Memoryforgradient(model)
     FHMDDM.∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)
@@ -190,7 +191,8 @@ function test_∇∇loglikelihood(datapath::String; maxabsdiff::Real=1e-8)
             end
         end
     end
-	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+	concatenatedθ = concatenateparameters(model)
+	indexθ = indexparameters(model)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood(model)
 	f(x) = FHMDDM.loglikelihood(x, indexθ, model)
 	ℓauto = f(concatenatedθ)
@@ -227,7 +229,8 @@ function test_∇negativelogposterior(datapath::String; maxabsdiff::Real=1e-8)
             end
         end
     end
-	concatenatedθ, indexθ = FHMDDM.concatenateparameters(model)
+	concatenatedθ = concatenateparameters(model)
+	indexθ = indexparameters(model)
 	memory = FHMDDM.Memoryforgradient(model)
 	ℓhand = FHMDDM.logposterior!(model, memory, concatenatedθ)
 	∇hand = similar(concatenatedθ)
@@ -262,7 +265,8 @@ RETURN
 function test_∇logevidence(datapath::String; maxabsdiff::Real=1e-8, simulate::Bool=false)
     model = Model(datapath)
 	@unpack 𝛂, index𝐀, index𝚽, 𝚽 = model.gaussianprior
-	𝛉, index𝛉 = FHMDDM.concatenateparameters(model)
+	𝛉 = concatenateparameters(model)
+	index𝛉 = indexparameters(model)
 	𝐱 = 1 .- 2rand(length(𝛂))
 	FHMDDM.real2native!(model.gaussianprior, 𝐱)
 	FHMDDM.precisionmatrix!(model.gaussianprior)
@@ -283,7 +287,7 @@ function test_∇logevidence(datapath::String; maxabsdiff::Real=1e-8, simulate::
 		FHMDDM.initializeparameters!(model; show_trace=false)
 		FHMDDM.maximizeposterior!(model; show_trace=false);
 		𝐇 = FHMDDM.∇∇loglikelihood(model)[3][index𝚽, index𝚽]
-		𝐰₀ = FHMDDM.concatenateparameters(model)[1][index𝚽]
+		𝐰₀ = concatenateparameters(model)[index𝚽]
 		𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
 		𝐱 = 1 .- 2rand(length(𝛂)) # only if we are not simulating because changing the hyperparameters might make the Hessian of the posterior not positive-definite
 	end

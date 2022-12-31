@@ -86,7 +86,7 @@ RETURN
 """
 function posteriors(model::Model)
 	memory = Memoryforgradient(model)
-	P = update!(memory, model, concatenateparameters(model)[1])
+	P = update!(memory, model)
 	posteriors!(memory, P, model)
 	return memory.γ
 end
@@ -219,7 +219,7 @@ RETURN
 
 """
 function joint_posteriors_of_coupling!(memory::Memoryforgradient, model::Model, ∑χ::Matrix{<:Real}, ∑γ::Vector{<:Real})
-	P = update!(memory, model, concatenateparameters(model)[1])
+	P = update!(memory, model)
 	memory.ℓ .= 0.0
 	∑χ .= 0.0
 	∑γ .= 0.0
@@ -454,7 +454,7 @@ RETURN
 function randomposterior(mpGLM::MixturePoissonGLM; rng::AbstractRNG=MersenneTwister())
 	T = length(mpGLM.𝐲)
 	Ξ = length(mpGLM.d𝛏_dB)
-	K = max(length(mpGLM.θ.𝐠), length(mpGLM.θ.𝐯))
+	K = length(mpGLM.θ.𝐯)
 	γ = map(index->zeros(T), CartesianIndices((Ξ,K)))
 	for t=1:T
 		randγₜ = rand(rng,Ξ,K)

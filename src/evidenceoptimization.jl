@@ -30,7 +30,8 @@ function maximizeevidence!(model::Model;
 						x_reltol::Real=1e-1)
 	@unpack index𝚽, 𝛂min, 𝛂max = model.gaussianprior
 	memory = FHMDDM.Memoryforgradient(model)
-	best𝛉, index𝛉 = concatenateparameters(model)
+	best𝛉 = concatenateparameters(model)
+	index𝛉 = indexparameters(model)
 	best𝐸 = -Inf
 	best𝛂 = copy(model.gaussianprior.𝛂)
 	n_consecutive_failures = 0
@@ -48,13 +49,13 @@ function maximizeevidence!(model::Model;
 				end
 			else
 				verbose && println("Outer iteration: ", i, ": because of a line search failure, Gaussian noise is added to the parameter values")
-				𝛉 = concatenateparameters(model)[1]
+				𝛉 = concatenateparameters(model)
 				𝛉 .+= randn(length(𝛉))
 				sortparameters!(model, 𝛉, index𝛉)
 			end
 		else
 			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
-			𝛉₀ = concatenateparameters(model)[1] # exact posterior mode
+			𝛉₀ = concatenateparameters(model) # exact posterior mode
 			stats = @timed ∇∇loglikelihood(model)[3][index𝚽, index𝚽]
 			𝐇 = stats.value
 			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
@@ -178,7 +179,7 @@ function maximizeevidence!(memory::Memoryforgradient,
 	𝐰₀ = 𝛉₀[index𝚽]
 	𝐁₀𝐰₀ = (𝚽-𝐇)*𝐰₀
 	𝐱₀ = native2real(gaussianprior)
-	𝛉 = concatenateparameters(model)[1]
+	𝛉 = concatenateparameters(model)
 	∇nℓ = similar(𝛉)
 	f(𝐱) = -logevidence!(memory, model, 𝛉, 𝐁₀𝐰₀, 𝐇, 𝐱)
 	g!(∇n𝐸, 𝐱) = ∇negativelogevidence!(memory, model, ∇n𝐸, ∇nℓ, 𝛉, 𝐁₀𝐰₀, 𝐇, 𝐱)
@@ -295,7 +296,8 @@ function logevidence(𝐁₀𝐰₀::Vector{<:Real},
 	@unpack index𝚽, 𝚽 = gaussianprior
 	𝐁 = 𝚽-𝐇
     𝐰 = 𝐁 \ 𝐁₀𝐰₀
-	𝛉, index𝛉 = concatenateparameters(model)
+	𝛉 = concatenateparameters(model)
+	index𝛉 = indexparameters(model)
 	𝛉 = 𝛉 .- zero(type)
 	𝛉[index𝚽] .= 𝐰
 	ℓ = loglikelihood(𝛉, index𝛉, model)

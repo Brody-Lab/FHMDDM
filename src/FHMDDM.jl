@@ -15,6 +15,7 @@ export  analyzeandsave,
         concatenateparameters,
         crossvalidate,
         expectedemissions,
+        indexparameters,
         initializeparameters!,
         initialize_for_stochastic_transition!,
         Model,
@@ -47,6 +48,7 @@ include("maximumlikelihood.jl")
 include("mixture_of_Poisson_GLM/accumulatortransformation.jl")
 include("mixture_of_Poisson_GLM/mixture_of_Poisson_GLM.jl")
 include("mixture_of_Poisson_GLM/parameterinitialization.jl")
+include("mixture_of_Poisson_GLM/parametersorting.jl")
 include("mixture_of_Poisson_GLM/Poisson.jl")
 include("mixture_of_Poisson_GLM/temporal_basis_functions.jl")
 include("parameterlearning.jl")

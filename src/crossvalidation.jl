@@ -15,7 +15,7 @@ OUTPUT
 """
 function crossvalidate(kfold::Integer, model::Model; choicesonly::Bool=false)
     cvindices = CVIndices(model, kfold)
-	trainingmodels = pmap(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
+	trainingmodels = map(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
 	trainingsummaries = collect(Summary(trainingmodel) for trainingmodel in trainingmodels)
 	testmodels = collect(test(cvindex, model, trainingmodel) for (cvindex, trainingmodel) in zip(cvindices, trainingmodels))
 	rll_choice, rll_spikes = relative_loglikelihood(cvindices, testmodels, trainingmodels)
@@ -40,14 +40,14 @@ RETURN
 """
 function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false)
 	θ₀native = FHMDDM.randomize_latent_parameters(model.options)
-	training_trialsets = FHMDDM.trainingset(cvindices, model.trialsets)
-	gaussianprior = FHMDDM.GaussianPrior(model.options, training_trialsets)
+	training_trialsets = trainingset(cvindices, model.trialsets)
+	gaussianprior = GaussianPrior(model.options, training_trialsets)
 	trainingmodel = Model(trialsets = training_trialsets,
 						  options = model.options,
 						  gaussianprior = gaussianprior,
 						  θ₀native = θ₀native,
 						  θnative = FHMDDM.copy(θ₀native),
-						  θreal = FHMDDM.native2real(model.options, θ₀native))
+						  θreal = native2real(model.options, θ₀native))
 	if choicesonly
 		fitonlychoices!(trainingmodel)
 	else
@@ -139,7 +139,7 @@ function relative_loglikelihood(testmodel::Model, trainingmodel::Model)
 	memory = Memoryforgradient(testmodel)
 	@unpack Aᵃinput, Aᵃsilent, Aᶜ, πᶜ, K, Ξ = memory
 	@unpack θnative = testmodel
-	P = update!(memory, testmodel, concatenateparameters(testmodel)[1])
+	P = update!(memory, testmodel)
 	ℓ𝑑 = map(trialset->fill(NaN, length(trialset.trials)), testmodel.trialsets)
 	ℓ𝑦 = map(trialset->zeros(length(trialset.mpGLMs)), testmodel.trialsets)
 	p𝑦 = zeros(Ξ,K)
@@ -266,7 +266,7 @@ function test(cvindices::CVIndices, model::Model, trainingmodel::Model)
     testtrialsets = testingset(cvindices, model.trialsets)
 	for i in eachindex(testtrialsets)
 		for n in eachindex(testtrialsets[i].mpGLMs)
-			update!(testtrialsets[i].mpGLMs[n].θ, trainingmodel.trialsets[i].mpGLMs[n].θ)
+			sortparameters!(testtrialsets[i].mpGLMs[n].θ, trainingmodel.trialsets[i].mpGLMs[n].θ)
 		end
 	end
 	Model(trialsets = testtrialsets,

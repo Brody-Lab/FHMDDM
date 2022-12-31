@@ -17,7 +17,7 @@ function ∇∇loglikelihood(model::Model)
 	if model.options.scalechoiceLL
 		∇∇scalechoiceLL!(ℓ, ∇ℓ, ∇∇ℓ, model)
 	end
-	indexθ = concatenateparameters(model)[2]
+	indexθ = indexparameters(model)
 	concatenatedindices = concatenate(indexθ; includeunfit=true)
 	isfitted = concatenatedindices .> 0
 	if !all(isfitted)
@@ -430,7 +430,7 @@ RETURN
 function linearpredictor(mpGLMs::Vector{<:MixturePoissonGLM})
 	map(mpGLMs) do mpGLM
 		Ξ = length(mpGLM.d𝛏_dB)
-		K = max(length(mpGLM.θ.𝐠), length(mpGLM.θ.𝐯))
+		K = length(mpGLM.θ.𝐯)
 		map(CartesianIndices((Ξ,K))) do index
 			j = index[1]
 			k = index[2]
@@ -481,7 +481,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 		end
 	end
 	Ξ = length(𝛚[1])
-	K = max(length(mpGLMs[1].θ.𝐠), length(mpGLMs[1].θ.𝐯))
+	K = length(mpGLMs[1].θ.𝐯)
 	@inbounds for t = 1:ntimesteps
 		τ = t + offset
 		for ij in eachindex(pY[t])
@@ -565,7 +565,10 @@ UNMODIFIED ARGUMENT
 -`Δt`: width of time step
 -`𝐋`: linear predictors. Element `𝐋[i,j][τ]` corresponds to the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
 -`λ`: Conditional Poisson whose element λ[i,j] corresponds to a(t)=ξ(i), c(t)=j
--`offset`: the time index in the trialset corresponding to the time index 0 in the trial
+-`mpGLM`: a composite containing the data and parameters of a Poisson mixture generalized linear model
+-`𝛚`: transformed values of the accumulator
+-`d𝛚_db`: first derivative of the transformed values of the accumulator with respect to the transformation parameter
+-`d²𝛚_db²`: second derivative of the transformed values of the accumulator with respect to the transformation parameter
 -`τ` time step in the trialset
 """
 function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
@@ -580,132 +583,75 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										d²𝛚_db²::Vector{<:Real},
 										τ::Integer)
 	@unpack 𝐗, Ξ, 𝐕, 𝐲 = mpGLM
-	@unpack b, 𝐠, 𝐮, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
-	K𝐠 = length(𝐠)
-	K𝐯 = length(𝐯)
-	K = max(K𝐠, K𝐯)
+	@unpack b, 𝐮, 𝐯, Δ𝐯 = mpGLM.θ
+	K = length(𝐯)
 	n𝐮 = length(𝐮)
-	offset𝐮 = K𝐠
-	n𝐠𝐮 = n𝐮 + offset𝐮
 	n𝐯 = length(𝐯[1])
-	n𝐠𝐮𝐯 = n𝐠𝐮 + K*n𝐯
-	Vₜᵀ𝐯 = zeros(K𝐯)
+	indexb = n𝐮 + 2*K*n𝐯 + 1
+	Vₜᵀ𝐯 = zeros(K)
 	for j = 1:K
 		for q=1:n𝐯
 			Vₜᵀ𝐯[j] += 𝐕[τ,q]*𝐯[j][q]
 		end
 	end
-	nparameters = length(∇logpy)
 	for i = 1:Ξ
-		for q=1:n𝐯
-			dL_d𝐯[q] = 𝐕[τ,q]*𝛚[i]
+		for m=1:n𝐯
+			dL_d𝐯[m] = 𝐕[τ,m]*𝛚[i]
 		end
 		for j = 1:K
 			d²ℓ_dL², dℓ_dL = FHMDDM.differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
-			offset𝐯 = n𝐠𝐮 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
-			offsetΔ𝐯 = n𝐠𝐮𝐯 + ((K𝐯==K) ? (j-1)*n𝐯 : 0)
+			dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
+			d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
+			offset𝐯 = n𝐮 + (j-1)*n𝐯
+			offsetΔ𝐯 = n𝐮 + (K+j-1)*n𝐯
+			for m=1:n𝐮
+				∇logpy[m][i,j] = dℓ_dL*𝐗[τ,m]
+			end
+			for m=1:n𝐯
+				∇logpy[m+offset𝐯][i,j] = dℓ_dL*dL_d𝐯[m]
+			end
 			if i==1 || i==Ξ
-				∇logpy[1][i,j] = 0 # because d𝛚_db = 0
-				for q = 1:nparameters
-					∇∇logpy[1,q][i,j] = 0
-				end
-			else
-				dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
-				d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
-				∇logpy[1][i,j] = dℓ_dL*dL_db
-				∇∇logpy[1,1][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
-				if j > 1 && K𝐠 > 1
-					s = j
-					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_db
-				end
-				for q=1:n𝐮
-					s = offset𝐮+q
-					∇∇logpy[1,s][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_db
-				end
-				for q=1:n𝐯
-					s = offset𝐯 + q
-					d²L_dvdb = 𝐕[τ,q]*d𝛚_db[i]
-					∇∇logpy[1,s][i,j] = d²ℓ_dL²*dL_d𝐯[q]*dL_db + dℓ_dL*d²L_dvdb
+				for m=1:n𝐯
+					∇logpy[m+offsetΔ𝐯][i,j] = dℓ_dL*dL_d𝐯[m]
 				end
 			end
-			if j > 1 && K𝐠 > 1
-				s = j
-				∇logpy[s][i,j] = dℓ_dL
-			end
-			for q=1:n𝐮
-				s = offset𝐮+q
-				∇logpy[s][i,j] = dℓ_dL*𝐗[τ,1+q]
-			end
-			for q=1:n𝐯
-				s = offset𝐯 + q
-				∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
-			end
-			if fit_Δ𝐯 && (i==1 || i==Ξ)
-				for q=1:n𝐯
-					s = offsetΔ𝐯 + q
-					∇logpy[s][i,j] = dℓ_dL*dL_d𝐯[q]
+			∇logpy[indexb][i,j] = dℓ_dL*dL_db
+			for m=1:n𝐮
+				for n=m:n𝐮
+					∇∇logpy[m,n][i,j] = d²ℓ_dL²*𝐗[τ,m]*𝐗[τ,n]
 				end
-			end
-			if j > 1 && K𝐠 > 1
-				s = j
-				∇∇logpy[s,s][i,j] = d²ℓ_dL²
-				for r=1:n𝐮
-					t = offset𝐮 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+r]
+				for n=1:n𝐯
+					∇∇logpy[m,n+offset𝐯][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_d𝐯[n]
 				end
-				for r=1:n𝐯
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
-				end
-				if fit_Δ𝐯 && (i==1 || i==Ξ)
-					for r=1:n𝐯
-						t = offsetΔ𝐯 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL²*dL_d𝐯[r]
+				if i==1 || i==Ξ
+					for n=1:n𝐯
+						∇∇logpy[m,n+offsetΔ𝐯][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_d𝐯[n]
 					end
 				end
+				∇∇logpy[m,indexb][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_db
 			end
-			for q=1:n𝐮
-				s = offset𝐮 + q
-				for r=q:n𝐮
-					t = offset𝐮 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*𝐗[τ,1+r]
+			for m=1:n𝐯
+				for n=m:n𝐯
+					∇∇logpy[m+offset𝐯, n+offset𝐯][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
 				end
-				for r=1:n𝐯
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
-				end
-				if fit_Δ𝐯 && (i==1 || i==Ξ)
-					for r=1:n𝐯
-						t = offsetΔ𝐯 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL²*𝐗[τ,1+q]*dL_d𝐯[r]
+				if i==1 || i==Ξ
+					for n=1:n𝐯
+						∇∇logpy[m+offset𝐯, n+offsetΔ𝐯][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
 					end
 				end
+				d²L_dvdb = 𝐕[τ,m]*d𝛚_db[i]
+				∇∇logpy[m+offset𝐯,indexb][i,j] = d²ℓ_dL²*dL_d𝐯[m]*dL_db + dℓ_dL*d²L_dvdb
 			end
-			for q=1:n𝐯
-				for r=q:n𝐯
-					s = offset𝐯 + q
-					t = offset𝐯 + r
-					∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
-				end
-			end
-			if fit_Δ𝐯 && (i==1 || i==Ξ)
-				for q=1:n𝐯
-					for r=q:n𝐯
-						s = offset𝐯 + q
-						t = offsetΔ𝐯 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
+			if i==1 || i==Ξ
+				for m=1:n𝐯
+					for n=m:n𝐯
+						∇∇logpy[m+offsetΔ𝐯,n+offsetΔ𝐯][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
 					end
+					d²L_dvdb = 𝐕[τ,m]*d𝛚_db[i]
+					∇∇logpy[m+offsetΔ𝐯,indexb][i,j] = d²ℓ_dL²*dL_d𝐯[m]*dL_db + dℓ_dL*d²L_dvdb
 				end
-				for q=1:n𝐯
-					for r=q:n𝐯
-						s = offsetΔ𝐯 + q
-						t = offsetΔ𝐯 + r
-						∇∇logpy[s,t][i,j] = d²ℓ_dL² * dL_d𝐯[q] * dL_d𝐯[r]
-					end
-				end
-			else
-
 			end
+			∇∇logpy[indexb,indexb][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
 		end
 	end
 	return nothing
@@ -944,20 +890,9 @@ function Sameacrosstrials(model::Model)
 	indexθ_pcₜcₜ₋₁ = [1,2]
 	indexθ_ψ = [9]
 	counter = 13
-	indexθ_py = map(trialsets) do trialset
-					map(trialset.mpGLMs) do mpGLM
-						zeros(Int, countparameters(mpGLM.θ; includeunfit=true))
-					end
-				end
-	for s in eachindex(indexθ_py)
-		for n in eachindex(indexθ_py[s])
-			for q in eachindex(indexθ_py[s][n])
-				counter += 1
-				indexθ_py[s][n][q] = counter
-			end
-		end
-	end
-	indexθ_pY = map(x->vcat(x...), indexθ_py)
+	indexθ = indexparameters(model; includeunfit=true)
+	indexθ_py = collect(collect(concatenateparameters(glmθ; includeunfit=true) for glmθ in glmθ) for glmθ in indexθ.glmθ)
+	indexθ_pY = collect(vcat((glmθ for glmθ in glmθ)...) for glmθ in indexθ_py)
 	nθ_trialset = indexθ_pY[end][end]
 	index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_pc₁_in_θ, index_pcₜcₜ₋₁_in_θ, index_ψ_in_θ = zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset), zeros(Int, nθ_trialset)
 	index_pa₁_in_θ[indexθ_pa₁] .= 1:length(indexθ_pa₁)
@@ -1000,14 +935,6 @@ end
 
 """
 	Memoryforhessian(model)
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_05_05_test/data.mat"; randomize=true)
-julia> S = FHMDDM.Sameacrosstrials(model)
-julia> M = FHMDDM.Memoryforhessian(model, S)
-```
 """
 function Memoryforhessian(model::Model, S::Sameacrosstrials)
 	@unpack options, θnative, θreal, trialsets = model

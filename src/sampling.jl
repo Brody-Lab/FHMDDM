@@ -209,7 +209,7 @@ function Predictions(model::Model; nsamples::Integer=100)
 	p𝑑 = collect(zeros(trialset.ntrials) for trialset in trialsets)
 	p𝑑_𝐘 = deepcopy(p𝑑)
 	memory = Memoryforgradient(model)
-	P = update!(memory, model, concatenateparameters(model)[1])
+	P = update!(memory, model)
 	@unpack Aᵃinput, Aᵃsilent, Aᶜ, p𝐚₁, πᶜ = memory
 	f⨀b = memory.f
 	p𝑑_𝐚 = ones(Ξ)
@@ -384,57 +384,6 @@ function sample(a_end::Integer, ψ::AbstractFloat, Ξ::Integer)
 		p_right_choice = 0.5
 	end
 	choice = rand() < p_right_choice
-end
-
-"""
-	sample(a, c, 𝛕, mpGLM)
-
-Generate a sample of spiking response on each time step of one trial
-
-ARGUMENT
--`a`: a vector representing the state of the accumulator at each time step of a trial. Note that length(a) >= length(𝛕).
--`c`: a vector representing the state of the coupling variable at each time step. Note that length(c) >= length(𝛕).
--`𝐄𝐞`: input from external events
--`𝐡`: value of the post-spikefilter at each time lag
--`mpGLM`: a structure containing information on the mixture of Poisson GLM of a neuron
--`𝛚`: transformed values of the accumulator
--`𝛕`: time steps in the trialset. The number of time steps in the trial corresponds to the length of 𝛕.
-
-RETURN
--`𝐲̂`: a vector representing the sampled spiking response at each time step
-"""
-function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
-	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
-	@unpack 𝐠, 𝐮, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
-	max_spikehistory_lag = length(𝐡)
-	K𝐠 = length(𝐠)
-	K𝐯 = length(𝐯)
-	max_spikes_per_step = floor(1000Δt)
-    𝐲̂ = zeros(Int, length(𝛕))
-    for t = 1:length(𝛕)
-        τ = 𝛕[t]
-        j = a[t]
-        k = c[t]
-		gₖ = 𝐠[min(k, K𝐠)]
-		kᵥ = min(k, K𝐯)
-		if fit_Δ𝐯 && (j==1 || j==Ξ)
-			𝐰ₖ = 𝐯[kᵥ] .+ Δ𝐯[kᵥ]
-		else
-			𝐰ₖ = 𝐯[kᵥ]
-		end
-		L = gₖ + 𝐄𝐞[τ]
-		for i in eachindex(𝐰ₖ)
-			L+= 𝛚[j]*𝐕[τ,i]*𝐰ₖ[i]
-		end
-		for lag = 1:min(max_spikehistory_lag, t-1)
-			if 𝐲̂[t-lag] > 0
-				L += 𝐡[lag]*𝐲̂[t-lag]
-			end
-		end
-        λ = softplus(L)
-        𝐲̂[t] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
-    end
-	return 𝐲̂
 end
 
 """

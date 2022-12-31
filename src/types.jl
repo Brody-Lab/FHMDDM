@@ -80,10 +80,10 @@ Model settings
 	fit_σ²ₛ::TB=true
 	"whether to fit the weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
 	fit_wₕ::TB=true
-	"whether the gain is state-dependent"
-	gain_state_dependent::TB=true
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-2
+	"number of states of the coupling variable"
+	K::TI = 1
 	"whether the L2 shrinkage penalty for the accumulator transformation parameter is learned, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum. "
 	L2_b_fit::TB=true
 	L2_b_max::TF=1e2
@@ -95,9 +95,6 @@ Model settings
 	L2_Δ𝐯_fit::TB=true
 	L2_Δ𝐯_max::TF=1e2
 	L2_Δ𝐯_min::TF=1e-2
-	"maximum and minimum L2 shrinkage penalty for the state-dependent gain"
-	L2_gain_max::TF=1e2
-	L2_gain_min::TF=1e-2
 	"whether the L2 shrinkage penalty of the weight of the post-spike filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_hist_fit::TB=true
 	L2_hist_max::TF=1e1
@@ -161,8 +158,6 @@ Model settings
 	scalechoiceLL::TB=true
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
-	"whether the tuning to the accumulator is state-dependent"
-	tuning_state_dependent::TB=true
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
 	tbf_accu_begins0::TB=false
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
@@ -173,6 +168,8 @@ Model settings
 	tbf_accu_scalefactor::TF=75.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
 	tbf_accu_stretch::TF=0.1
+	"scale factor of the gain parameter"
+	tbf_gain_scalefactor::TF=1.0
 	"Options for the temporal basis associated with the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter."
 	tbf_hist_begins0::TB=false
 	tbf_hist_dur_s::TF=0.25
@@ -197,14 +194,13 @@ Model settings
 	tbf_period::TF=4
 	"Options for the temporal basis associated with the post-stereoclick filter"
 	tbf_time_begins0::TB=false
+	tbf_time_dur_s::TF=1.0
 	tbf_time_ends0::TB=false
 	tbf_time_hz::TF=4
 	tbf_time_scalefactor::TF=20.0
 	tbf_time_stretch::TF=1.0
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
-	"number of states of the coupling variable"
-	K::TI = (gain_state_dependent || tuning_state_dependent) ? 2 : 1
 end
 
 """
@@ -251,7 +247,7 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	"index of the trial in the trialset"
 	index_in_trialset::TI
 	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
-	movementtime_s::TF
+	movementtime_s::TF; @assert movementtime_s > 0
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
 	"time when the offset ramp of the photostimulus began"
@@ -275,19 +271,21 @@ end
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{B<:Bool, R<:Real, VR<:Vector{<:Real}, UI<:UnitRange{<:Integer}, VVR<:Vector{<:Vector{<:Real}}}
+@with_kw struct GLMθ{B<:Bool, UI<:UnitRange{<:Integer}, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
     "nonlinearity in accumulator transformation"
 	b::VR
 	"scale factor for the nonlinearity of accumulator transformation"
 	b_scalefactor::R
+	"order by which parameters are concatenated"
+	concatenationorder::VS = [:𝐮, :𝐯, :Δ𝐯, :b]
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
 	fit_Δ𝐯::B
-    "state-dependent gain"
-    𝐠::VR
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
+	"elements of 𝐮 corresponding to the gain"
+	𝐮indices_gain::UI=1:1
 	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the post-spike filter"
 	𝐮indices_hist::UI
 	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the input from time from the beginning the of the trial"
@@ -336,7 +334,7 @@ Mixture of Poisson generalized linear model
     𝐕::MF
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
-    "columns corresponding to the gain input"
+    "columns corresponding to the gain"
 	𝐗columns_gain::UI = 1:1
 	"columns corresponding to the spike history input"
 	𝐗columns_hist::UI = 𝐗columns_gain[end] .+ (1:size(Φₕ,2))
@@ -346,8 +344,10 @@ Mixture of Poisson generalized linear model
 	𝐗columns_move::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2)) .+ (1:size(Φₘ,2))
 	"columns corresponding to the input from time before mvoement"
 	𝐗columns_phot::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₚ,2))
+	"columns corresponding to the state-independent inputs"
+	𝐗columns_𝐮::UI = 𝐗columns_gain[1]:(𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2) + size(Φₚ,2))
 	"columns corresponding to the input from the accumulator"
-	𝐗columns_accu::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₐ,2))
+	𝐗columns_𝐯::UI = 𝐗columns_𝐮[end] .+ (1:size(𝐕,2))
 	"number of accumulator states"
 	Ξ::TI=length(d𝛏_dB)
 	"Poisson observations"

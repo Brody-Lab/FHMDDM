@@ -57,8 +57,8 @@ ARGUMENT
 RETURN
 -values of model parameters in their native space
 """
-function real2native(options::Options, θreal::Latentθ)
-	θnative = Latentθ()
+function real2native(options::Options, θreal::Latentθ{<:Vector{type}}) where type<:Real
+	θnative = Latentθ((zeros(type,1) for field in fieldnames(Latentθ))...)
 	real2native!(θnative, options, θreal)
 	return θnative
 end
@@ -324,8 +324,8 @@ function dictionary(options::Options)
 			"fit_sigma2_i"=>options.fit_σ²ᵢ,
 			"fit_sigma2_s"=>options.fit_σ²ₛ,
 			"fit_w_h"=>options.fit_wₕ,
-			"gain_state_dependent"=>options.gain_state_dependent,
 			"g_tol"=>options.g_tol,
+			"K"=>options.K,
 			"L2_b_fit"=>options.L2_b_fit,
 			"L2_b_max"=>options.L2_b_max,
 			"L2_b_min"=>options.L2_b_min,
@@ -334,8 +334,6 @@ function dictionary(options::Options)
 			"L2_Deltav_min"=>options.L2_Δ𝐯_min,
 			"L2_choices_max"=>options.L2_choices_max,
 			"L2_choices_min"=>options.L2_choices_min,
-			"L2_gain_max"=>options.L2_gain_max,
-			"L2_gain_min"=>options.L2_gain_min,
 			"L2_hist_fit"=>options.L2_hist_fit,
 			"L2_hist_max"=>options.L2_hist_max,
 			"L2_hist_min"=>options.L2_hist_min,
@@ -377,6 +375,7 @@ function dictionary(options::Options)
 			"tbf_accu_hz"=>options.tbf_accu_hz,
 			"tbf_accu_scalefactor"=>options.tbf_accu_scalefactor/options.nunits,
 			"tbf_accu_stretch"=>options.tbf_accu_stretch,
+			"tbf_gain_scalefactor"=>options.tbf_gain_scalefactor,
 			"tbf_hist_begins0"=>options.tbf_hist_begins0,
 			"tbf_hist_dur_s"=>options.tbf_hist_dur_s,
 			"tbf_hist_ends0"=>options.tbf_hist_ends0,
@@ -396,11 +395,11 @@ function dictionary(options::Options)
 			"tbf_phot_scalefactor"=>options.tbf_phot_scalefactor/options.nunits,
 			"tbf_phot_stretch"=>options.tbf_phot_stretch,
 			"tbf_time_begins0"=>options.tbf_time_begins0,
+			"tbf_time_dur_s"=>options.tbf_time_dur_s,
 			"tbf_time_ends0"=>options.tbf_time_ends0,
 			"tbf_time_hz"=>options.tbf_time_hz,
 			"tbf_time_scalefactor"=>options.tbf_time_scalefactor/options.nunits,
 			"tbf_time_stretch"=>options.tbf_time_stretch,
-			"tuning_state_dependent"=>options.tuning_state_dependent,
 			"Xi"=>options.Ξ)
 end
 
@@ -412,10 +411,10 @@ Convert into a dictionary the parameters of a mixture of Poisson generalized lin
 function dictionary(θ::GLMθ)
     Dict("b"=>θ.b,
 		"b_scalefactor"=>θ.b_scalefactor,
-    	"g"=>θ.𝐠,
 		"u"=>θ.𝐮,
 		"v"=>θ.𝐯,
 		"Deltav"=>θ.Δ𝐯,
+		"uindices_gain"=>collect(θ.𝐮indices_gain),
 		"uindices_hist"=>collect(θ.𝐮indices_hist),
 		"uindices_move"=>collect(θ.𝐮indices_move),
 		"uindices_time"=>collect(θ.𝐮indices_time),
@@ -491,7 +490,7 @@ function Options(nunits::Integer, options::Dict)
 			fit_σ²ₛ = options["fit_sigma2_s"],
 			fit_wₕ = options["fit_w_h"],
 			g_tol = options["g_tol"],
-			gain_state_dependent = options["gain_state_dependent"],
+			K = convert(Int, options["K"]),
 			L2_b_fit = options["L2_b_fit"],
 			L2_b_max = options["L2_b_max"],
 			L2_b_min = options["L2_b_min"],
@@ -500,8 +499,6 @@ function Options(nunits::Integer, options::Dict)
 			L2_Δ𝐯_fit = options["L2_Deltav_fit"],
 			L2_Δ𝐯_max = options["L2_Deltav_max"],
 			L2_Δ𝐯_min = options["L2_Deltav_min"],
-			L2_gain_max = options["L2_gain_max"],
-			L2_gain_min = options["L2_gain_min"],
 			L2_hist_fit = options["L2_hist_fit"],
 			L2_hist_max = options["L2_hist_max"],
 			L2_hist_min = options["L2_hist_min"],
@@ -544,6 +541,7 @@ function Options(nunits::Integer, options::Dict)
 			tbf_accu_hz = options["tbf_accu_hz"],
 			tbf_accu_scalefactor = options["tbf_accu_scalefactor"]*nunits,
 			tbf_accu_stretch = options["tbf_accu_stretch"],
+			tbf_gain_scalefactor = options["tbf_gain_scalefactor"]*nunits,
 			tbf_hist_begins0 = options["tbf_hist_begins0"],
 			tbf_hist_dur_s = options["tbf_hist_dur_s"],
 			tbf_hist_ends0 = options["tbf_hist_ends0"],
@@ -563,11 +561,11 @@ function Options(nunits::Integer, options::Dict)
 			tbf_phot_scalefactor = options["tbf_phot_scalefactor"]*nunits,
 			tbf_phot_stretch = options["tbf_phot_stretch"],
 			tbf_time_begins0 = options["tbf_time_begins0"],
+			tbf_time_dur_s = options["tbf_time_dur_s"],
 			tbf_time_ends0 = options["tbf_time_ends0"],
 			tbf_time_hz = options["tbf_time_hz"],
 			tbf_time_scalefactor = options["tbf_time_scalefactor"]*nunits,
 			tbf_time_stretch = options["tbf_time_stretch"],
-			tuning_state_dependent = options["tuning_state_dependent"],
 			Ξ = convert(Int, options["Xi"]))
 end
 
