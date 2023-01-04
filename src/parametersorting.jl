@@ -14,6 +14,37 @@ function concatenate(indexθ::Indexθ; includeunfit=false)
 end
 
 """
+    concatenate_choice_related_parameters(model)
+
+Concatenate values of parameters being fitted into a vector of floating point numbers
+
+ARGUMENT
+-`model`: the factorial hidden Markov drift-diffusion model
+
+RETURN
+-`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
+-`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
+"""
+function concatenate_choice_related_parameters(model::Model)
+    @unpack options, θreal, trialsets = model
+	concatenatedθ = zeros(0)
+    counter = 0
+	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
+	for field in fieldnames(Latentθ)
+		tofit = is_parameter_fit(options, field) && !any(field .== (:Aᶜ₁₁, :Aᶜ₂₂, :πᶜ₁))
+		if tofit
+			counter += 1
+			getfield(indexθ, field)[1] = counter
+			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
+		else
+			getfield(indexθ, field)[1] = 0
+		end
+	end
+	indexθglm = collect(collect(GLMθ(Int, mpGLM.θ) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets)
+    return concatenatedθ, Indexθ(latentθ=indexθ, glmθ = indexθglm)
+end
+
+"""
 	concatenateparameters(latentθ, options)
 
 Concatenate the latent-variable-parameters that are being fit into a vector
@@ -164,37 +195,6 @@ function is_parameter_fit(options::Options, parametername::Symbol)
 end
 
 """
-    concatenate_choice_related_parameters(model)
-
-Concatenate values of parameters being fitted into a vector of floating point numbers
-
-ARGUMENT
--`model`: the factorial hidden Markov drift-diffusion model
-
-RETURN
--`concatenatedθ`: a vector of the concatenated values of the parameters being fitted
--`indexθ`: a structure indicating the index of each model parameter in the vector of concatenated values
-"""
-function concatenate_choice_related_parameters(model::Model)
-    @unpack options, θreal, trialsets = model
-	concatenatedθ = zeros(0)
-    counter = 0
-	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
-	for field in fieldnames(Latentθ)
-		tofit = is_parameter_fit(options, field) && !any(field .== (:Aᶜ₁₁, :Aᶜ₂₂, :πᶜ₁))
-		if tofit
-			counter += 1
-			getfield(indexθ, field)[1] = counter
-			concatenatedθ = vcat(concatenatedθ, getfield(θreal, field)[1])
-		else
-			getfield(indexθ, field)[1] = 0
-		end
-	end
-	indexθglm = collect(collect(GLMθ(Int, mpGLM.θ) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets)
-    return concatenatedθ, Indexθ(latentθ=indexθ, glmθ = indexθglm)
-end
-
-"""
 	Latentθ(concatenatedθ, index, old)
 
 Create a structure containing the parameters for the latent variable with updated values
@@ -275,6 +275,64 @@ function Model(concatenatedθ::Vector{type}, indexθ::Latentθ, model::Model) wh
 			θ₀native=model.θ₀native,
 			θreal = θreal,
 			trialsets=model.trialsets)
+end
+
+"""
+	nameparameters(model)
+
+Names of the parameters of the model
+
+ARGUMENT
+-`model`: a composite containing the data, parameters, and hyperparameters of the model
+
+OPTIONAL ARGUMENT
+-`includeunfit`: whether
+
+RETURN
+-a vector of String
+"""
+nameparameters(model::Model) = nameparameters(indexparameters(model))
+
+"""
+	nameparameters(indexθ)
+
+Name of the parameters of the model
+
+ARGUMENT
+-`indexθ`: a composite containing the indices of the parameters when they are concatenated into a vector
+
+RETURN
+-a vector of String
+"""
+function nameparameters(indexθ::Indexθ)
+	ntrialsets = length(indexθ.glmθ)
+	if ntrialsets > 1
+		glmθnames = vcat((vcat((nameparameters(i,n,indexθ.glmθ[i][n]) for n in eachindex(indexθ.glmθ[i]))...) for i in eachindex(indexθ.glmθ))...)
+	else
+		glmθnames = vcat((nameparameters(n,indexθ.glmθ[1][n]) for n in eachindex(indexθ.glmθ[1]))...)
+	end
+	vcat(nameparameters(indexθ.latentθ), glmθnames)
+end
+
+"""
+	nameparameters(indices)
+
+Name of each parameter associated with a latent variable
+
+ARGUMENT
+-`indices`: a composite containing the indices of the parameters when they are concatenated into a vector
+
+RETURN
+-a vector of String
+"""
+function nameparameters(indices::Latentθ{<:Vector{<:Integer}})
+	parameternames = String[]
+	for name in fieldnames(Latentθ)
+		if getfield(indices, name)[1] > 0
+			parameternames = vcat(parameternames, matlabname(name))
+		end
+	end
+	return parameternames
 end
 
 """

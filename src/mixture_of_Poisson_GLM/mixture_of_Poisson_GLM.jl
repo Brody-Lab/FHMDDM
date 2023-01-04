@@ -225,7 +225,7 @@ Return a vector representing the post-spike filter of a Poisson mixture GLM.
 
 The first element of the vector corresponds to the first time step after the spike.
 """
-postspikefilter(mpGLM::MixturePoissonGLM) = mpGLM.Φₕ*mpGLM.θ.𝐮[mpGLM.θ.𝐮indices_hist]
+postspikefilter(mpGLM::MixturePoissonGLM) = mpGLM.Φₕ*mpGLM.θ.𝐮[mpGLM.θ.indices𝐮.postspike]
 
 """
 	externalinput(mpGLM)
@@ -238,11 +238,10 @@ RETURN
 -a vector whose τ-th element corresponds to the τ-th time step in the trialset
 """
 function externalinput(mpGLM::MixturePoissonGLM)
-	@unpack 𝐗, 𝐗columns_time, 𝐗columns_move, 𝐗columns_phot, θ = mpGLM
-	@unpack 𝐮, 𝐮indices_time, 𝐮indices_move, 𝐮indices_phot = θ
-	𝐄 = @view 𝐗[:,vcat(𝐗columns_time, 𝐗columns_move, 𝐗columns_phot)]
-	𝐞 = 𝐮[vcat(𝐮indices_time, 𝐮indices_move, 𝐮indices_phot)]
-	return 𝐄*𝐞
+	@unpack 𝐗, 𝐗columns_𝐮, θ = mpGLM
+	@unpack 𝐮 = θ
+	𝐄 = @view 𝐗[:,𝐗columns_𝐮]
+	return 𝐄*𝐮
 end
 
 """
@@ -308,15 +307,12 @@ function MixturePoissonGLM(movementtimes_s::Vector{<:AbstractFloat},
 	Φₚ, Φₚtimesteps, 𝐔ₚ = photostimulusbasis(options, photostimulus_incline_on_s, photostimulus_decline_on_s, 𝐓)
 	Φₐ = accumulatorbasis(maximum𝐓, options)
 	𝐕 = temporal_basis_functions(Φₐ, 𝐓)
-	𝐮indices_hist = 1 .+ (1:size(Φₕ,2))
-	𝐮indices_time = (isempty(𝐮indices_hist) ? 0 : 𝐮indices_hist[end]) .+ (1:size(Φₜ,2))
-	𝐮indices_move = (isempty(𝐮indices_time) ? 0 : 𝐮indices_time[end]) .+ (1:size(Φₘ,2))
-	𝐮indices_phot = (isempty(𝐮indices_move) ? 0 : 𝐮indices_move[end]) .+ (1:size(Φₚ,2))
+	indices𝐮 = Indices𝐮(size(Φₕ,2), size(Φₜ,2), size(Φₘ,2), size(Φₚ,2))
 	map(𝐔ₕ, 𝐘) do 𝐔ₕ, 𝐲
 		𝐗=hcat(𝐆, 𝐔ₕ, 𝐔ₜ, 𝐔ₘ, 𝐔ₚ, 𝐕)
-		glmθ = GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_phot, 𝐮indices_time, 𝐕)
+		glmθ = GLMθ(indices𝐮, size(𝐕,2), options)
 		MixturePoissonGLM(Δt=options.Δt,
-							d𝛏_dB=(2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1),
+						d𝛏_dB=(2collect(1:Ξ) .- Ξ .- 1)./(Ξ-1),
 						Φₐ=Φₐ,
 						Φₕ=Φₕ,
 						Φₘ=Φₘ,
@@ -331,33 +327,26 @@ function MixturePoissonGLM(movementtimes_s::Vector{<:AbstractFloat},
 end
 
 """
-	GLMθ(options, 𝐮indices_hist, 𝐮indices_move, 𝐮indices_time, 𝐕)
+	GLMθ(indices𝐮, options, n𝐯)
 
 Randomly initiate the parameters for a mixture of Poisson generalized linear model
 
 ARGUMENT
+-`indices𝐮`: indices of the encoding weights of the temporal basis vectors of each filter that is independent of the accumulator
+-`n𝐯`: number of temporal basis vectors specifying the time-varying weight of the accumulator
 -`options`: settings of the model
--`𝐮indices_hist`: indices in 𝐮 corresponding to the temporal basis functions of the post-spike filter
--`𝐮indices_move`: indices in 𝐮 corresponding to the temporal basis functions of the pre-movement filter
--`𝐮indices_phot`: indices in 𝐮 corresponding to the temporal basis functions of the post-photostimulus filter
--`𝐮indices_time`: indices in 𝐮 corresponding to the temporal basis functions of the post-stereoclick filter
--`𝐕`: constant and time-varying inputs from the accumulator
 
 OUTPUT
 -an instance of `GLMθ`
 """
-function GLMθ(options::Options, 𝐮indices_hist::UnitRange{<:Integer}, 𝐮indices_move::UnitRange{<:Integer}, 𝐮indices_phot::UnitRange{<:Integer}, 𝐮indices_time::UnitRange{<:Integer}, 𝐕::Matrix{<:AbstractFloat})
-	n𝐮 = 1 + length(𝐮indices_hist) + length(𝐮indices_time) + length(𝐮indices_move) + length(𝐮indices_phot)
-	n𝐯 =size(𝐕,2)
+function GLMθ(indices𝐮::Indices𝐮, n𝐯::Integer, options::Options)
+	n𝐮 = maximum(vcat((getfield(indices𝐮, field) for field in fieldnames(Indices𝐮))...))
 	θ = GLMθ(b = fill(NaN,1),
 			b_scalefactor = options.b_scalefactor,
 			fit_b = options.fit_b,
 			fit_Δ𝐯 = options.fit_Δ𝐯,
 			𝐮 = fill(NaN, n𝐮),
-			𝐮indices_hist=𝐮indices_hist,
-			𝐮indices_move=𝐮indices_move,
-			𝐮indices_phot=𝐮indices_phot,
-			𝐮indices_time=𝐮indices_time,
+			indices𝐮=indices𝐮,
 			𝐯 = collect(fill(NaN,n𝐯) for k=1:options.K))
 	randomizeparameters!(θ, options)
 	return θ
@@ -379,11 +368,11 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 	for i in eachindex(θ.𝐮)
 		θ.𝐮[i] = 1.0 .- 2rand()
 	end
-	θ.𝐮[θ.𝐮indices_gain] ./= options.tbf_gain_scalefactor
-	θ.𝐮[θ.𝐮indices_hist] ./= options.tbf_hist_scalefactor
-	θ.𝐮[θ.𝐮indices_move] ./= options.tbf_move_scalefactor
-	θ.𝐮[θ.𝐮indices_phot] ./= options.tbf_phot_scalefactor
-	θ.𝐮[θ.𝐮indices_time] ./= options.tbf_time_scalefactor
+	θ.𝐮[θ.indices𝐮.gain] ./= options.tbf_gain_scalefactor
+	θ.𝐮[θ.indices𝐮.postspike] ./= options.tbf_hist_scalefactor
+	θ.𝐮[θ.indices𝐮.poststereoclick] ./= options.tbf_time_scalefactor
+	θ.𝐮[θ.indices𝐮.premovement] ./= options.tbf_move_scalefactor
+	θ.𝐮[θ.indices𝐮.postphotostimulus] ./= options.tbf_phot_scalefactor
 	if length(θ.𝐯) > 1
 		K = length(θ.𝐯)
 		𝐯₀ = -1.0:2.0/(K-1):1.0

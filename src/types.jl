@@ -91,10 +91,6 @@ Model settings
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
 	L2_choices_max::TF=1e2
 	L2_choices_min::TF=1e-2
-	"whether the L2 shrinkage penalty for the change in the encoding weight accumulated evidence after commitment is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_Δ𝐯_fit::TB=true
-	L2_Δ𝐯_max::TF=1e2
-	L2_Δ𝐯_min::TF=1e-2
 	"whether the L2 shrinkage penalty of the weight of the post-spike filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_hist_fit::TB=true
 	L2_hist_max::TF=1e1
@@ -267,11 +263,24 @@ Spike trains are not included. In sampled data, the generatives values of the la
 end
 
 """
+	Indices𝐮
+
+Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator
+"""
+@with_kw struct Indices𝐮{UI<:UnitRange{<:Integer}}
+	gain::UI=1:1
+	postspike::UI
+	poststereoclick::UI
+	premovement::UI
+	postphotostimulus::UI
+end
+
+"""
 	GLMθ
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{B<:Bool, UI<:UnitRange{<:Integer}, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
+@with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
     "nonlinearity in accumulator transformation"
 	b::VR
 	"scale factor for the nonlinearity of accumulator transformation"
@@ -284,16 +293,8 @@ Parameters of a mixture of Poisson generalized linear model
 	fit_Δ𝐯::B
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
-	"elements of 𝐮 corresponding to the gain"
-	𝐮indices_gain::UI=1:1
-	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the post-spike filter"
-	𝐮indices_hist::UI
-	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the input from time from the beginning the of the trial"
-	𝐮indices_time::UI
-	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the input from time before movement"
-	𝐮indices_move::UI
-	"elements of 𝐮 corresponding to the weights of the temporal basis functions parametrizing the post-photostimulus filter"
-	𝐮indices_phot::UI
+	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
+	indices𝐮::IU
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
 	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
@@ -380,6 +381,7 @@ Information on the zero-meaned Gaussian prior distribution on the values of the 
 @with_kw struct GaussianPrior{	VI<:Vector{<:Integer},
 								VF<:Vector{<:AbstractFloat},
 								VR<:Vector{<:Real},
+								VS<:Vector{<:String},
 								MR<:Matrix{<:Real},
 								VVI<:Vector{<:Vector{<:Integer}},
 								VMF<:Vector{<:Matrix{<:AbstractFloat}}}
@@ -401,6 +403,8 @@ Information on the zero-meaned Gaussian prior distribution on the values of the 
 	𝚽::MR= 𝚲[index𝚽,index𝚽]
 	"indices of 𝐀 within `index𝚽`"
 	index𝐀_in_index𝚽::VVI = map(indexA->map(indexAᵢⱼ->findfirst(index𝚽.==indexAᵢⱼ), indexA), index𝐀)
+	"the name of each L2 penalty"
+	penaltynames::VS
 end
 
 """
@@ -1091,7 +1095,15 @@ end
 
 Features of the model useful for analysis
 """
-@with_kw struct Summary{F<:AbstractFloat, LT<:Latentθ, MF<:Matrix{<:AbstractFloat}, VI<:Vector{<:Integer}, VF<:Vector{<:AbstractFloat}, VMF<:Vector{<:Matrix{<:AbstractFloat}}, VVGT<:Vector{<:Vector{<:GLMθ}}, VVI<:Vector{<:Vector{<:Integer}}}
+@with_kw struct Summary{F<:AbstractFloat,
+						LT<:Latentθ,
+						MF<:Matrix{<:AbstractFloat},
+						VI<:Vector{<:Integer},
+						VF<:Vector{<:AbstractFloat},
+						VMF<:Vector{<:Matrix{<:AbstractFloat}},
+						VS<:Vector{<:String},
+						VVGT<:Vector{<:Vector{<:GLMθ}},
+						VVI<:Vector{<:Vector{<:Integer}}}
 	"the log of the likelihood of the data given the parameters"
 	loglikelihood::F
 	"the log of the posterior probability of the parameters"
@@ -1116,12 +1128,18 @@ Features of the model useful for analysis
 	Φₚ::MF
 	"time steps of the temporal basis vectors for the photostimulus kernel"
 	Φₚtimesteps::VI
+	"parameters concatenated into a vector"
+	parametervalues::VF
+	"name of each parameter"
+	parameternames::VS
 	"a vector of L2 penalty matrices"
 	𝐀::VMF
 	"index of the parameters regularized by the L2 penalty matrices"
 	index𝐀::VVI
 	"cofficients of the penalty matrices"
 	𝛂::VF
+	"names of each L2 regularization penalty"
+	penaltynames::VS
 	"precision matrix of the gaussian prior on the parameters"
 	𝚲::MF
 end

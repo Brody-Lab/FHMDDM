@@ -3,109 +3,83 @@
 
 Learn both the parameters and hyperparameters by maximizing the evidence
 
-The optimization procedure alternately fixes the hyperparameters and learn the parameters by maximizing the posterior and fixes the parameters and learn the hyperparameters by maximing the evidence.
+This optimization procedure alternately fixes the hyperparameters and learn the parameters by maximizing the posterior, and fixes the parameters and learn the hyperparameters by maximizing the evidence.
 
 MODIFIED ARGUMENT
--`model`: structure containing the parameters, hyperparameters, and data. The parameters and the precision matrix are updated maximize the evidence of the data
+-`model`: structure containing the parameters, hyperparameters, and data. The parameters and hyperparameters are updated.
 
 OPTIONAL ARGUMET
--`iterations`: maximum number of iterations for optimizing the posterior probability of the parameters
--`outer_iterations`: maximum number of iterations for alternating between maximizing the posterior probability and maximizing the evidence
+-`iterations`: maximum number of iterations for alternating between maximizing the posterior probability and maximizing the evidence
+-`MAP_iterations`: maximum number of iterations for optimizing the posterior probability of the parameters
+-`store_trace`: should a trace of the optimization algorithm's state be saved at each iteration?
 -`verbose`: whether to display messages
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_08_08a_test/T176_2018_05_03/data.mat")
-julia> initializeparameters!(model)
-julia> maximizeevidence!(model)
-julia>
-```
+-`x_reltol`: the relative difference in the norm of the L2 penalty coefficients, in real space, below which the optimization procedure aborts
 """
 function maximizeevidence!(model::Model;
-						iterations::Int=500,
-						max_consecutive_failures::Int=2,
-						outer_iterations::Int=5,
+						iterations::Int=2,
+						MAP_iterations::Int=500,
+						store_trace::Bool=true,
 						verbose::Bool=true,
 						x_reltol::Real=1e-1)
 	@unpack index𝚽, 𝛂min, 𝛂max = model.gaussianprior
-	memory = FHMDDM.Memoryforgradient(model)
-	best𝛉 = concatenateparameters(model)
+	memory = Memoryforgradient(model)
 	index𝛉 = indexparameters(model)
 	best𝐸 = -Inf
+	best𝛉 = concatenateparameters(model)
 	best𝛂 = copy(model.gaussianprior.𝛂)
-	n_consecutive_failures = 0
-	posteriorconverged = false
-	for i = 1:outer_iterations
-	    results = maximizeposterior!(model;iterations=iterations)[1]
-		if !Optim.converged(results)
-			if Optim.iteration_limit_reached(results)
-				for i = 1:length(model.gaussianprior.𝛂)
-					model.gaussianprior.𝛂[i] = min(𝛂max[i], 2model.gaussianprior.𝛂[i])
-				end
-				if verbose
-					println("Outer iteration: ", i, ": because the MAP optimization did not converge after reaching the maximum number of iterations, the values of the precisions are doubled")
-					println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
-				end
-			else
-				verbose && println("Outer iteration: ", i, ": because of a line search failure, Gaussian noise is added to the parameter values")
-				𝛉 = concatenateparameters(model)
-				𝛉 .+= randn(length(𝛉))
-				sortparameters!(model, 𝛉, index𝛉)
-			end
-		else
-			verbose && println("Outer iteration: ", i, ": the MAP values of the parameters converged")
-			𝛉₀ = concatenateparameters(model) # exact posterior mode
-			stats = @timed ∇∇loglikelihood(model)[3][index𝚽, index𝚽]
-			𝐇 = stats.value
-			verbose && println("Outer iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
-			𝐸 = logevidence!(memory, model, 𝐇, 𝛉₀)
-			if 𝐸 > best𝐸
-				if verbose
-					if posteriorconverged
-						println("Outer iteration: ", i, ": the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") is improved by the new values of the precisions found in the previous outer iteration")
-					else
-						println("Outer iteration: ", i, ": initial value of log-evidence: ", 𝐸, " is set as the best log-evidence")
-					end
-				end
-				best𝐸 = 𝐸
-				best𝛂 .= model.gaussianprior.𝛂
-				best𝛉 .= 𝛉₀
-				n_consecutive_failures = 0
-			else
-				n_consecutive_failures += 1
-				verbose && println("Outer iteration: ", i, ": because the log-evidence (best: ", best𝐸, "; new:", 𝐸, ") was not improved by the new precisions, subsequent learning of the precisions will be begin at the midpoint between the current values of the precisions and the values that gave the best evidence so far.")
-				for j in eachindex(model.gaussianprior.𝛂)
-					model.gaussianprior.𝛂[j] = (model.gaussianprior.𝛂[j] + best𝛂[j])/2
-				end
-			end
-			posteriorconverged = true
-			if n_consecutive_failures == max_consecutive_failures
-				verbose && println("Outer iteration: ", i, ": optimization halted early due to ", max_consecutive_failures, " consecutive failures in improving evidence")
-				break
-			end
-			normΔ = maximizeevidence!(memory, model, 𝐇, 𝛉₀)
-			if verbose
-				println("Outer iteration ", i, ": new 𝛂 → ", model.gaussianprior.𝛂)
-			end
-			if normΔ < x_reltol
-				verbose && println("Outer iteration: ", i, ": optimization halted after relative difference in the norm of the hyperparameters (in real space) decreased below ", x_reltol)
-				break
-			else
-				sortparameters!(model, 𝛉₀, index𝛉)
-			end
+	for i = 1:iterations
+		verbose && printseparator()
+		verbose && println("Evidence optimization iteration: ", i, ": maximizing the log-posterior.")
+	    Optim_results = maximizeposterior!(model;iterations=MAP_iterations)[1]
+		MAP_values_converged = Optim.converged(Optim_results)
+		𝛉₀ = concatenateparameters(model)
+		stats = @timed ∇∇loglikelihood(model)
+		𝐇 = stats.value[3]
+		verbose && println("Evidence optimization iteration: ", i, ": computing the Hessian of the log-likelihood took ", stats.time, " seconds")
+		if store_trace
+			savetrace(MAP_values_converged, 𝐇, i, model)
+			verbose && println("Evidence optimization iteration: ", i, ": saved trace")
 		end
-		if (i==outer_iterations) && verbose
-			println("Optimization halted after reaching the last of ", outer_iterations, " allowed outer iterations.")
+		if MAP_values_converged
+			verbose && println("Evidence optimization iteration: ", i, ": the MAP values of the parameters converged")
+		else
+			verbose && println("Evidence optimization iteration: ", i, ": the MAP values of the parameters did not converge, and therefore the optimization procedure is aborting.")
+			if i == 1
+				best𝛉 = concatenateparameters(model)
+			end
+			break
+		end
+		𝐇finite = 𝐇[index𝚽, index𝚽]
+		𝐸 = logevidence!(memory, model, 𝐇finite, 𝛉₀)
+		if 𝐸 > best𝐸
+			verbose && println("Evidence optimization iteration: ", i, ": the current log-evidence ( ", 𝐸, ") is greater than its previous value (", best𝐸, ").")
+			best𝐸 = 𝐸
+			best𝛉 = 𝛉₀
+			best𝛂 = copy(model.gaussianprior.𝛂)
+		else
+			verbose && println("Evidence optimization iteration: ", i, ": the current log-evidence ( ", 𝐸, ") is not greater than its previous value (", best𝐸, "), and therefore the optimization procedure is aborting.")
+			break
+		end
+		if i==iterations
+			verbose && println("Evidence optimization iteration ", i, ": the last iteration has been reached, and the optimization procedure is aborting.")
+			break
+		end
+		normΔ = maximizeevidence!(memory, model, 𝐇finite, index𝛉, 𝛉₀)
+		verbose && println("Evidence optimization iteration ", i, ": new L2 penalty coefficients (𝛂) → ", model.gaussianprior.𝛂)
+		if normΔ < x_reltol
+			verbose && println("Evidence optimization iteration: ", i, ": optimization halted after the relative difference in the norm of the L2 penalty coefficients (in real space) decreased below ", x_reltol)
+			break
 		end
 	end
-	println("Best log-evidence: ", best𝐸)
-	println("Best L2 penalty coefficients: ", best𝛂)
-	println("Best parameters: ", best𝛉)
-	model.gaussianprior.𝛂 .= best𝛂
-	precisionmatrix!(model.gaussianprior)
-	sortparameters!(model, best𝛉, index𝛉)
-	real2native!(model.θnative, model.options, model.θreal)
+	𝛉₀ = concatenateparameters(model)
+	if 𝛉₀ != best𝛉
+		sortparameters!(model, best𝛉, index𝛉)
+		real2native!(model.θnative, model.options, model.θreal)
+	end
+	if model.gaussianprior.𝛂 != best𝛂
+		model.gaussianprior.𝛂 .= best𝛂
+		precisionmatrix!(model.gaussianprior)
+	end
 	return nothing
 end
 
@@ -153,15 +127,16 @@ function logevidence(𝐇::Matrix{<:Real}, ℓ::Real, 𝚽::AbstractMatrix{<:Rea
 end
 
 """
-	maximizeevidence!(memory, model, 𝐇, 𝛉₀)
+	maximizeevidence!(memory, model, 𝐇, index𝛉, 𝛉₀)
 
 Learn hyperparameters by fixing the parameters of the model and maximizing the evidence
 
 MODIFIED ARGUMENT
 -`memory`: structure containing variables to be modified during computations
--`model`: structure containing the parameters, hyperparameters, and data. The parameter values are modified, but the hyperparameters are not modified
+-`model`: structure containing the parameters, hyperparameters, and data. Only the hyperparameters are modified
 
 UNMODIFIED ARGUMENT
+-`index𝛉`: composite containing the indices of the model parameters if they were concatenated into a vector
 -`𝐇`: Hessian of the log-likelihood evaluated at the MAP solution `𝛉₀`, containing only the parameters associated with hyperparameters that are being optimized
 -`𝛉₀`: exact MAP solution
 
@@ -171,6 +146,7 @@ RETURN
 function maximizeevidence!(memory::Memoryforgradient,
 						model::Model,
 						𝐇::Matrix{<:Real},
+						index𝛉::Indexθ,
 						𝛉₀::Vector{<:Real};
 						optimizationoptions::Optim.Options=Optim.Options(iterations=15, show_trace=false, show_every=1),
 						optimizer::Optim.FirstOrderOptimizer=LBFGS(linesearch=LineSearches.BackTracking()))
@@ -191,6 +167,8 @@ function maximizeevidence!(memory::Memoryforgradient,
 	end
 	real2native!(gaussianprior, 𝐱̂)
 	precisionmatrix!(gaussianprior)
+	sortparameters!(model, 𝛉₀, index𝛉) #restore paramter values
+	real2native!(model.θnative, model.options, model.θreal)
 	return √normΔ
 end
 
@@ -302,4 +280,24 @@ function logevidence(𝐁₀𝐰₀::Vector{<:Real},
 	𝛉[index𝚽] .= 𝐰
 	ℓ = loglikelihood(𝛉, index𝛉, model)
 	logevidence(𝐇, ℓ, 𝚽, 𝐰)
+end
+
+"""
+	savetrace(MAP_values_converged, 𝐇, iteration, model)
+
+Save the hessian of the log-likelihood with the
+"""
+function savetrace(MAP_values_converged::Bool,
+					𝐇::Matrix{<:AbstractFloat},
+					iteration::Integer,
+					model::Model;
+					folderpath::String=dirname(model.options.datapath))
+	modelsummary = dictionary(Summary(model))
+	dict = Dict((key=>modelsummary[key] for key in keys(modelsummary))...,
+				"MAP_values_converged"=>MAP_values_converged,
+				"hessian_loglikelihood"=>𝐇,
+				"hessian_logposterior"=>𝐇-modelsummary["precisionmatrix"])
+	filename = "evidence_optimization_iteration_"*string(iteration)*".mat"
+	filepath = joinpath(folderpath, filename)
+	matwrite(filepath, dict)
 end

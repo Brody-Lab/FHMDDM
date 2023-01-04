@@ -48,6 +48,67 @@ function concatenateparameters(trialset::Trialset; includeunfit::Bool=false, ini
 end
 
 """
+	copy(glmθ)
+
+Duplicate a composite containing the parameters of a Poisson mixture generalized linear model
+"""
+function FHMDDM.copy(glmθ::GLMθ)
+	θnew = GLMθ(eltype(glmθ.𝐮), glmθ)
+	sortparameters!(θnew, glmθ)
+	return θnew
+end
+
+"""
+	GLMθ(concatenatedθ, θ)
+
+Create an instance of `GLMθ` by updating a pre-existing instance with new concatenated parameters
+
+ARGUMENT
+-`θ`: pre-existing instance of `GLMθ`
+-`concatenatedθ`: values of the parameters being fitted, concatenated into a vector
+
+OPTION ARGUMENT
+-`offset`: the number of unrelated parameters in `concatenatedθ` preceding the relevant parameters
+-`initialization`: whether to purposefully ignore the transformation parameteter `b` and the bound encoding `Δ𝐯`
+"""
+function GLMθ(concatenatedθ::Vector{elementtype}, glmθ::GLMθ; offset::Integer, initialization::Bool=false) where {elementtype<:Real}
+	θnew = GLMθ(elementtype, glmθ)
+	sortparameters!(θnew, glmθ)
+	sortparameters!(θnew, concatenatedθ; initialization=initialization, offset=offset)
+	return θnew
+end
+
+"""
+	GLMθ(elementtype, glmθ)
+
+Create an uninitialized instance of `GLMθ` with the given element type.
+
+This is for using ForwardDiff
+
+ARGUMENT
+-`glmθ`: an instance of GLMθ
+-`elementtype`: type of the element in each field of GLMθ
+
+RETURN
+-an instance of GLMθ
+"""
+function GLMθ(elementtype, glmθ::GLMθ)
+	values = map(fieldnames(GLMθ)) do fieldname
+				if fieldname ∈ glmθ.concatenationorder
+					x = getfield(glmθ, fieldname)
+					if eltype(x) <: Real
+						zeros(elementtype, length(x))
+					else
+						collect(zeros(elementtype, length(x)) for x in x)
+					end
+				else
+					getfield(glmθ, fieldname)
+				end
+			end
+	return GLMθ(values...)
+end
+
+"""
 	indexparameters(glmθ)
 
 Identify the parameters of Poisson mixture generalized linear model when they are concatenated in a vector
@@ -132,64 +193,38 @@ function indexparameters(trialsets::Vector{<:Trialset}; includeunfit::Bool=false
 end
 
 """
-	GLMθ(concatenatedθ, θ)
+	Indices𝐮(npostspike, npoststereoclick, npremovement, npostphotostimulus)
 
-Create an instance of `GLMθ` by updating a pre-existing instance with new concatenated parameters
-
-ARGUMENT
--`θ`: pre-existing instance of `GLMθ`
--`concatenatedθ`: values of the parameters being fitted, concatenated into a vector
-
-OPTION ARGUMENT
--`offset`: the number of unrelated parameters in `concatenatedθ` preceding the relevant parameters
--`initialization`: whether to purposefully ignore the transformation parameteter `b` and the bound encoding `Δ𝐯`
-"""
-function GLMθ(concatenatedθ::Vector{elementtype}, glmθ::GLMθ; offset::Integer, initialization::Bool=false) where {elementtype<:Real}
-	θnew = GLMθ(elementtype, glmθ)
-	sortparameters!(θnew, glmθ)
-	sortparameters!(θnew, concatenatedθ; initialization=initialization, offset=offset)
-	return θnew
-end
-
-"""
-	GLMθ(elementtype, glmθ)
-
-Create an uninitialized instance of `GLMθ` with the given element type.
-
-This is for using ForwardDiff
+Indices of the encoding weights of the temporal basis vectors of each filter that is independent of the accumulator
 
 ARGUMENT
--`glmθ`: an instance of GLMθ
--`elementtype`: type of the element in each field of GLMθ
+-number of temporal basis vectors for the post-spike, post-stereoclick, pre-movement, and post-phostimulus filters
 
-RETURN
--an instance of GLMθ
+OUTPUT
+-a composite containing the indices of the weights of the temporal basis vectors of each filter
 """
-function GLMθ(elementtype, glmθ::GLMθ)
-	values = map(fieldnames(GLMθ)) do fieldname
-				if fieldname ∈ glmθ.concatenationorder
-					x = getfield(glmθ, fieldname)
-					if eltype(x) <: Real
-						zeros(elementtype, length(x))
-					else
-						collect(zeros(elementtype, length(x)) for x in x)
-					end
-				else
-					getfield(glmθ, fieldname)
-				end
-			end
-	return GLMθ(values...)
-end
-
-"""
-	copy(glmθ)
-
-Duplicate a composite containing the parameters of a Poisson mixture generalized linear model
-"""
-function FHMDDM.copy(glmθ::GLMθ)
-	θnew = GLMθ(eltype(glmθ.𝐮), glmθ)
-	sortparameters!(θnew, glmθ)
-	return θnew
+function Indices𝐮(npostspike::Integer, npoststereoclick::Integer, npremovement::Integer, npostphotostimulus::Integer)
+	indices = UnitRange{Int}[]
+	k = 0
+	for name in fieldnames(Indices𝐮)
+		if name ==:gain
+			indices = vcat(indices, [1:1])
+			k += 1
+		elseif name == :postspike
+			indices = vcat(indices, [k .+ (1:npostspike)])
+			k += npostspike
+		elseif name == :poststereoclick
+			indices = vcat(indices, [k .+ (1:npoststereoclick)])
+			k += npoststereoclick
+		elseif name == :premovement
+			indices = vcat(indices, [k .+ (1:npremovement)])
+			k += npremovement
+		elseif name == :postphotostimulus
+			indices = vcat(indices, [k .+ (1:npostphotostimulus)])
+			k += npostphotostimulus
+		end
+	end
+	Indices𝐮(indices...)
 end
 
 """
@@ -213,6 +248,82 @@ function MixturePoissonGLM(concatenatedθ::Vector{<:Real}, mpGLM::MixturePoisson
 				end
 			end
 	return MixturePoissonGLM(values...)
+end
+
+"""
+	nameparameter(glmθ)
+
+Name the parameters of a Poisson mixture GLM
+
+ARGUMENT
+-`glmθ`: a composite containing the parameters of
+
+RETURN
+-a vector of String
+"""
+function nameparameters(glmθ::GLMθ)
+	parameternames = String[]
+	for name in glmθ.concatenationorder
+		if name == :𝐮
+			for field in fieldnames(Indices𝐮)
+				for q in eachindex(getfield(glmθ.indices𝐮, field))
+					parameternames = vcat(parameternames, string(field)*string(q))
+				end
+			end
+		elseif name == :𝐯
+			for k in eachindex(glmθ.𝐯)
+				for q in eachindex(glmθ.𝐯[k])
+					parameternames = vcat(parameternames, "accumulator_"*string(k)*"_"*string(q))
+				end
+			end
+		elseif (name == :Δ𝐯) & glmθ.fit_Δ𝐯
+			for k in eachindex(glmθ.Δ𝐯)
+				for q in eachindex(glmθ.Δ𝐯[k])
+					parameternames = vcat(parameternames, "accumulatorchange_"*string(k)*"_"*string(q))
+				end
+			end
+		elseif (name == :b) & glmθ.fit_b
+			parameternames = vcat(parameternames, "transformation")
+		end
+	end
+	return parameternames
+end
+
+"""
+	nameparameter(trialsetindex, neuronindex, glmθ)
+
+Name the parameters of the Poisson mixture GLM of a neuron
+
+ARGUMENT
+-`trialsetindex`: index of the trialset containing the neuron
+-`neuronindex`: order of the neuron in the trialset
+-`glmθ`: a composite containing the parameters of the neuron's Poisson mixture GLM
+
+RETURN
+-a vector of String
+"""
+function nameparameters(trialsetindex::Integer, neuronindex::Integer, glmθ::GLMθ)
+	map(nameparameters(glmθ)) do name
+		"trialset"*string(trialsetindex)*"_neuron"*string(neuronindex)*"_"*name
+	end
+end
+
+"""
+	nameparameter(neuronindex, glmθ)
+
+Name the parameters of the Poisson mixture GLM of a neuron
+
+ARGUMENT
+-`neuronindex`: order of the neuron in the trialset
+-`glmθ`: a composite containing the parameters of the neuron's Poisson mixture GLM
+
+RETURN
+-a vector of String
+"""
+function nameparameters(neuronindex::Integer, glmθ::GLMθ)
+	map(nameparameters(glmθ)) do name
+		"neuron"*string(neuronindex)*"_"*name
+	end
 end
 
 """

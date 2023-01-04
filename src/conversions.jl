@@ -329,9 +329,6 @@ function dictionary(options::Options)
 			"L2_b_fit"=>options.L2_b_fit,
 			"L2_b_max"=>options.L2_b_max,
 			"L2_b_min"=>options.L2_b_min,
-			"L2_Deltav_fit"=>options.L2_Δ𝐯_fit,
-			"L2_Deltav_max"=>options.L2_Δ𝐯_max,
-			"L2_Deltav_min"=>options.L2_Δ𝐯_min,
 			"L2_choices_max"=>options.L2_choices_max,
 			"L2_choices_min"=>options.L2_choices_min,
 			"L2_hist_fit"=>options.L2_hist_fit,
@@ -404,21 +401,87 @@ function dictionary(options::Options)
 end
 
 """
-    dictionary(θ::GLMθ)
+    dictionary(glmθ)
 
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
-function dictionary(θ::GLMθ)
-    Dict("b"=>θ.b,
-		"b_scalefactor"=>θ.b_scalefactor,
-		"u"=>θ.𝐮,
-		"v"=>θ.𝐯,
-		"Deltav"=>θ.Δ𝐯,
-		"uindices_gain"=>collect(θ.𝐮indices_gain),
-		"uindices_hist"=>collect(θ.𝐮indices_hist),
-		"uindices_move"=>collect(θ.𝐮indices_move),
-		"uindices_time"=>collect(θ.𝐮indices_time),
-		"uindices_phot"=>collect(θ.𝐮indices_phot))
+function dictionary(glmθ::GLMθ)
+    Dict("b"=>glmθ.b,
+		"b_scalefactor"=>glmθ.b_scalefactor,
+		"u"=>glmθ.𝐮,
+		"v"=>glmθ.𝐯,
+		"Deltav"=>glmθ.Δ𝐯,
+		("u_"*string(field)=>glmθ.𝐮[getfield(glmθ.indices𝐮, field)] for field in fieldnames(Indices𝐮))...)
+end
+
+"""
+	julianame(name)
+
+Return the Symbol of a parameter in this module corresponding its valid variable name in MATLAB
+"""
+function julianame(name::String)
+	if name == "Ac11"
+		:Aᶜ₁₁
+	elseif name == "Ac22"
+		:Aᶜ₂₂
+ 	elseif name == "B"
+		:B
+	elseif name == "k"
+		:k
+	elseif name == "lambda"
+		:λ
+	elseif name == "mu0"
+		:μ₀
+	elseif name == "phi"
+		:ϕ
+	elseif name == "pic1"
+		:πᶜ₁
+	elseif name == "psi"
+		:ψ
+	elseif name == "sigma2_a"
+		:σ²ₐ
+	elseif name == "sigma2_i"
+		:σ²ᵢ
+	elseif name == "sigma2_s"
+		:σ²ₛ
+	elseif name == "w_h"
+		:wₕ
+	end
+end
+
+"""
+	matlabname(name)
+
+A string containing the Valid variable name in MATLAB
+"""
+function matlabname(name::Symbol)
+	if name == :Aᶜ₁₁
+		"Ac11"
+	elseif name == :Aᶜ₂₂
+		"Ac22"
+ 	elseif name == :B
+		"B"
+	elseif name == :k
+		"k"
+	elseif name == :λ
+		"lambda"
+	elseif name == :μ₀
+		"mu0"
+	elseif name == :ϕ
+		"phi"
+	elseif name == :πᶜ₁
+		"pic1"
+	elseif name == :ψ
+		"psi"
+	elseif name == :σ²ₐ
+		"sigma2_a"
+	elseif name == :σ²ᵢ
+		"sigma2_i"
+	elseif name == :σ²ₛ
+		"sigma2_s"
+	elseif name == :wₕ
+		"w_h"
+	end
 end
 
 """
@@ -426,42 +489,14 @@ end
 
 Convert an instance of `Latentθ` to a dictionary
 """
-function dictionary(θ::Latentθ)
-    Dict("Ac11"=>θ.Aᶜ₁₁[1],
-		"Ac22"=>θ.Aᶜ₂₂[1],
-		"B"=>θ.B[1],
-		"k"=>θ.k[1],
-		"lambda"=>θ.λ[1],
-		"mu0"=>θ.μ₀[1],
-		"phi"=>θ.ϕ[1],
-		"pic1"=>θ.πᶜ₁[1],
-		"psi"=>θ.ψ[1],
-		"sigma2_a"=>θ.σ²ₐ[1],
-		"sigma2_i"=>θ.σ²ᵢ[1],
-		"sigma2_s"=>θ.σ²ₛ[1],
-		"w_h"=>θ.wₕ[1])
-end
+dictionary(θ::Latentθ) = Dict((matlabname(name)=>getfield(θ,name)[1] for name in fieldnames(Latentθ))...)
 
 """
     Latentθ(θ)
 
 Create an instance of `Latentθ` from a Dict
 """
-function Latentθ(θ::Dict)
-	Latentθ(Aᶜ₁₁=[θ["Ac11"]],
-			Aᶜ₂₂=[θ["Ac22"]],
-			B=[θ["B"]],
-			k=[θ["k"]],
-			λ=[θ["lambda"]],
-			μ₀=[θ["mu0"]],
-			ϕ=[θ["phi"]],
-			πᶜ₁=[θ["pic1"]],
-			ψ=[θ["psi"]],
-			σ²ₐ=[θ["sigma2_a"]],
-			σ²ᵢ=[θ["sigma2_i"]],
-			σ²ₛ=[θ["sigma2_s"]],
-			wₕ=[θ["w_h"]])
-end
+Latentθ(θ::Dict) = Latentθ((θ[matlabname(name)] for name in fieldnames(Latentθ))...)
 
 """
     Options(options::Dict)
@@ -496,9 +531,6 @@ function Options(nunits::Integer, options::Dict)
 			L2_b_min = options["L2_b_min"],
 			L2_choices_max = options["L2_choices_max"],
 			L2_choices_min = options["L2_choices_min"],
-			L2_Δ𝐯_fit = options["L2_Deltav_fit"],
-			L2_Δ𝐯_max = options["L2_Deltav_max"],
-			L2_Δ𝐯_min = options["L2_Deltav_min"],
 			L2_hist_fit = options["L2_hist_fit"],
 			L2_hist_max = options["L2_hist_max"],
 			L2_hist_min = options["L2_hist_min"],

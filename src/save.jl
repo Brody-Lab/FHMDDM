@@ -40,15 +40,18 @@ function dictionary(modelsummary::Summary)
         "thetareal"=> dictionary(modelsummary.θreal),
         "theta0native" => dictionary(modelsummary.θ₀native),
         "thetaglm"=>map(θ->map(θ->dictionary(θ), θ), modelsummary.θglm),
-        "Phiaccumulator"=>modelsummary.Φₐ,
-        "Phihistory"=>modelsummary.Φₕ,
-        "Phiphotostimulus"=>modelsummary.Φₚ,
-        "Phipremovement"=>modelsummary.Φₘ,
-        "Phitime"=>modelsummary.Φₜ,
-        "Phiphotostimulus_timesteps"=>collect(modelsummary.Φₚtimesteps),
+        "Phi_accumulator"=>modelsummary.Φₐ,
+        "Phi_postspike"=>modelsummary.Φₕ,
+        "Phi_postphotostimulus"=>modelsummary.Φₚ,
+        "Phi_premovement"=>modelsummary.Φₘ,
+        "Phi_poststereoclick"=>modelsummary.Φₜ,
+        "Phi_photostimulus_timesteps"=>collect(modelsummary.Φₚtimesteps),
+		"parametervalues"=>modelsummary.parametervalues,
+		"parameternames"=>modelsummary.parameternames,
         "penaltycoefficients"=>modelsummary.𝛂,
         "penaltymatrices"=>modelsummary.𝐀,
         "penaltymatrixindices"=>modelsummary.index𝐀,
+		"penaltynames"=>modelsummary.penaltynames,
         "precisionmatrix"=>modelsummary.𝚲)
 end
 
@@ -70,9 +73,12 @@ function Summary(model::Model)
 	        Φₘ=model.trialsets[1].mpGLMs[1].Φₘ,
 	        Φₜ=model.trialsets[1].mpGLMs[1].Φₜ,
 	        Φₚtimesteps=collect(model.trialsets[1].mpGLMs[1].Φₚtimesteps),
+			parametervalues=concatenateparameters(model),
+			parameternames=nameparameters(model),
 	        𝛂=model.gaussianprior.𝛂,
 	        𝐀=model.gaussianprior.𝐀,
 	        index𝐀=model.gaussianprior.index𝐀,
+			penaltynames=model.gaussianprior.penaltynames,
 	        𝚲=model.gaussianprior.𝚲)
 end
 
