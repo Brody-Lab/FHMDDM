@@ -15,13 +15,11 @@ function GaussianPrior(options::Options, trialsets::Vector{<:Trialset})
 	𝐀, index𝐀 = shrinkagematrices(indexθ.latentθ, options)
 	𝛂max = options.L2_latent_max .*ones(length(𝐀))
 	𝛂min = options.L2_latent_min .*ones(length(𝐀))
-	for glmθs_each_trialset in indexθ.glmθ
-		𝐀_glm, index𝐀_glm, 𝛂max_glm, 𝛂min_glm = shrinkagematrices(glmθs_each_trialset, options)
-		𝐀 = vcat(𝐀, 𝐀_glm)
-		index𝐀 = vcat(index𝐀, index𝐀_glm)
-		𝛂max = vcat(𝛂max, 𝛂max_glm)
-		𝛂min = vcat(𝛂min, 𝛂min_glm)
-	end
+	𝐀_glm, index𝐀_glm, 𝛂max_glm, 𝛂min_glm = precision_matrix_components(indexθ.glmθ, options)
+	𝐀 = vcat(𝐀, 𝐀_glm)
+	index𝐀 = vcat(index𝐀, index𝐀_glm)
+	𝛂max = vcat(𝛂max, 𝛂max_glm)
+	𝛂min = vcat(𝛂min, 𝛂min_glm)
 	nparameters = concatenate(indexθ)[end]
     gaussianprior = GaussianPrior(𝐀=𝐀, 𝛂=sqrt.(𝛂min.*𝛂max), 𝛂min=𝛂min, 𝛂max=𝛂max, index𝐀=index𝐀, 𝚲=zeros(nparameters,nparameters), penaltynames=namepenalties(indexθ, options))
     precisionmatrix!(gaussianprior)
@@ -60,15 +58,15 @@ RETURN
 -a vector of String
 """
 function namepenalties(indices::Latentθ)
-	parameternames = String[]
+	penaltynames = String[]
 	for name in fieldnames(Latentθ)
 		i = getfield(indices, name)[1]
 		if (i == 0) || (name == :Aᶜ₁₁) || (name == :Aᶜ₂₂) || (name == :πᶜ₁)
 		else
-			parameternames = vcat(parameternames, matlabname(name))
+			penaltynames = vcat(penaltynames, matlabname(name))
 		end
 	end
-	return parameternames
+	return penaltynames
 end
 
 """
@@ -83,73 +81,26 @@ ARGUMENT
 RETURN
 -a vector of String
 """
-function namepenalties(nested_glmθs::Vector{<:Vector{<:GLMθ}}, options::Options)
-	ntrialsets = length(nested_glmθs)
-	if ntrialsets > 1
-		reduce(vcat, (namepenalties(i,n,nested_glmθs[i][n],options) for i in eachindex(nested_glmθs) for n in eachindex(nested_glmθs[i][n])))
-	else
-		reduce(vcat, (namepenalties(n,nested_glmθs[1][n],options) for n in eachindex(nested_glmθs[1])))
-	end
-end
-
-"""
-	namepenalties(trialsetindex, neuronindex, glmθ, options)
-
-Name of each L2 regularization term of each Poisson mixture GLM
-"""
-function namepenalties(trialsetindex::Integer, neuronindex::Integer, glmθ::GLMθ, options::Options)
-	map(namepenalties(glmθ,options)) do name
-		"trialset"*string(trialsetindex)*"_neuron"*string(neuronindex)*"_"*name
-	end
-end
-
-"""
-	namepenalties(neuronindex, glmθ, options)
-
-Name of each L2 regularization term of each Poisson mixture GLM
-"""
-function namepenalties(neuronindex::Integer, glmθ::GLMθ, options::Options)
-	map(namepenalties(glmθ,options)) do name
-		"neuron"*string(neuronindex)*"_"*name
-	end
-end
-
-"""
-	namepenalties(indices𝐮, options)
-
-Name of each L2 regularization term on the accumulator-independent filters
-"""
-function namepenalties(indices𝐮::Indices𝐮, options::Options)
+function namepenalties(nestedindices::Vector{<:Vector{<:GLMθ}}, options::Options)
 	penaltynames = String[]
-	for filtername in fieldnames(Indices𝐮)
-		if (filtername == :postspike) & (length(getfield(indices𝐮,filtername)) > 0) & options.L2_hist_fit
-			penaltynames = vcat(penaltynames, string(filtername))
-		elseif (filtername == :poststereoclick) & (length(getfield(indices𝐮,filtername)) > 0) & options.L2_time_fit
-			penaltynames = vcat(penaltynames, string(filtername))
-		elseif (filtername == :premovement) & (length(getfield(indices𝐮,filtername)) > 0) & options.L2_move_fit
-			penaltynames = vcat(penaltynames, string(filtername))
-		elseif (filtername == :postphotostimulus) & (length(getfield(indices𝐮,filtername)) > 0) options.L2_phot_fit
-			penaltynames = vcat(penaltynames, string(filtername))
-		end
-	end
-	return penaltynames
-end
-
-"""
-	namepenalties(glmθ, options)
-
-Name of each L2 regularization term of a Poisson mixture GLM
-
-Had the implementation use `reduce(vcat, ...)`, the resulting vector may contain 'nothing'.
-"""
-function namepenalties(glmθ::GLMθ, options::Options)
-	penaltynames = String[]
-	for name in glmθ.concatenationorder
+	for name in nestedindices[1][1].concatenationorder
 		if name == :𝐮
-			penaltynames = vcat(penaltynames, namepenalties(glmθ.indices𝐮, options))
+			for filtername in fieldnames(Indices𝐮)
+				parameterindices = reduce(vcat, reduce(vcat, index.𝐮[getfield(index.indices𝐮,filtername)] for index in indices) for indices in nestedindices)
+				nparameters = length(parameterindices)
+				if (filtername == :postspike) & options.L2_hist_fit & (nparameters > 0)
+					penaltynames = vcat(penaltynames, string(filtername))
+				elseif (filtername == :poststereoclick) & options.L2_time_fit & (nparameters > 0)
+					penaltynames = vcat(penaltynames, string(filtername))
+				elseif (filtername == :premovement) & options.L2_move_fit & (nparameters > 0)
+					penaltynames = vcat(penaltynames, string(filtername))
+				elseif (filtername == :postphotostimulus) & options.L2_phot_fit & (nparameters > 0)
+					penaltynames = vcat(penaltynames, string(filtername))
+				end
+			end
 		elseif (name == :𝐯) & options.L2_v_fit
 			penaltynames = vcat(penaltynames, "accumulator_encoding")
-		elseif (name == :b) & glmθ.fit_b & options.L2_b_fit
+		elseif (name == :b) & options.fit_b & options.L2_b_fit
 			penaltynames = vcat(penaltynames, "accumulator_transformation")
 		end
 	end
@@ -186,87 +137,74 @@ function shrinkagematrices(indexθlatent::Latentθ, options::Options)
 end
 
 """
-	shrinkagematrices(indexθ, options)
+	precision_matrix_components(nestedindices, options)
 
-Matrices that compute can compute the time average of the squares of each kernel
+Components of the precision matrix
 
 ARGUMENT
--`indexθ`: structure indicating the order of each parameter if all parameters were concatenated into a vector
+-`nestedindices`: structure indicating the order of each parameter if all parameters were concatenated into a vector
 -`options`: settings of the model
 
 RETURN
--`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group
+-`𝐀`: A nest array of matrices. Element `𝐀[i]` corresponds to the Nᵢ×Nᵢ sum-of-squares matrix of the i-th group of parameters, with N parameters in the group.
 -`index𝐀`: Element `index𝐀[i][j]` corresponds to the i-th group of parameters and the j-th parameter in that group. The value of the element indicates the index of that parameter in a vector concatenating all the parameters in the model that are being fit.
 -`𝛂max`: a vector containing the maximum precision of the prior on each parameter
 -`𝛂min`: a vector containing the minimum precision of the prior on each parameter
 """
-function shrinkagematrices(indexθglm::Vector{<:GLMθ}, options::Options)
-	nbaseshist = length(indexθglm[1].indices𝐮.postspike)
-	nbasestime = length(indexθglm[1].indices𝐮.poststereoclick)
-	nbasesmove = length(indexθglm[1].indices𝐮.premovement)
-	nbasesphot = length(indexθglm[1].indices𝐮.postphotostimulus)
-	Ahist = zeros(nbaseshist,nbaseshist) + options.tbf_hist_scalefactor^2*I # computations with `Diagonal` are slower
-	Atime = zeros(nbasestime,nbasestime) + options.tbf_time_scalefactor^2*I
-	Amove = zeros(nbasesmove,nbasesmove) + options.tbf_move_scalefactor^2*I
-	Aphot = zeros(nbasesphot,nbasesphot) + options.tbf_phot_scalefactor^2*I
-	Aevtr = ones(1,1)*options.b_scalefactor^2
-	if indexθglm[1].fit_Δ𝐯
-		A = [2.0 -1.0; -1.0 2.0].*options.tbf_accu_scalefactor^2
-		Aaccu = cat((A for k in eachindex(indexθglm[1].𝐯) for q in eachindex(indexθglm[1].𝐯[k]) )...,dims=(1,2))
-	else
-		nbasesaccu = length(vcat(indexθglm[1].𝐯...))
-		Aaccu = zeros(nbasesaccu,nbasesaccu) + options.tbf_accu_scalefactor^2*I
-	end
+function precision_matrix_components(nestedindices::Vector{<:Vector{<:GLMθ}}, options::Options)
 	𝐀 = Matrix{typeof(1.0)}[]
 	index𝐀 = Vector{typeof(1)}[]
 	𝛂max = typeof(1.0)[]
 	𝛂min = typeof(1.0)[]
-	for indexᵢₙ in indexθglm
-		for name in indexᵢₙ.concatenationorder
-			if name == :𝐮
-				for filtername in fieldnames(Indices𝐮)
-					if (filtername == :postspike) & (nbaseshist > 0) & options.L2_hist_fit
-						𝐀 = vcat(𝐀, [Ahist])
-						parameterindices = indexᵢₙ.𝐮[getfield(indexᵢₙ.indices𝐮, filtername)]
-						index𝐀 = vcat(index𝐀, [parameterindices])
-						𝛂max = vcat(𝛂max, options.L2_hist_max)
-						𝛂min = vcat(𝛂min, options.L2_hist_min)
-					elseif (filtername == :poststereoclick) & (nbasestime > 0) & options.L2_time_fit
-						𝐀 = vcat(𝐀, [Atime])
-						parameterindices = indexᵢₙ.𝐮[getfield(indexᵢₙ.indices𝐮, filtername)]
-						index𝐀 = vcat(index𝐀, [parameterindices])
-						𝛂max = vcat(𝛂max, options.L2_time_max)
-						𝛂min = vcat(𝛂min, options.L2_time_min)
-					elseif (filtername == :premovement) & (nbasesmove > 0) & options.L2_move_fit
-						𝐀 = vcat(𝐀, [Amove])
-						parameterindices = indexᵢₙ.𝐮[getfield(indexᵢₙ.indices𝐮, filtername)]
-						index𝐀 = vcat(index𝐀, [parameterindices])
-						𝛂max = vcat(𝛂max, options.L2_move_max)
-						𝛂min = vcat(𝛂min, options.L2_move_min)
-					elseif (filtername == :postphotostimulus) & (nbasesphot > 0) options.L2_phot_fit
-						𝐀 = vcat(𝐀, [Aphot])
-						parameterindices = indexᵢₙ.𝐮[getfield(indexᵢₙ.indices𝐮, filtername)]
-						index𝐀 = vcat(index𝐀, [parameterindices])
-						𝛂max = vcat(𝛂max, options.L2_phot_max)
-						𝛂min = vcat(𝛂min, options.L2_phot_min)
-					end
+	for name in nestedindices[1][1].concatenationorder
+		if name == :𝐮
+			for filtername in fieldnames(Indices𝐮)
+				parameterindices = reduce(vcat, reduce(vcat, index.𝐮[getfield(index.indices𝐮,filtername)] for index in indices) for indices in nestedindices)
+				nparameters = length(parameterindices)
+				if (filtername == :postspike) & options.L2_hist_fit & (nparameters > 0)
+					𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + options.tbf_hist_scalefactor^2*I])
+					index𝐀 = vcat(index𝐀, [parameterindices])
+					𝛂max = vcat(𝛂max, options.L2_hist_max)
+					𝛂min = vcat(𝛂min, options.L2_hist_min)
+				elseif (filtername == :poststereoclick) & options.L2_time_fit & (nparameters > 0)
+					𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + options.tbf_time_scalefactor^2*I])
+					index𝐀 = vcat(index𝐀, [parameterindices])
+					𝛂max = vcat(𝛂max, options.L2_time_max)
+					𝛂min = vcat(𝛂min, options.L2_time_min)
+				elseif (filtername == :premovement) & options.L2_move_fit & (nparameters > 0)
+					𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + options.tbf_move_scalefactor^2*I])
+					index𝐀 = vcat(index𝐀, [parameterindices])
+					𝛂max = vcat(𝛂max, options.L2_move_max)
+					𝛂min = vcat(𝛂min, options.L2_move_min)
+				elseif (filtername == :postphotostimulus) & options.L2_phot_fit & (nparameters > 0)
+					𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + options.tbf_phot_scalefactor^2*I])
+					index𝐀 = vcat(index𝐀, [parameterindices])
+					𝛂max = vcat(𝛂max, options.L2_phot_max)
+					𝛂min = vcat(𝛂min, options.L2_phot_min)
 				end
-			elseif (name == :𝐯) & options.L2_v_fit
-				𝐀 = vcat(𝐀, [Aaccu])
-				if indexᵢₙ.fit_Δ𝐯
-					parameterindices = vcat(([indexᵢₙ.𝐯[k][q], indexᵢₙ.Δ𝐯[k][q]] for k in eachindex(indexᵢₙ.𝐯) for q in eachindex(indexᵢₙ.𝐯[k]))...)
-				else
-					parameterindices = vcat(indexᵢₙ.𝐯...)
-				end
-				index𝐀 = vcat(index𝐀, [parameterindices])
-				𝛂max = vcat(𝛂max, options.L2_v_max)
-				𝛂min = vcat(𝛂min, options.L2_v_min)
-			elseif (name == :b) & indexᵢₙ.fit_b & options.L2_b_fit
-				𝐀 = vcat(𝐀, [Aevtr])
-				index𝐀 = vcat(index𝐀, [indexᵢₙ.b])
-				𝛂max = vcat(𝛂max, options.L2_b_max)
-				𝛂min = vcat(𝛂min, options.L2_b_min)
 			end
+		elseif (name == :𝐯) & options.L2_v_fit
+			if options.fit_Δ𝐯
+				parameterindices = reduce(vcat, reduce(vcat, reduce(vcat, reduce(vcat, vcat(v,Δv) for (v, Δv) in zip(𝐯ₖ, Δ𝐯ₖ)) for (𝐯ₖ, Δ𝐯ₖ) in zip(index.𝐯, index.Δ𝐯)) for index in indices) for indices in nestedindices)
+				nparameters = length(parameterindices)
+				A = [2.0 -1.0; -1.0 2.0].*options.tbf_accu_scalefactor^2
+				Aaccu = cat((A for i = 1:(nparameters/2))...,dims=(1,2))
+			else
+				parameterindices = reduce(vcat, reduce(vcat, vcat(index.𝐯...) for index in indices) for indices in nestedindices)
+				nparameters = length(parameterindices)
+				Aaccu = zeros(nparameters,nparameters) + options.tbf_accu_scalefactor^2*I
+			end
+			𝐀 = vcat(𝐀, [Aaccu])
+			index𝐀 = vcat(index𝐀, [parameterindices])
+			𝛂max = vcat(𝛂max, options.L2_v_max)
+			𝛂min = vcat(𝛂min, options.L2_v_min)
+		elseif (name == :b) & options.fit_b & options.L2_b_fit
+			parameterindices = reduce(vcat, collect(index.b[1] for index in indices) for indices in nestedindices)
+			nparameters = length(parameterindices)
+			𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + options.b_scalefactor^2*I])
+			index𝐀 = vcat(index𝐀, [parameterindices])
+			𝛂max = vcat(𝛂max, options.L2_b_max)
+			𝛂min = vcat(𝛂min, options.L2_b_min)
 		end
 	end
 	return 𝐀, index𝐀, 𝛂max, 𝛂min

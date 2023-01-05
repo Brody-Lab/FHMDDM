@@ -138,7 +138,7 @@ RETURN
 -log of the posterior probability of the parameters, minus the parameter-independent terms
 """
 function logposterior!(model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
-	loglikelihood!(model, memory, concatenatedθ) - 0.5dot(concatenatedθ, model.gaussianprior.𝚲, concatenatedθ)
+	loglikelihood!(model, memory, concatenatedθ) - 0.5(concatenatedθ'*model.gaussianprior.𝚲*concatenatedθ)
 end
 
 """
@@ -156,7 +156,7 @@ RETURN
 
 """
 function logposterior(concatenatedθ::Vector{T}, indexθ::Indexθ, model::Model) where {T<:Real}
-	loglikelihood(concatenatedθ, indexθ, model) - 0.5dot(concatenatedθ, model.gaussianprior.𝚲, concatenatedθ)
+	loglikelihood(concatenatedθ, indexθ, model) - 0.5(concatenatedθ'*model.gaussianprior.𝚲*concatenatedθ)
 end
 
 """
