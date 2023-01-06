@@ -15,7 +15,7 @@ function accumulatorbasis(maxtimesteps::Integer, options::Options)
 	if isnan(nfunctions)
 		return ones(0,0)
 	elseif nfunctions < 1
-		return ones(maxtimesteps,1) ./ √maxtimesteps
+		return ones(maxtimesteps,1) .* (options.tbf_accu_scalefactor/√maxtimesteps)
 	else
 		temporal_basis_functions(options.tbf_accu_begins0,
 								options.tbf_accu_ends0,
