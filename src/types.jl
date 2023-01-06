@@ -59,7 +59,7 @@ Model settings
 	"whether to fit the parameter for transforming the accumulator"
 	fit_b::TB=true
 	"whether to fit separate encoding weights for when the accumulator is at the bound"
-	fit_Δ𝐯::TB=true
+	fit_𝛃::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=true
 	"whether to fit the parameter specifying leak or instability"
@@ -290,11 +290,11 @@ Parameters of a mixture of Poisson generalized linear model
 	"scale factor for the nonlinearity of accumulator transformation"
 	b_scalefactor::R
 	"order by which parameters are concatenated"
-	concatenationorder::VS = [:𝐮, :𝐯, :Δ𝐯, :b]
+	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :b]
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
-	fit_Δ𝐯::B
+	fit_𝛃::B
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
 	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
@@ -302,7 +302,7 @@ Parameters of a mixture of Poisson generalized linear model
     "state-dependent linear filters of the inputs from the accumulator "
     𝐯::VVR
 	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
-	Δ𝐯::VVR=deepcopy(𝐯)
+	𝛃::VVR=deepcopy(𝐯)
 end
 
 """

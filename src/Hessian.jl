@@ -583,7 +583,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 										d²𝛚_db²::Vector{<:Real},
 										τ::Integer)
 	@unpack 𝐗, Ξ, 𝐕, 𝐲 = mpGLM
-	@unpack b, 𝐮, 𝐯, Δ𝐯 = mpGLM.θ
+	@unpack b, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	K = length(𝐯)
 	n𝐮 = length(𝐮)
 	n𝐯 = length(𝐯[1])
@@ -603,17 +603,13 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 			dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
 			d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
 			offset𝐯 = n𝐮 + (j-1)*n𝐯
-			offsetΔ𝐯 = n𝐮 + (K+j-1)*n𝐯
+			offset𝛃 = n𝐮 + (K+j-1)*n𝐯
 			for m=1:n𝐮
 				∇logpy[m][i,j] = dℓ_dL*𝐗[τ,m]
 			end
+			offset = fit_𝛃 && ((i==1) || (i==Ξ)) ? offset𝛃 : offset𝐯
 			for m=1:n𝐯
-				∇logpy[m+offset𝐯][i,j] = dℓ_dL*dL_d𝐯[m]
-			end
-			if i==1 || i==Ξ
-				for m=1:n𝐯
-					∇logpy[m+offsetΔ𝐯][i,j] = dℓ_dL*dL_d𝐯[m]
-				end
+				∇logpy[m+offset][i,j] = dℓ_dL*dL_d𝐯[m]
 			end
 			∇logpy[indexb][i,j] = dℓ_dL*dL_db
 			for m=1:n𝐮
@@ -621,35 +617,16 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 					∇∇logpy[m,n][i,j] = d²ℓ_dL²*𝐗[τ,m]*𝐗[τ,n]
 				end
 				for n=1:n𝐯
-					∇∇logpy[m,n+offset𝐯][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_d𝐯[n]
-				end
-				if i==1 || i==Ξ
-					for n=1:n𝐯
-						∇∇logpy[m,n+offsetΔ𝐯][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_d𝐯[n]
-					end
+					∇∇logpy[m,n+offset][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_d𝐯[n]
 				end
 				∇∇logpy[m,indexb][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_db
 			end
 			for m=1:n𝐯
 				for n=m:n𝐯
-					∇∇logpy[m+offset𝐯, n+offset𝐯][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
-				end
-				if i==1 || i==Ξ
-					for n=1:n𝐯
-						∇∇logpy[m+offset𝐯, n+offsetΔ𝐯][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
-					end
+					∇∇logpy[m+offset, n+offset][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
 				end
 				d²L_dvdb = 𝐕[τ,m]*d𝛚_db[i]
-				∇∇logpy[m+offset𝐯,indexb][i,j] = d²ℓ_dL²*dL_d𝐯[m]*dL_db + dℓ_dL*d²L_dvdb
-			end
-			if i==1 || i==Ξ
-				for m=1:n𝐯
-					for n=m:n𝐯
-						∇∇logpy[m+offsetΔ𝐯,n+offsetΔ𝐯][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
-					end
-					d²L_dvdb = 𝐕[τ,m]*d𝛚_db[i]
-					∇∇logpy[m+offsetΔ𝐯,indexb][i,j] = d²ℓ_dL²*dL_d𝐯[m]*dL_db + dℓ_dL*d²L_dvdb
-				end
+				∇∇logpy[m+offset,indexb][i,j] = d²ℓ_dL²*dL_d𝐯[m]*dL_db + dℓ_dL*d²L_dvdb
 			end
 			∇∇logpy[indexb,indexb][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
 		end

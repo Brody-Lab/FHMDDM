@@ -313,7 +313,7 @@ function dictionary(options::Options)
 			"fit_Ac22"=>options.fit_Aᶜ₂₂,
 			"fit_B"=>options.fit_B,
 			"fit_b"=>options.fit_b,
-			"fit_Deltav"=>options.fit_Δ𝐯,
+			"fit_beta"=>options.fit_𝛃,
 			"fit_k"=>options.fit_k,
 			"fit_lambda"=>options.fit_λ,
 			"fit_mu0"=>options.fit_μ₀,
@@ -414,7 +414,7 @@ function dictionary(glmθ::GLMθ)
 		"b_scalefactor"=>glmθ.b_scalefactor,
 		"u"=>glmθ.𝐮,
 		"v"=>glmθ.𝐯,
-		"Deltav"=>glmθ.Δ𝐯,
+		"beta"=>glmθ.𝛃,
 		("u_"*string(field)=>glmθ.𝐮[getfield(glmθ.indices𝐮, field)] for field in fieldnames(Indices𝐮))...)
 end
 
@@ -517,7 +517,7 @@ function Options(nunits::Integer, options::Dict)
 			fit_Aᶜ₂₂= options["fit_Ac22"],
 			fit_B = options["fit_B"],
 			fit_b = options["fit_b"],
-			fit_Δ𝐯 = options["fit_Deltav"],
+			fit_𝛃 = options["fit_beta"],
 			fit_k = options["fit_k"],
 			fit_λ = options["fit_lambda"],
 			fit_μ₀ = options["fit_mu0"],

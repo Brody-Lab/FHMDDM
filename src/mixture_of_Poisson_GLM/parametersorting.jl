@@ -15,9 +15,9 @@ OUTPUT
 """
 function concatenateparameters(glmθ::GLMθ; includeunfit::Bool=false, initialization::Bool=false)
 	emptyvector = eltype(getfield(glmθ,glmθ.concatenationorder[1]))[]
-	vcat((	if name==:Δ𝐯
-				if includeunfit || glmθ.fit_Δ𝐯
-					vcat(glmθ.Δ𝐯...)
+	vcat((	if name==:𝛃
+				if includeunfit || glmθ.fit_𝛃
+					vcat(glmθ.𝛃...)
 				else
 					emptyvector
 				end
@@ -69,7 +69,7 @@ ARGUMENT
 
 OPTION ARGUMENT
 -`offset`: the number of unrelated parameters in `concatenatedθ` preceding the relevant parameters
--`initialization`: whether to purposefully ignore the transformation parameteter `b` and the bound encoding `Δ𝐯`
+-`initialization`: whether to purposefully ignore the transformation parameteter `b` and the bound encoding `𝛃`
 """
 function GLMθ(concatenatedθ::Vector{elementtype}, glmθ::GLMθ; offset::Integer, initialization::Bool=false) where {elementtype<:Real}
 	θnew = GLMθ(elementtype, glmθ)
@@ -273,13 +273,13 @@ function nameparameters(glmθ::GLMθ)
 		elseif name == :𝐯
 			for k in eachindex(glmθ.𝐯)
 				for q in eachindex(glmθ.𝐯[k])
-					parameternames = vcat(parameternames, "accumulator_"*string(k)*"_"*string(q))
+					parameternames = vcat(parameternames, "precommitment_encoding_"*string(k)*"_"*string(q))
 				end
 			end
-		elseif (name == :Δ𝐯) & glmθ.fit_Δ𝐯
-			for k in eachindex(glmθ.Δ𝐯)
-				for q in eachindex(glmθ.Δ𝐯[k])
-					parameternames = vcat(parameternames, "accumulatorchange_"*string(k)*"_"*string(q))
+		elseif (name == :𝛃) & glmθ.fit_𝛃
+			for k in eachindex(glmθ.𝛃)
+				for q in eachindex(glmθ.𝛃[k])
+					parameternames = vcat(parameternames, "postcommitment_encoding_"*string(k)*"_"*string(q))
 				end
 			end
 		elseif (name == :b) & glmθ.fit_b
@@ -343,12 +343,12 @@ OPTIONAL ARGUMENT
 """
 function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; includeunfit::Bool=false, initialization::Bool=false, offset::Integer=0)
 	for name in θ.concatenationorder
-		if name == :Δ𝐯
-			if (includeunfit || θ.fit_Δ𝐯)
-				for k in eachindex(θ.Δ𝐯)
-					for q in eachindex(θ.Δ𝐯[k])
+		if name == :𝛃
+			if (includeunfit || θ.fit_𝛃)
+				for k in eachindex(θ.𝛃)
+					for q in eachindex(θ.𝛃[k])
 						offset += 1
-						θ.Δ𝐯[k][q] = concatenatedθ[offset]
+						θ.𝛃[k][q] = concatenatedθ[offset]
 					end
 				end
 			end
@@ -455,8 +455,8 @@ function sortparameters!(glmθ::GLMθ, dict::Dict)
 	for k in eachindex(glmθ.𝐯)
 		glmθ.𝐯[k] .= dict["v"][k]
 	end
-	for k in eachindex(glmθ.Δ𝐯)
-		glmθ.Δ𝐯[k] .= dict["Deltav"][k]
+	for k in eachindex(glmθ.𝛃)
+		glmθ.𝛃[k] .= dict["beta"][k]
 	end
 	glmθ.b .= dict["b"]
 end

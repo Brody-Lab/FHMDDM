@@ -23,8 +23,8 @@ function initialize_GLM_parameters!(model::Model; iterations::Integer=5, show_tr
 		for i in eachindex(model.trialsets)
 			for mpGLM in model.trialsets[i].mpGLMs
 				vmean = mean(mpGLM.θ.𝐯)
-				mpGLM.θ.𝐯[1] .= mpGLM.θ.Δ𝐯[1] .= 3.0.*vmean
-				mpGLM.θ.𝐯[2] .= mpGLM.θ.Δ𝐯[2] .= -vmean
+				mpGLM.θ.𝐯[1] .= mpGLM.θ.𝛃[1] .= 3.0.*vmean
+				mpGLM.θ.𝐯[2] .= mpGLM.θ.𝛃[2] .= -vmean
 			end
 		end
 	end
@@ -163,23 +163,27 @@ UNMODIFIED ARGUMENT
 """
 function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
     @unpack Δt, 𝐕, 𝐗, 𝐲, d𝛏_dB = mpGLM
-	@unpack 𝐮, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
+	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	d𝛏_dB² = d𝛏_dB.^2
 	Ξ, K = size(γ)
 	T = length(𝐲)
-	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(type,T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(type,T) for k=1:K)
-	∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-	if fit_Δ𝐯
-		∑_bounds_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_bounds_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_bounds_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-	end
 	Q[1] = 0.0
 	∇Q .= 0.0
 	∇∇Q .= 0.0
+	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(type,T) for k=1:K)
+	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(type,T) for k=1:K)
+	if fit_𝛃
+		∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+		∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+	else
+		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+	end
 	@inbounds for i = 1:Ξ
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
@@ -190,13 +194,20 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
 				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
 				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
-				∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
-				if fit_Δ𝐯 && (i==1 || i==Ξ)
-					∑_bounds_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-					∑_bounds_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-					∑_bounds_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+				if fit_𝛃
+					if (i==1) || (i==Ξ)
+						∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+						∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+						∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+					else
+						∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+						∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+						∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+					end
+				else
+					∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+					∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+					∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
 				end
 			end
 		end
@@ -205,8 +216,8 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 	n𝐯 = length(𝐯[1])
 	indices𝐮 = 1:n𝐮
 	indices𝐯 = collect(indices𝐮[end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
-	if fit_Δ𝐯
-		indicesΔ𝐯 = collect(indices𝐯[end][end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
+	if fit_𝛃
+		indices𝛃 = collect(indices𝐯[end][end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
 	end
 	𝐔 = @view 𝐗[:, 1:n𝐮]
 	𝐔ᵀ, 𝐕ᵀ = transpose(𝐔), transpose(𝐕)
@@ -214,14 +225,20 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
 	∇Q[indices𝐮] .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
 	∇∇Q[indices𝐮, indices𝐮] .= 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
-	@inbounds for k = 1:K
-		∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-		∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-		∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
-		if fit_Δ𝐯
-			∇Q[indicesΔ𝐯[k]] .= 𝐕ᵀ*∑_bounds_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-			∇∇Q[indices𝐮, indicesΔ𝐯[k]] .= 𝐔ᵀ*(∑_bounds_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-			∇∇Q[indices𝐯[k], indicesΔ𝐯[k]] .= ∇∇Q[indicesΔ𝐯[k], indicesΔ𝐯[k]] .= 𝐕ᵀ*(∑_bounds_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+	if fit_𝛃
+		@inbounds for k = 1:K
+			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+			∇Q[indices𝛃[k]] .= 𝐕ᵀ*∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+			∇∇Q[indices𝐮, indices𝛃[k]] .= 𝐔ᵀ*(∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+			∇∇Q[indices𝛃[k], indices𝛃[k]] .= 𝐕ᵀ*(∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+		end
+	else
+		@inbounds for k = 1:K
+			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
+			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
 		end
 	end
 	for i = 1:size(∇∇Q,1)

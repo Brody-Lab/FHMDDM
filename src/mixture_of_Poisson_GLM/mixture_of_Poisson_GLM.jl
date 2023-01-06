@@ -28,18 +28,17 @@ ARGUMENT
 -`mpGLM`: the mixture of Poisson generalized linear model of one neuron
 
 RETURN
--`ωⱼ𝐯ₖ`: vector representing the weighted input of the accumulated evidence
+-vector representing the weighted input of the accumulated evidence
 """
 function evidenceinput(j::Integer, k::Integer, mpGLM::MixturePoissonGLM)
 	@unpack d𝛏_dB, Ξ = mpGLM
-    @unpack b, b_scalefactor, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
-	if (j == 1 || j == Ξ) && fit_Δ𝐯
-		𝐯ₖ = 𝐯[k] .+ Δ𝐯[k]
-	else
-		𝐯ₖ = 𝐯[k]
-	end
+    @unpack b, b_scalefactor, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	ωⱼ = (b == 0.0) ? d𝛏_dB[j] : transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-	𝐯ₖ.*ωⱼ
+	if (j == 1 || j == Ξ) && fit_𝛃
+		ωⱼ.*𝛃[k]
+	else
+		ωⱼ.*𝐯[k]
+	end
 end
 
 """
@@ -138,15 +137,17 @@ UNMODIFIED ARGUMENT
 """
 function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
 	@unpack Δt, 𝐕, 𝐗, 𝐗columns_𝐮, Ξ, 𝐲 = mpGLM
-	@unpack 𝐯 = mpGLM.θ
+	@unpack fit_b, fit_𝛃, 𝐯  = mpGLM.θ
 	𝛚 = transformaccumulator(mpGLM)
 	d𝛚_db = dtransformaccumulator(mpGLM)
 	Ξ, K = size(γ)
 	T = length(𝐲)
 	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
-	∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
-	if ∇Q.fit_Δ𝐯
-		∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
+	if ∇Q.fit_𝛃
+		∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
+		∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
+	else
+		∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
 	end
 	if ∇Q.fit_b
 		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
@@ -157,11 +158,16 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 			for t=1:T
 				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
-				if ∇Q.fit_Δ𝐯 && (i==1 || i==Ξ)
-					∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+				if fit_𝛃
+					if (i==1) || (i==Ξ)
+						∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+					else
+						∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+					end
+				else
+					∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
 				end
-				if ∇Q.fit_b
+				if fit_b
 					∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k][t] += dQᵢₖ_dLᵢₖ*d𝛚_db[i]
 				end
 			end
@@ -169,12 +175,15 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	end
 	𝐔 = @view 𝐗[:, 𝐗columns_𝐮]
 	mul!(∇Q.𝐮, 𝐔', sum(∑ᵢ_dQᵢₖ_dLᵢₖ))
-	@inbounds for k = 1:K
-		mul!(∇Q.𝐯[k], 𝐕', ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
-	end
-	if ∇Q.fit_Δ𝐯
+	if fit_𝛃
+		𝐕ᵀ = 𝐕'
 		@inbounds for k = 1:K
-			mul!(∇Q.Δ𝐯[k], 𝐕', ∑_bounds_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+			mul!(∇Q.𝐯[k], 𝐕ᵀ, ∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+			mul!(∇Q.𝛃[k], 𝐕ᵀ, ∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+		end
+	else
+		@inbounds for k = 1:K
+			mul!(∇Q.𝐯[k], 𝐕', ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 		end
 	end
 	if ∇Q.fit_b
@@ -346,7 +355,7 @@ function GLMθ(indices𝐮::Indices𝐮, n𝐯::Integer, options::Options)
 	θ = GLMθ(b = fill(NaN,1),
 			b_scalefactor = options.b_scalefactor,
 			fit_b = options.fit_b,
-			fit_Δ𝐯 = options.fit_Δ𝐯,
+			fit_𝛃 = options.fit_𝛃,
 			𝐮 = fill(NaN, n𝐮),
 			indices𝐮=indices𝐮,
 			𝐯 = collect(fill(NaN,n𝐯) for k=1:options.K))
@@ -366,7 +375,6 @@ UNMODIFIED ARGUMENT
 -`options`: hyperparameters of the model
 """
 function randomizeparameters!(θ::GLMθ, options::Options)
-	θ.b[1] = 0.0
 	for i in eachindex(θ.𝐮)
 		θ.𝐮[i] = 1.0 .- 2rand()
 	end
@@ -375,25 +383,19 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 	θ.𝐮[θ.indices𝐮.poststereoclick] ./= options.tbf_time_scalefactor
 	θ.𝐮[θ.indices𝐮.premovement] ./= options.tbf_move_scalefactor
 	θ.𝐮[θ.indices𝐮.postphotostimulus] ./= options.tbf_phot_scalefactor
-	if length(θ.𝐯) > 1
-		K = length(θ.𝐯)
-		𝐯₀ = -1.0:2.0/(K-1):1.0
+	K = length(θ.𝐯)
+	if K > 1
+		𝐯₀ = (-1.0:2.0/(K-1):1.0)./options.tbf_accu_scalefactor
 		for k = 1:K
 			θ.𝐯[k] .= 𝐯₀[k]
-			θ.Δ𝐯[k] .= 0.0
 		end
 	else
-		θ.𝐯[1] .= 1.0 .- 2rand(length(θ.𝐯[1]))
-		if θ.fit_Δ𝐯
-			θ.Δ𝐯[1] .= -θ.𝐯[1]
-		else
-			θ.Δ𝐯[1] .= 0.0
-		end
+		θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./options.tbf_accu_scalefactor
 	end
-	for k = 1:length(θ.𝐯)
-		θ.𝐯[k] ./= options.tbf_accu_scalefactor
-		θ.Δ𝐯[k] ./= options.tbf_accu_scalefactor
+	for k = 1:K
+		θ.𝛃[k] .= θ.fit_𝛃 ? -θ.𝐯[k] : 0.0
 	end
+	θ.b[1] = 0.0
 end
 
 """
@@ -415,7 +417,7 @@ RETURN
 """
 function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
 	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
-	@unpack 𝐮, 𝐯, Δ𝐯, fit_Δ𝐯 = mpGLM.θ
+	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	max_spikehistory_lag = length(𝐡)
 	K = length(𝐯)
 	max_spikes_per_step = floor(1000Δt)
@@ -426,9 +428,10 @@ function sample(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:A
         k = c[t]
 		L = 𝐄𝐞[τ]
 		for i in eachindex(𝐯[k])
-			L += 𝛚[j]*𝐕[τ,i]*𝐯[k][i]
-			if fit_Δ𝐯 && (j==1 || j==Ξ)
-				L += 𝛚[j]*𝐕[τ,i]*Δ𝐯[k][i]
+			if fit_𝛃 && (j==1 || j==Ξ)
+				L += 𝛚[j]*𝐕[τ,i]*𝛃[k][i]
+			else
+				L += 𝛚[j]*𝐕[τ,i]*𝐯[k][i]
 			end
 		end
 		for lag = 1:min(max_spikehistory_lag, t-1)
