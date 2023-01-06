@@ -166,11 +166,12 @@ Model settings
 	tbf_accu_stretch::TF=0.1
 	"scale factor of the gain parameter"
 	tbf_gain_scalefactor::TF=1.0
-	"Options for the temporal basis associated with the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter."
+	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter. The setting `tbf_hist_linear` determines whether a linear function is included in the basis."
 	tbf_hist_begins0::TB=false
 	tbf_hist_dur_s::TF=0.25
 	tbf_hist_ends0::TB=false
 	tbf_hist_hz::TF=12
+	tbf_hist_linear::TB=false
 	tbf_hist_scalefactor::TF=10.0
 	tbf_hist_stretch::TF=1.0
 	"Options for the temporal basis associated with the pre-movement filter"
@@ -178,12 +179,14 @@ Model settings
 	tbf_move_dur_s::TF=0.6
 	tbf_move_ends0::TB=false
 	tbf_move_hz::TF=2
+	tbf_move_linear::TB=true
 	tbf_move_scalefactor::TF=20.0
 	tbf_move_stretch::TF=0.001
 	"Options for the temporal basis associated with the post-photostimulus filter"
 	tbf_phot_begins0::TB=false
 	tbf_phot_ends0::TB=false
 	tbf_phot_hz::TF=4
+	tbf_phot_linear::TB=true
 	tbf_phot_scalefactor::TF=20.0
 	tbf_phot_stretch::TF=1.0
 	"period of each temporal basis functions, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
@@ -193,6 +196,7 @@ Model settings
 	tbf_time_dur_s::TF=1.0
 	tbf_time_ends0::TB=false
 	tbf_time_hz::TF=4
+	tbf_time_linear::TB=true
 	tbf_time_scalefactor::TF=20.0
 	tbf_time_stretch::TF=1.0
     "number of states of the discrete accumulator variable"

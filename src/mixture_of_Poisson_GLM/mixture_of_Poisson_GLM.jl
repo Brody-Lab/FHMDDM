@@ -238,10 +238,12 @@ RETURN
 -a vector whose τ-th element corresponds to the τ-th time step in the trialset
 """
 function externalinput(mpGLM::MixturePoissonGLM)
-	@unpack 𝐗, 𝐗columns_𝐮, θ = mpGLM
-	@unpack 𝐮 = θ
-	𝐄 = @view 𝐗[:,𝐗columns_𝐮]
-	return 𝐄*𝐮
+	@unpack 𝐗, θ = mpGLM
+	@unpack 𝐮, indices𝐮 = θ
+	𝐗columns = vcat(mpGLM.𝐗columns_gain, mpGLM.𝐗columns_time, mpGLM.𝐗columns_move, mpGLM.𝐗columns_phot)
+	𝐮indices = vcat(indices𝐮.gain, indices𝐮.poststereoclick, indices𝐮.premovement, indices𝐮.postphotostimulus)
+	𝐄 = @view 𝐗[:,𝐗columns]
+	return 𝐄*𝐮[𝐮indices]
 end
 
 """
