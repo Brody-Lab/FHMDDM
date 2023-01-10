@@ -500,7 +500,7 @@ dictionary(θ::Latentθ) = Dict((matlabname(name)=>getfield(θ,name)[1] for name
 
 Create an instance of `Latentθ` from a Dict
 """
-Latentθ(θ::Dict) = Latentθ((θ[matlabname(name)] for name in fieldnames(Latentθ))...)
+Latentθ(θ::Dict) = Latentθ(([θ[matlabname(name)]] for name in fieldnames(Latentθ))...)
 
 """
     Options(options::Dict)
