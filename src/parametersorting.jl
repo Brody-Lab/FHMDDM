@@ -135,7 +135,7 @@ RETURN
 """
 function indexparameters(options::Options, trialsets::Vector{<:Trialset}; includeunfit::Bool=false)
 	if includeunfit
-		latentθindices = Latentθ((1:length(fieldnames(Latentθ)))...)
+		latentθindices = Latentθ(([i] for i in 1:length(fieldnames(Latentθ)))...)
 	else
 		latentθindices = indexparameters(options)
 	end
