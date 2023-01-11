@@ -187,12 +187,9 @@ function precision_matrix_components(nestedindices::Vector{<:Vector{<:GLMθ}}, o
 			if options.fit_𝛃
 				parameterindices = reduce(vcat, reduce(vcat, reduce(vcat, reduce(vcat, vcat(v,Δv) for (v, Δv) in zip(𝐯ₖ, 𝛃ₖ)) for (𝐯ₖ, 𝛃ₖ) in zip(index.𝐯, index.𝛃)) for index in indices) for indices in nestedindices)
 				nparameters = length(parameterindices)
-				# A = [2.0 1.0; 1.0 2.0].*options.tbf_accu_scalefactor^2
-				# Aaccu = cat((A for i = 1:(nparameters/2))...,dims=(1,2))
 			else
 				parameterindices = reduce(vcat, reduce(vcat, vcat(index.𝐯...) for index in indices) for indices in nestedindices)
 				nparameters = length(parameterindices)
-				# Aaccu = zeros(nparameters,nparameters) + options.tbf_accu_scalefactor^2*I
 			end
 			Aaccu = zeros(nparameters,nparameters) + options.tbf_accu_scalefactor^2*I
 			𝐀 = vcat(𝐀, [Aaccu])
