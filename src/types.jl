@@ -91,6 +91,10 @@ Model settings
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
 	L2_choices_max::TF=1e2
 	L2_choices_min::TF=1e-2
+	"whether the L2 shrinkage penalty of the gain is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	L2_gain_fit::TB=true
+	L2_gain_max::TF=1e-7
+	L2_gain_min::TF=1e-9
 	"whether the L2 shrinkage penalty of the weight of the post-spike filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_hist_fit::TB=true
 	L2_hist_max::TF=1e1

@@ -13,7 +13,7 @@ function learnparameters!(model::Model; initialize::Bool=true, iterations::Integ
 	@unpack objective = model.options
 	initialize && initializeparameters!(model; show_trace=show_trace)
 	if objective == "evidence"
-		maximizeevidence!(model;iterations=iterations)
+		maximizeevidence!(model;MAP_iterations=iterations)
 	elseif objective == "posterior"
 		maximizeposterior!(model; iterations=iterations)
 	elseif objective == "likelihood"
