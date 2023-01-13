@@ -5,7 +5,7 @@ Parameters of the latent variables in the factorial hidden Markov drift-diffusio
 
 Not included are the weights of the linear filters of the mixture of Poisson generalized linear model of each neuron
 """
-@with_kw struct Latentθ{VR}
+@with_kw struct Latentθ{VR<:Vector{<:Real}}
 	"transition probability of the coupling variable to remain in the coupled state"
 	Aᶜ₁₁::VR=[NaN]
 	"transition probability of the coupling variable to remain in the uncoupled state"
