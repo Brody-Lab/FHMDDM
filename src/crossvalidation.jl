@@ -16,11 +16,10 @@ OUTPUT
 function crossvalidate(kfold::Integer, model::Model; choicesonly::Bool=false)
     cvindices = CVIndices(model, kfold)
 	trainingmodels = map(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
-	trainingsummaries = collect(Summary(trainingmodel) for trainingmodel in trainingmodels)
+	trainingsummaries = collect(ModelSummary(trainingmodel) for trainingmodel in trainingmodels)
 	testmodels = collect(test(cvindex, model, trainingmodel) for (cvindex, trainingmodel) in zip(cvindices, trainingmodels))
-	rll_choice, rll_spikes = relative_loglikelihood(cvindices, testmodels, trainingmodels)
-	predictions = Predictions(cvindices, testmodels)
-    CVResults(cvindices=cvindices, predictions=predictions, rll_choice=rll_choice, rll_spikes=rll_spikes, trainingsummaries=trainingsummaries)
+	characterization = Characterization(cvindices, testmodels, trainingmodels)
+    CVResults(cvindices=cvindices, characterization=characterization, trainingsummaries=trainingsummaries)
 end
 
 """
@@ -54,131 +53,6 @@ function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false)
 		learnparameters!(trainingmodel)
 	end
 	return trainingmodel
-end
-
-"""
-	relative_loglikelihood(cvindices, testmodels, trainingmodels)
-
-Relative log-likelihood of choices and spike trains
-
-ARGUMENT
--`cvindices`: indices of the trials and timesteps used for training and testing in each fold
--`testmodels`: a vector of structures containing the hold-out data and parameters fitted to training data for each cross-validation fold
--`trainingmodels`: a vector of structures containing the training data and parameters fitted to those data for each cross-validation fold
-
-OUTPUT
--`rll_choice`: The element `rll_choice[i][m]` corresponds to the log-likelihood(base 2) of the choice in the m-th trial in the i-th trialset, relative to the log-likelihood predicted by a null model of choice. The null model is a Bernoulli parametrized the fraction of right choices in the training data.
--`rll_spikes`: The element `rll_spikes[i][n]` corresponds to the log-likelihood(base 2) of the spike train of the n-th neuron in the i-th trialset, relative to the log-likelihood predicted by a homogenous Poisson whose intensity is inferred from the mean response of the training data of the same neuron. The relative log-likelihood of each spike train is furthermore divided by the total number of spikes emitted by the neuron.
-"""
-function relative_loglikelihood(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model}, trainingmodels::Vector{<:Model})
-	ntrials_per_trialset = collect(sum(testmodel.trialsets[i].ntrials for testmodel in testmodels) for i in eachindex(testmodels[1].trialsets))
-	rll_choice = collect(fill(NaN, ntrials) for ntrials in ntrials_per_trialset)
-	rll_spikes = collect(zeros(length(trialset.mpGLMs)) for trialset in testmodels[1].trialsets)
-	for (cvindices, testmodel, trainingmodel) in zip(cvindices, testmodels, trainingmodels)
-		relative_loglikelihood!(rll_choice, rll_spikes, cvindices, testmodel, trainingmodel)
-	end
-	for i in eachindex(rll_spikes)
-		for n in eachindex(rll_spikes[i])
-			nspikes = 0
-			for testmodel in testmodels
-				nspikes += sum(testmodel.trialsets[i].mpGLMs[n].𝐲)
-			end
-			rll_spikes[i][n] /= nspikes
-		end
-	end
-	return rll_choice, rll_spikes
-end
-
-"""
-	relative_loglikelihood(rll_choice, rll_spikes, cvindices, testmodel, trainingmodel)
-
-In-place computation of relative log-likelihoods for one cross-validation fold
-
-MODIFIED ARGUMENTS
--`rll_choice`: see above
--`rll_spikes`: see above
-
-UNMODIFIED ARGUMENTS
--`cvindices`: index of the trials and timesteps used for training and testing in a single fold
--`testmodel`: a structure containing the hold-out data and parameters fitted to training data for one cross-validation fold
--`trainingmodel`: a structure containing the training data and parameters fitted to those data for one cross-validation fold
-"""
-function relative_loglikelihood!(rll_choice::Vector{<:Vector{<:AbstractFloat}}, rll_spikes::Vector{<:Vector{<:AbstractFloat}}, cvindices::CVIndices, testmodel::Model, trainingmodel::Model)
-	ℓ𝑑, ℓ𝑦 = relative_loglikelihood(testmodel, trainingmodel)
-	for i in eachindex(testmodel.trialsets)
-		rll_choice[i][cvindices.testingtrials[i]] .= ℓ𝑑[i]
-		for n in eachindex(testmodel.trialsets[i].mpGLMs)
-			rll_spikes[i][n] += ℓ𝑦[i][n]
-		end
-	end
-	return nothing
-end
-
-"""
-	relative_loglikelihood(testmodel, trainingmodel)
-
-Compute the relative log-likelihood of the choices and spike train responses
-
-ARGUMENT
--`testmodel`: a structure containing only the test data and the parameters learned from the training data
--`trainingmodel`: a structure containing only the training data and the parameters learned from the training data
-
-OUTPUT
--`ℓ𝑑`: ℓ𝑑[i][m] corresponds to the log-likelihood(base 2) of the choice in the m-th trial in the i-th trialset, relative to the log-likelihood predicted by a Bernoulli model whose parameter is inferred from the fraction of right choices in the training data
--`ℓ𝑦`: ℓ𝑦[i][n] corresponds to the log-likelihood(base 2) of the spiking of the n-th neuron in the i-th trialset, relative to the log-likelihood predicted by a homogenous Poisson whose intensity is inferred from the mean response of the training data of the same neuron.
-"""
-function relative_loglikelihood(testmodel::Model, trainingmodel::Model)
-	choices_across_trialsets = vcat((collect(trial.choice for trial in trialset.trials) for trialset in trainingmodel.trialsets)...)
-	probabilityright = mean(choices_across_trialsets)
-	nullchoicemodel = Bernoulli(probabilityright)
-	nullspikemodels = map(trainingmodel.trialsets) do trialset
-				map(trialset.mpGLMs) do mpGLM
-					Poisson(mean(mpGLM.𝐲))
-				end
-			end
-	memory = Memoryforgradient(testmodel)
-	@unpack Aᵃinput, Aᵃsilent, Aᶜ, πᶜ, K, Ξ = memory
-	@unpack θnative = testmodel
-	P = update!(memory, testmodel)
-	ℓ𝑑 = map(trialset->fill(NaN, length(trialset.trials)), testmodel.trialsets)
-	ℓ𝑦 = map(trialset->zeros(length(trialset.mpGLMs)), testmodel.trialsets)
-	p𝑦 = zeros(Ξ,K)
-	p𝑑_a = zeros(Ξ)
-	log2e = log2(exp(1))
-	for i in eachindex(testmodel.trialsets)
-		trialset = testmodel.trialsets[i]
-		τ = 0
-		for m in eachindex(trialset.trials)
-			@unpack choice, clicks, ntimesteps, previousanswer = trialset.trials[m]
-			if length(clicks.time) > 0
-				adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-			end
-			priorprobability!(P, previousanswer)
-			p𝐚 = copy(P.𝛑)
-			p𝐜 = πᶜ
-			for t=1:ntimesteps
-				τ+=1
-				if t > 1
-					if isempty(clicks.inputindex[t])
-						Aᵃ = Aᵃsilent
-					else
-						Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
-						update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-						transitionmatrix!(Aᵃ, P)
-					end
-					p𝐚 = Aᵃ*p𝐚
-					p𝐜 = Aᶜ*p𝐜
-				end
-				for n in eachindex(trialset.mpGLMs)
-					conditionallikelihood!(p𝑦, trialset.mpGLMs[n], τ)
-					ℓ𝑦[i][n] += log2(p𝐚'*p𝑦*p𝐜) - log2e*Distributions.logpdf(nullspikemodels[i][n], trialset.mpGLMs[n].𝐲[τ])
-				end
-			end
-			conditionallikelihood!(p𝑑_a, choice, θnative.ψ[1])
-			ℓ𝑑[i][m] = log2(p𝑑_a⋅p𝐚) - log2e*Distributions.logpdf(nullchoicemodel, choice)
-		end
-	end
-	return ℓ𝑑, ℓ𝑦
 end
 
 """
@@ -322,9 +196,7 @@ Convert an instance of `CVResults` to a dictionary
 """
 function dictionary(cvresults::CVResults)
 	Dict("cvindices" => map(dictionary, cvresults.cvindices),
-		"predictions" => dictionary(cvresults.predictions),
-		"rll_choice"=>cvresults.rll_choice,
-		"rll_spikes"=>cvresults.rll_spikes,
+		"characterization" => dictionary(cvresults.characterization),
 		"trainingsummaries"=>map(dictionary, cvresults.trainingsummaries))
 end
 
@@ -341,19 +213,22 @@ function dictionary(cvindices::CVIndices)
 end
 
 """
-    save(cvresults,options)
+    save(cvresults, folderpath)
 
-Save the results of crossvalidation
+Save the results of cross-validation
 
-ARGUMENT
--`cvresults`: an instance of `CVResults`, a drift-diffusion linear model
+Each field of the composite `cvresults` is saved within a separate file, with the same name as that of the field, within a folder whose absolute path is specified by `folderpath`.
 """
-function save(cvresults::CVResults, options::Options; folderpath::String=dirname(options.datapath), prefix::String="cvresults")
-	dict = Dict("cvindices" => map(dictionary, cvresults.cvindices),
-				"rll_choice"=>cvresults.rll_choice,
-				"rll_spikes"=>cvresults.rll_spikes,
-				"trainingsummaries"=>map(dictionary, cvresults.trainingsummaries))
-    matwrite(joinpath(folderpath, prefix*".mat"), dict)
-	save(cvresults.predictions, options; folderpath=folderpath, prefix=prefix)
+function save(cvresults::CVResults, folderpath::String)
+	if !isdir(folderpath)
+		mkdir(folderpath)
+		@assert isdir(folderpath)
+	end
+	for fieldname in (:cvindices, :trainingsummaries)
+		dict = Dict(String(fieldname) => map(dictionary, getfield(cvresults, fieldname)))
+		filepath = joinpath(folderpath, String(fieldname)*".mat")
+	    matwrite(filepath, dict)
+	end
+	save(cvresults.characterization, folderpath)
     return nothing
 end

@@ -336,6 +336,17 @@ function nameparameters(indices::Latentθ{<:Vector{<:Integer}})
 end
 
 """
+	sortparameters!(latentθ, dict)
+
+Update the parameters of the latent variables contained in the composite `latentθ` with values in the `Dict` `dict`
+"""
+function sortparameters!(latentθ::Latentθ, dict::Dict)
+	for fieldname in fieldnames(Latentθ)
+		getfield(latentθ, fieldname)[1] = dict[matlabname(fieldname)]
+	end
+end
+
+"""
 	sortparameters!(model, concatenatedθ, indexθ)
 
 Sort a vector of concatenated parameter values and convert the values from real space to native space
@@ -380,5 +391,26 @@ function sortparameters!(model::Model, concatenatedθ::Vector{<:Real}, indexθ::
 			getfield(θreal, field)[1] = concatenatedθ[index]
 		end
 	end
+	return nothing
+end
+
+"""
+	sortparameters!(model, filepath)
+
+Update the parameters and hyperparameters in the composite `model` with values from a MAT file located at `filepath`
+"""
+function sortparameters!(model::Model, filepath::String)
+	matfile = matopen(filepath)
+	sortparameters!(model.θnative, 	read(matfile, "thetanative"))
+	sortparameters!(model.θreal, 	read(matfile, "thetareal"))
+	sortparameters!(model.θ₀native, read(matfile, "theta0native"))
+	thetaglm = read(matfile, "thetaglm")
+	for (trialset, thetaglm) in zip(model.trialsets, thetaglm)
+		for (mpGLM, thetaglm) in zip(trialset.mpGLMs, thetaglm)
+			sortparameters!(mpGLM.θ, thetaglm)
+		end
+	end
+	model.gaussianprior.𝛂 .= vec(read(matfile, "penaltycoefficients"))
+    precisionmatrix!(model.gaussianprior)
 	return nothing
 end

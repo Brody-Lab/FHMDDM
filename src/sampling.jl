@@ -1,276 +1,141 @@
 """
-	accumulatorprobability!(Aᵃinput, P, p𝐚, Aᵃsilent, θnative, trial)
-
-Probability of the accumulator at each time step
-
-MODIFIED ARGUMENT
--`Aᵃinput`: vector of matrices used as memory for computing the transition probability of the accumulator on time steps with stimulus input
--`p𝐚`: a vector whose element p𝐚[t][i] represents p(a[t] = ξ[i])
-
-UNMODIFIED ARGUMENT
--`Aᵃsilent`: transition probability of the accumulator on timesteps without stimulus input
--`p𝐚₁`: prior distribution of the accumulator
--`trial`: structure containing information on a trial
+	dictionary(sample)
+"""
+dictionary(sample::Sample) = Dict("trialsets"=>map(dictionary, sample.trialsets))
 
 """
-function accumulatorprobability!(p𝐚::Vector{<:Vector{<:AbstractFloat}},
-								p𝐚₁::Vector{<:AbstractFloat},
- 								Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
- 								Aᵃsilent::Matrix{<:AbstractFloat},
-								trial::Trial)
-	p𝐚[1] .= p𝐚₁
-	@inbounds for t=2:trial.ntimesteps
-		if isempty(trial.clicks.inputindex[t])
-			Aᵃ = Aᵃsilent
-		else
-			Aᵃ = Aᵃinput[trial.clicks.inputindex[t][1]]
-		end
-		p𝐚[t] = Aᵃ * p𝐚[t-1]
-	end
-	return nothing
-end
+	dictionary(trialsetsample)
+"""
+dictionary(trialsetsample::TrialsetSample) = Dict("trials"=>map(dictionary, trialsetsample.trials))
 
 """
-	accumulator_probability_given_choice!(p, choice, p𝐚_end, ψ)
-
-Conditional distribution of the accumulator variable given the behavioral choice
-
-MODIFIED ARGUMENT
--`p`: a vector serving as memory
-
-UNMODIFIED ARGUMENT
--`Aᵃinput`: memory for computing the transition matrix during a timestep with stimulus input
--`Aᵃsilent`: transition matrix during a timestep without stimulus input
--`p𝐚`: distribution of the accumulator at the each time step of the trial
--`ψ`: lapse rate
--`trial`: a structure containing information on the trial being considered
+	dictionary(trialsample)
+"""
+dictionary(trialsample::TrialSample) = Dict("choice"=>trialsample.choice, "spiketrains"=>trialsample.spiketrains)
 
 """
-function accumulator_probability_given_choice!(p𝐚_𝑑::Vector{<:Vector{<:AbstractFloat}},
-											p𝑑_𝐚::Vector{<:AbstractFloat},
-											Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
-											Aᵃsilent::Matrix{<:AbstractFloat},
-											p𝐚::Vector{<:Vector{<:AbstractFloat}},
-											ψ::AbstractFloat,
-											trial::Trial)
-	choicelikelihood!(p𝑑_𝐚, trial.choice, ψ) # `p𝐚_𝑑[ntimesteps]` now reprsents p(𝑑 ∣ a)
-	p𝐚_𝑑[trial.ntimesteps] .= p𝑑_𝐚.*p𝐚[trial.ntimesteps] # `p𝐚_𝑑[ntimesteps]` now reprsents p(𝑑, a)
-	D = sum(p𝐚_𝑑[trial.ntimesteps])
-	p𝐚_𝑑[trial.ntimesteps] ./= D # `p𝐚_𝑑[ntimesteps]` now reprsents p(a ∣ 𝑑)
-	b = ones(length(p𝑑_𝐚))
-	for t = trial.ntimesteps-1:-1:1
-		inputindex = trial.clicks.inputindex[t+1]
-		if isempty(inputindex)
-			Aᵃ = Aᵃsilent
-		else
-			Aᵃ = Aᵃinput[inputindex[1]]
-		end
-		if t+1 == trial.ntimesteps
-			b = Aᵃ' * (p𝑑_𝐚.*b./D)
-		else
-			b = Aᵃ' * b
-		end
-		p𝐚_𝑑[t] = p𝐚[t] .* b
-	end
-	return nothing
-end
+	drawsamples(model, nsamples)
 
-"""
-	collectpredictions(cvindices, 𝛌Δt)
+Simulate the behavioral choice and neuronal spike trains
 
-Combine the predicted spike train response across cross-validation folds
+The model is run forward in time on each trial using the actual auditory clicks.
 
 ARGUMENT
--`cvindices`: indices of the trials and timesteps used for training and testing in each fold
--`𝛌Δt`: predicted spike trains, either conditioned on the choice or unconditioned. Element `𝛌Δt[f][i][n][τ]` corresponds to the f-the cross-validation fold, i-th trialset, n-th neuron, and τ-th time step among the time steps concatenated across the trials subsampled in the f-th cross-validation fold.
-
-OUTPUT
--`λΔt`: predicted spike train response combined across cross-validation folds. Element `λΔt[i][n][τ]` corresponds to the i-th trialset, n-th neuron, and τ-th time step among the time steps concatenated across all trials in the i-th trialset.
-"""
-function collectpredictions(cvindices::Vector{<:CVIndices}, 𝛌Δt::Vector{<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}})
-	ntrialsets = length(cvindices[1].testingtrials)
-	map(1:ntrialsets) do i
-		ntimesteps = 0
-		for f in eachindex(cvindices)
-			ntimesteps += length(cvindices[f].testingtimesteps[i])
-		end
-		nneurons = length(𝛌Δt[1][i])
-		map(1:nneurons) do n
-			λΔt = fill(NaN, ntimesteps)
-			for f in eachindex(cvindices)
-				λΔt[cvindices[f].testingtimesteps[i]] .= 𝛌Δt[f][i][n]
-			end
-			return λΔt
-		end
-	end
-end
-
-"""
-	collectpredictions(cvindices, 𝐏)
-
-Combine the predicted distributions of a latent variable across cross-validation folds
-
-ARGUMENT
--`cvindices`: indices of the trials and timesteps used for training and testing in each fold
--`𝐏`: predicted distribution of either the accumulator or the coupling variable, conditioned on both the spikes and the choices, conditioned on only the choices, or unconditioned. Element `𝐏[f][i][q][t][j]` corresponds to the probability of the latent variable being in the j-th state in the t-th time step of the q-th trial among the subsampled trials in the i-th trialset, evaluated in the f-th cross-validation fold.
+-`model`: a composite containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+-`nsamples`: number of samples to draw
 
 RETURN
--`𝐩`: the predicted distribution. Element `𝐩[i][m][t][j]` corresponds to the probability of the latent variable being in the j-th state in the t-th time step of the m-th trial in the i-th trialset
+-`samples`: A vector of composites of the data type `Sample`
 """
-function collectpredictions(cvindices::Vector{<:CVIndices}, 𝐏::Vector{<:Vector{<:Vector{<:Vector{<:Vector{<:type}}}}}) where {type<:AbstractFloat}
-	ntrialsets = length(cvindices[1].testingtrials)
-	map(1:ntrialsets) do i
-		ntrials = 0
-		for cvindex in cvindices
-			ntrials += length(cvindex.testingtrials[i])
-		end
-		𝐩 = collect([type[]] for m = 1:ntrials)
-		for f in eachindex(cvindices)
-			for q in eachindex(cvindices[f].testingtrials[i])
-				m = cvindices[f].testingtrials[i][q]
-				𝐩[m] = 𝐏[f][i][q]
-			end
-		end
-		return 𝐩
-	end
-end
-
-"""
-	collectpredictions(cvindices, P𝑑)
-
-Combine the predicted probabilities of behavioral choices across cross-validation folds
-
-ARGUMENT
--`cvindices`: vector whose each element corresponds to indices of the trials and timesteps used for training and testing in each cross-validation fold
--`P𝑑`: predicted probabilities of behavioral choices. Element `P𝑑[f][i][q]` corresponds to the probability of the behavioral choice in the q-th trial among the subsampled trials in the i-th trialset, evaluated in the f-th cross-validation fold.
-"""
-function collectpredictions(cvindices::Vector{<:CVIndices}, P𝑑::Vector{<:Vector{<:Vector{<:AbstractFloat}}})
-	ntrialsets = length(cvindices[1].testingtrials)
-	map(1:ntrialsets) do i
-		ntrials = 0
-		for cvindex in cvindices
-			ntrials += length(cvindex.testingtrials[i])
-		end
-		p𝑑 = fill(NaN, ntrials)
-		for f in eachindex(cvindices)
-			p𝑑[cvindices[f].testingtrials[i]] .= P𝑑[f][i]
-		end
-		return p𝑑
-	end
-end
-
-"""
-	Predictions(cvindices, testmodels)
-
-Out-of-sample predictions
-
-ARGUMENT
--`cvindices`: vector whose each element corresponds to indices of the trials and timesteps used for training and testing in each cross-validation fold
--`testmodels`: vector whose each element corresponds to a cross-validation fold. Each element contains a structure containing hold-out data and parameters learned using training data.
-
-OUTPUT
--an instance of `Predictions`
-"""
-function Predictions(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model})
-	predictions_each_fold = collect(Predictions(testmodel) for testmodel in testmodels)
-	collected_predictions = (FHMDDM.collectpredictions(cvindices, collect(getfield(predictions, field) for predictions in predictions_each_fold)) for field in (:p𝐚, :p𝐚_𝑑, :p𝐚_𝐘, :p𝐚_𝐘𝑑, :p𝐜_𝐘𝑑, :p𝑑, :p𝑑_𝐘, :λΔt, :λΔt_𝑑))
-	return Predictions(collected_predictions..., predictions_each_fold[1].nsamples)
-end
-
-"""
-	Predictions(model)
-
-ARGUMENT
--`model`: a structure containing the data, parameters, and hyperparameters of the model
-
-RETURN
--a structure containing the predictions of the model
-"""
-function Predictions(model::Model; nsamples::Integer=100)
-    @unpack trialsets, options, θnative = model
-	@unpack Ξ, K = options
-    λΔt = map(trialsets) do trialset
-			map(trialset.mpGLMs) do mpGLM
-				zeros(trialset.ntimesteps)
-			end
-		  end
-	λΔt_𝑑 = deepcopy(λΔt)
-	p𝐚 = map(trialsets) do trialset
-			map(trialset.trials) do trial
-				collect(zeros(Ξ) for t=1:trial.ntimesteps)
-			end
-		  end
-	p𝐜_𝐘𝑑 = map(trialsets) do trialset
-			map(trialset.trials) do trial
-				collect(zeros(K) for t=1:trial.ntimesteps)
-			end
-		  end
-	p𝐚_𝑑, p𝐚_𝐘, p𝐚_𝐘𝑑 = deepcopy(p𝐚), deepcopy(p𝐚), deepcopy(p𝐚)
-	p𝑑 = collect(zeros(trialset.ntrials) for trialset in trialsets)
-	p𝑑_𝐘 = deepcopy(p𝑑)
+function drawsamples(model::Model, nsamples::Integer)
 	memory = Memoryforgradient(model)
-	P = update!(memory, model)
-	@unpack Aᵃinput, Aᵃsilent, Aᶜ, p𝐚₁, πᶜ = memory
-	f⨀b = memory.f
-	p𝑑_𝐚 = ones(Ξ)
-	maxtimesteps = length(f⨀b)
-	a = zeros(Int, maxtimesteps)
-	c = zeros(Int, maxtimesteps)
-	𝐄𝐞_𝐡_𝛚 = map(trialsets) do trialset
-			map(trialset.mpGLMs) do mpGLM
-				return externalinput(mpGLM), postspikefilter(mpGLM), transformaccumulator(mpGLM)
+	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
+	a = zeros(Int, memory.maxtimesteps)
+	c = zeros(Int, memory.maxtimesteps)
+	trialsamples =
+		map(model.trialsets) do trialset
+			𝐄𝐞 = map(mpGLM->externalinput(mpGLM), trialset.mpGLMs)
+			𝐡 = map(mpGLM->postspikefilter(mpGLM), trialset.mpGLMs)
+			𝛚 = map(mpGLM->transformaccumulator(mpGLM), trialset.mpGLMs)
+			map(trialset.trials) do trial
+				accumulator_prior_transitions!(memory.Aᵃinput, P, memory.p𝐚₁, trial)
+				collect(sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset) for s=1:nsamples)
 			end
 		end
-	memory_𝐘 = Memoryforgradient(model)
-	p𝐘 = memory_𝐘.p𝐘𝑑
-	for i in eachindex(p𝐘)
-		scaledlikelihood!(p𝐘[i], model.options.sf_y, model.trialsets[i])
+	map(1:nsamples) do s
+		Sample(trialsets =
+				map(eachindex(model.trialsets)) do i
+					TrialsetSample(trials =
+									map(eachindex(model.trialsets[i].trials)) do m
+										trialsamples[i][m][s]
+									end)
+				end)
 	end
-	update_for_latent_dynamics!(memory_𝐘, model.options, model.θnative)
-    for trialset in trialsets
-		for trial in trialset.trials
-			i = trial.trialsetindex
-			m = trial.index_in_trialset
-			𝛕 = trial.τ₀ .+ (1:trial.ntimesteps)
-			memory.ℓ[1] = 0.0
-			memory_𝐘.ℓ[1] = 0.0
-			forward!(memory, P, θnative, trial)
-			forward!(memory_𝐘, P, θnative, trial)
-			backward!(memory, P, trial)
-			backward!(memory_𝐘, P, trial)
-			accumulatorprobability!(p𝐚[i][m], p𝐚₁, Aᵃinput, Aᵃsilent, trial)
-			accumulator_probability_given_choice!(p𝐚_𝑑[i][m], p𝑑_𝐚, Aᵃinput, Aᵃsilent, p𝐚[i][m], θnative.ψ[1], trial)
-			for t = 1:trial.ntimesteps
-				p𝐚_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=2), dims=2)
-				p𝐜_𝐘𝑑[i][m][t] = dropdims(sum(f⨀b[t], dims=1), dims=1)
-				p𝐚_𝐘[i][m][t] = dropdims(sum(memory_𝐘.f[t], dims=2), dims=2)
-			end
-			pchoice = exp(memory.ℓ[1] - memory_𝐘.ℓ[1])
-			p𝑑_𝐘[i][m] = trial.choice ? pchoice : 1.0-pchoice
-			for s = 1:nsamples
-				samplecoupling!(c, Aᶜ, trial.ntimesteps, πᶜ)
-				sampleaccumulator!(a, Aᵃinput, Aᵃsilent, p𝐚₁, trial)
-				p𝑑[i][m] += sample(a[trial.ntimesteps], θnative.ψ[1], Ξ)/nsamples
-				for (𝐄𝐞_𝐡_𝛚, λΔt, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt[i], trialset.mpGLMs)
-					λΔt[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
+end
+
+"""
+	sampletrial!(a, c, 𝐄𝐞, 𝐡, memory 𝛚, trial, trialset)
+
+Simulate the choice and spike trains on a trial.
+
+The model is run forward in time, and the value of the latent variables are simulated using the actual timing of the auditory clicks. Then, the choice and spike trains generated based on the simulated values of the latent variable.
+
+MODIFIED ARGUMENT
+-`a`: a vector used for the simulation of the accumulator state
+-`c`: a vector used for the simulation of the coupling state
+
+UNMODIFIED ARGUMENT
+-`𝐄𝐞`: external input. Element `𝐄𝐞[n][τ]` corresponds to the n-th neuron at the τ-th time step among timesteps concatenated across trials in a trialset
+-`𝐡`: postspike filter. Element `𝐡[n][q]` corresponds to the n-th neuron at the q-th time step after the spike
+-`memory`: a composite used for in-place computations
+-`𝛚`: transformed accumulated evidence. Element `𝛚[n][i]` corresponds to the n-th neuron at the i-th accumulator state
+-`ψ`: behavioral lapse rate
+-`trial`: a composite containing the behavioral choice and click timing in a trial
+-`trialset`: a composite containing the behavioral, auditory, and neuronal data of a set of trials
+
+RETURN
+-simulation of the choice and the spike trains in a trial
+"""
+function sampletrial!(a::Vector{<:Integer},
+					c::Vector{<:Integer},
+					𝐄𝐞::Vector{<:Vector{<:AbstractFloat}},
+					𝐡::Vector{<:Vector{<:AbstractFloat}},
+					memory::Memoryforgradient,
+					𝛚::Vector{<:Vector{<:AbstractFloat}},
+					ψ::AbstractFloat,
+					trial::Trial,
+					trialset::Trialset)
+	sampleaccumulator!(a, memory.Aᵃinput, memory.Aᵃsilent, memory.p𝐚₁, trial)
+	samplecoupling!(c, memory.Aᶜ, trial.ntimesteps, memory.πᶜ)
+	choice = samplechoice(a[trial.ntimesteps], ψ, memory.Ξ)
+	timesteps = trial.τ₀ .+ (1:trial.ntimesteps)
+	spiketrains=map(𝐄𝐞, 𝐡, trialset.mpGLMs, 𝛚) do 𝐄𝐞, 𝐡, mpGLM, 𝛚
+					samplespiketrain(a, c, 𝐄𝐞, 𝐡, mpGLM, 𝛚, timesteps)
 				end
-				sample_accumulator_given_choice!(a, Aᵃinput, Aᵃsilent, p𝐚[i][m], p𝐚_𝑑[i][m][trial.ntimesteps], trial)
-				 for (𝐄𝐞_𝐡_𝛚, λΔt_𝑑, mpGLM) in zip(𝐄𝐞_𝐡_𝛚[i], λΔt_𝑑[i], trialset.mpGLMs)
-					λΔt_𝑑[𝛕] .+= sample(a, c, 𝐄𝐞_𝐡_𝛚[1], 𝐄𝐞_𝐡_𝛚[2], mpGLM, 𝐄𝐞_𝐡_𝛚[3], 𝛕)./nsamples
-				end
-			end
-		end
-	end
-    return Predictions(	p𝐚 = p𝐚,
-						p𝐚_𝑑 = p𝐚_𝑑,
-						p𝐚_𝐘 = p𝐚_𝐘,
-						p𝐚_𝐘𝑑 = p𝐚_𝐘𝑑,
-						p𝐜_𝐘𝑑 = p𝐜_𝐘𝑑,
-						p𝑑 = p𝑑,
-						p𝑑_𝐘 = p𝑑_𝐘,
-						λΔt = λΔt,
-						λΔt_𝑑 = λΔt_𝑑,
-						nsamples = nsamples)
+	TrialSample(choice=choice, spiketrains=spiketrains)
+end
+
+"""
+    Model(model, sample)
+
+Package into a composite simulated choices and spike trains with the auditory clicks, parameters, and hyperparameters used for simulation
+
+ARGUMENT
+-`model`: a composite containing the parameters and hyperparameters of a factorial-hidden Markov drift-diffusion model, and the data used to fit the model
+
+OPTIONAL ARGUMENT
+-`folderpath`: the absolute path of the folder in which the data, summary, and simulations of the model would be saved
+
+OUTPUT
+-a composite containing the parameters, hyperparameters, auditory clicks, and simulations
+"""
+function Model(model::Model, sample::Sample; folderpath::String = dirname(model.options.datapath))
+	newtrialsets = 	map(model.trialsets, sample.trialsets) do trialset, trialsetsample
+						newtrials =	map(trialset.trials, trialsetsample.trials) do trial, trialsample
+										Trial(((fieldname == :choice) ? trialsample.choice : getfield(trial, fieldname) for fieldname in fieldnames(Trial))...)
+									end
+						new_mpGLMs = map(trialset.mpGLMs, eachindex(trialset.mpGLMs)) do old_mpGLM, n
+										values = map(fieldnames(MixturePoissonGLM)) do fieldname
+													if fieldname == :θ
+														FHMDDM.copy(old_mpGLM.θ)
+													elseif fieldname == :𝐲
+														vcat((trialsample.spiketrains[n] for trialsample in trialsetsample.trials)...)
+													else
+														getfield(old_mpGLM, fieldname)
+													end
+												end
+										MixturePoissonGLM(values...)
+									end
+						Trialset(trials=newtrials, mpGLMs=new_mpGLMs)
+					end
+		options = dictionary(model.options)
+		options["datapath"] = joinpath(folderpath,"data.mat")
+		Model(options=Options(model.options.nunits, options),
+			gaussianprior=GaussianPrior(model.options, newtrialsets),
+			θnative=FHMDDM.copy(model.θnative),
+			θreal=FHMDDM.copy(model.θreal),
+			θ₀native=FHMDDM.copy(model.θ₀native),
+			trialsets=newtrialsets)
 end
 
 """
@@ -287,14 +152,14 @@ UNMODIFIED ARGUMENT
 -`p𝐚₁`: prior distribution of the accumulator
 -`trial`: a structure containing information on the trial being considered
 """
-function sampleaccumulator!(a::Vector{<:Integer}, Aᵃinput::Vector{<:Matrix{<:Real}}, Aᵃsilent::Matrix{<:Real}, p𝐚₁::Vector{<:AbstractFloat}, trial::Trial)
+function sampleaccumulator!(a::Vector{<:Integer},
+							Aᵃinput::Vector{<:Matrix{<:Real}},
+							Aᵃsilent::Matrix{<:Real},
+							p𝐚₁::Vector{<:AbstractFloat},
+							trial::Trial)
 	a[1] = findfirst(rand() .< cumsum(p𝐚₁))
-	for t = 2:trial.ntimesteps
-		if isempty(trial.clicks.inputindex[t])
-			Aᵃ = Aᵃsilent
-		else
-			Aᵃ = Aᵃinput[trial.clicks.inputindex[t][1]]
-		end
+	@inbounds for t = 2:trial.ntimesteps
+		Aᵃ = transitionmatrix(trial.clicks, Aᵃinput, Aᵃsilent, t)
 		p𝐚ₜ_aₜ₋₁ = Aᵃ[:,a[t-1]]
 		a[t] = findfirst(rand() .< cumsum(p𝐚ₜ_aₜ₋₁))
 	end
@@ -302,70 +167,7 @@ function sampleaccumulator!(a::Vector{<:Integer}, Aᵃinput::Vector{<:Matrix{<:R
 end
 
 """
-	sample_accumulator_given_choice!(a, Aᵃinput, Aᵃsilent, p𝐚_𝑑, trial)
-
-A sample of the accumulator in one trial conditioned on the behavioral choice
-
-MODIFIED ARGUMENT
--`a`: a vector representing the value of the accumulator at each time step of the trial
-
-UNMODIFIED ARGUMENT
--`Aᵃinput`: vector of matrices used as memory for computing the transition probability of the accumulator on time steps with stimulus input
--`Aᵃsilent`: transition probability of the accumulator on timesteps without stimulus input
--`p𝐚`: probability of the accumulator at each time step of the trial
--`p𝐚_end_𝑑`: posterior probability of the accumulator, given the choice, at the last time step. The i-th element represents p(a=ξᵢ ∣ 𝑑)
--`trial`: structure containing information on a trial
-"""
-function sample_accumulator_given_choice!(a::Vector{<:Integer},
-										Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
- 										Aᵃsilent::Matrix{<:AbstractFloat},
-										p𝐚::Vector{<:Vector{<:AbstractFloat}},
-										p𝐚_end_𝑑::Vector{<:AbstractFloat},
-										trial::Trial)
-	a[trial.ntimesteps] = findfirst(rand() .< cumsum(p𝐚_end_𝑑))
-	for t = trial.ntimesteps-1:-1:1
-		inputindex = trial.clicks.inputindex[t+1]
-		if isempty(inputindex)
-			Aᵃ = Aᵃsilent
-		else
-			Aᵃ = Aᵃinput[inputindex[1]]
-		end
-		p_𝐚ₜ_aₜ₊₁ = Aᵃ[a[t+1],:] .* p𝐚[t] ./ p𝐚[t+1][a[t+1]]
-		a[t] = findfirst(rand() .< cumsum(p_𝐚ₜ_aₜ₊₁))
-	end
-	return nothing
-end
-
-"""
-	samplecoupling!(c, Aᶜ, ntimesteps, πᶜ)
-
-Sample the values of the coupling variable in one trial
-
-MODIFIED ARGUMENT
--`c`: a vector containing the sample value of the coupling variable in each time step
-
-ARGUMENT
--`Aᶜ`: transition matrix of the coupling variable
--`ntimesteps`: number of time steps in the trial
--`πᶜ`: prior probability of the coupling variable
-"""
-function samplecoupling!(c::Vector{<:Integer}, Aᶜ::Matrix{<:Real}, ntimesteps::Integer, πᶜ::Vector{<:Real})
-	if length(πᶜ) == 1
-		c .= 1
-	else
-		cumulativep𝐜 = cumsum(πᶜ)
-	    c[1] = findfirst(rand() .< cumulativep𝐜)
-		cumulativeAᶜ = cumsum(Aᶜ, dims=1)
-	    for t = 2:ntimesteps
-	        cumulativep𝐜 = cumulativeAᶜ[:,c[t-1]]
-	        c[t] = findfirst(rand() .< cumulativep𝐜)
-	    end
-	end
-	return nothing
-end
-
-"""
-	sample(a_end, ψ, Ξ)
+	samplechoice(a_end, ψ, Ξ)
 
 Sample a choice on a trial
 
@@ -374,7 +176,7 @@ ARGUMENT
 -`ψ`: lapse rate
 -`Ξ`: number of states that the accumulator can take
 """
-function sample(a_end::Integer, ψ::AbstractFloat, Ξ::Integer)
+function samplechoice(a_end::Integer, ψ::AbstractFloat, Ξ::Integer)
 	zeroindex = cld(Ξ,2)
 	if a_end < zeroindex
 		p_right_choice = ψ/2
@@ -384,84 +186,6 @@ function sample(a_end::Integer, ψ::AbstractFloat, Ξ::Integer)
 		p_right_choice = 0.5
 	end
 	choice = rand() < p_right_choice
-end
-
-"""
-    sample(model)
-
-Generate latent and emission variables for all trials of all trialsets
-
-ARGUMENT
--`model`: an instance of the factorial-hidden Markov drift-diffusion model
-
-OUTPUT
--a structure with data sampled from the parameters of the model
-"""
-function sample(model::Model; folderpath::String = dirname(model.options.datapath))
-	predictions = Predictions(model; nsamples=1)
-	newtrialsets = 	map(model.trialsets, predictions.p𝑑, predictions.λΔt) do trialset, p𝑑, λΔt
-						newtrials =	map(trialset.trials, p𝑑) do oldtrial, p𝑑
-										values = map(fieldnames(Trial)) do fieldname
-													if fieldname == :choice
-														Bool(p𝑑)
-													else
-														getfield(oldtrial, fieldname)
-													end
-												end
-										Trial(values...)
-									end
-						new_mpGLMs = map(trialset.mpGLMs, λΔt) do old_mpGLM, λΔt
-										values = map(fieldnames(MixturePoissonGLM)) do fieldname
-													if fieldname == :θ
-														FHMDDM.copy(old_mpGLM.θ)
-													elseif fieldname == :𝐲
-														convert.(Int,λΔt)
-													else
-														getfield(old_mpGLM, fieldname)
-													end
-												end
-										MixturePoissonGLM(values...)
-									end
-						Trialset(trials=newtrials, mpGLMs=new_mpGLMs)
-					end
-		options = dictionary(model.options)
-		options["datapath"] = joinpath(folderpath,"data.mat")
-		options["resultspath"] = joinpath(folderpath,"results.mat")
-		Model(options=Options(model.options.nunits, options),
-			gaussianprior=GaussianPrior(model.options, newtrialsets),
-			θnative=FHMDDM.copy(model.θnative),
-			θreal=FHMDDM.copy(model.θreal),
-			θ₀native=FHMDDM.copy(model.θ₀native),
-			trialsets=newtrialsets)
-end
-
-"""
-	samples(model, nsamples)
-
-Generate and save samples of the data
-
-ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
--`nsamples`: number of samples to make
-
-RETURN
--`samplepaths`: a vector of String indicating the path to the data of each sample
-"""
-function samples(model::Model, nsamples::Integer)
-	@assert nsamples > 0
-	pad = ceil(Int, log10(nsamples))
-	open(joinpath(dirname(model.options.datapath), "samplepaths.txt"), "w") do io
-		samplepaths = Vector{String}(undef, nsamples)
-	    for i=1:nsamples
-	        folderpath = joinpath(dirname(model.options.datapath),"sample"*string(i;pad=pad))
-	        !isdir(folderpath) && mkdir(folderpath)
-	        samplepaths[i] = joinpath(folderpath, "data.mat")
-	        println(io, samplepaths[i])
-	        sampledmodel = sample(model; folderpath=folderpath)
-	        savedata(sampledmodel)
-	    end
-		return samplepaths
-	end
 end
 
 """
@@ -510,6 +234,34 @@ function sampleclicks(a_latency_s::Real,
 end
 
 """
+	samplecoupling!(c, Aᶜ, ntimesteps, πᶜ)
+
+Sample the values of the coupling variable in one trial
+
+MODIFIED ARGUMENT
+-`c`: a vector containing the sample value of the coupling variable in each time step
+
+ARGUMENT
+-`Aᶜ`: transition matrix of the coupling variable
+-`ntimesteps`: number of time steps in the trial
+-`πᶜ`: prior probability of the coupling variable
+"""
+function samplecoupling!(c::Vector{<:Integer}, Aᶜ::Matrix{<:Real}, ntimesteps::Integer, πᶜ::Vector{<:Real})
+	if length(πᶜ) == 1
+		c .= 1
+	else
+		cumulativep𝐜 = cumsum(πᶜ)
+	    c[1] = findfirst(rand() .< cumulativep𝐜)
+		cumulativeAᶜ = cumsum(Aᶜ, dims=1)
+	    for t = 2:ntimesteps
+	        cumulativep𝐜 = cumulativeAᶜ[:,c[t-1]]
+	        c[t] = findfirst(rand() .< cumulativep𝐜)
+	    end
+	end
+	return nothing
+end
+
+"""
 	samplePoissonprocess(λ, T)
 
 Return the event times from sampling a Poisson process with rate `λ` for duration `T`
@@ -547,4 +299,40 @@ function samplePoissonprocess(λ::Real,
 		times = vcat(times, times[end]+randexp(rng)/λ)
 	end
 	return times[2:end-1]
+end
+
+"""
+	simulate(model)
+
+Simulate choices and spike trains and package them into a composite containing the parameters and hyperparameters used to generate them
+"""
+simulate(model::Model; folderpath::String = dirname(model.options.datapath)) = Model(model, drawsamples(model, 1)[1]; folderpath=folderpath)
+
+"""
+	simulateandsave(model, nsamples)
+
+Generate and save samples drawn from the model
+
+ARGUMENT
+-`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
+-`nsamples`: number of samples to make
+
+RETURN
+-`samplepaths`: a vector of String indicating the path to the data of each sample
+"""
+function simulateandsave(model::Model, nsamples::Integer)
+	@assert nsamples > 0
+	pad = ceil(Int, log10(nsamples))
+	open(joinpath(dirname(model.options.datapath), "samplepaths.txt"), "w") do io
+		samplepaths = Vector{String}(undef, nsamples)
+	    for i=1:nsamples
+	        folderpath = joinpath(dirname(model.options.datapath), "sample"*string(i;pad=pad))
+	        !isdir(folderpath) && mkdir(folderpath)
+	        samplepaths[i] = joinpath(folderpath, "data.mat")
+	        println(io, samplepaths[i])
+	        simulation = simulate(model; folderpath=folderpath)
+	        savedata(simulation)
+	    end
+		return samplepaths
+	end
 end

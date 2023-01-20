@@ -152,8 +152,6 @@ Model settings
 	nunits::TI
 	"value to maximized to learn the parameters"
 	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
-	"where the results of the model fitting are to be saved"
-    resultspath::TS=""
 	"whether to scale the log-likelihood of the choices to be of similar magnitude of the log-likelihood of the spike trains"
 	scalechoiceLL::TB=true
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
@@ -242,8 +240,7 @@ Spike trains are not included. In sampled data, the generatives values of the la
 @with_kw struct Trial{TB<:Bool,
                       TC<:Clicks,
 					  TF<:AbstractFloat,
-                      TI<:Integer,
-                      VI<:Vector{<:Integer}}
+                      TI<:Integer}
     "information on the auditory clicks"
     clicks::TC
     "behavioral choice"
@@ -264,10 +261,6 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	τ₀::TI
     "index of the trialset to which this trial belongs"
 	trialsetindex::TI
-    "generative values of the accumulator index variable (𝐚). This is nonempty only in sampled data"
-    a::VI=Vector{Int}(undef,0)
-    "generative values of the coupling variable (𝐜). This is nonempty only in sampled data"
-    c::VI=Vector{Int}(undef,0)
 end
 
 """
@@ -318,7 +311,7 @@ Mixture of Poisson generalized linear model
 								  F<:AbstractFloat,
 								  UI<:UnitRange{<:Integer},
                                   VF<:Vector{<:AbstractFloat},
-								  VI<:Vector{<:Integer},
+								  VI<:Vector{<:UInt8},
 								  Tθ<:GLMθ,
                                   MF<:Matrix{<:AbstractFloat}}
     "size of the time bin"
@@ -931,14 +924,10 @@ Container of variables used by both the log-likelihood and gradient computation
 	choiceLLscaling::R
 	"a vector of the concatenated values of the parameters being fitted"
 	concatenatedθ::VR
-	"normalization parameters in the forward-backward algorithm"
-	D::VR
 	"size of the time step"
 	Δt::R
 	"forward terms"
 	f::VMR
-	"forward terms for the choice only chains"
-	fᶜ::VVR
 	"a structure indicating the index of each model parameter in the vector of concatenated values"
 	indexθ::Tindex
 	"indices of the parameters that influence the prior probabilities of the accumulator"
@@ -957,10 +946,12 @@ Container of variables used by both the log-likelihood and gradient computation
 	K::TI
 	"log-likelihood"
 	ℓ::VR = fill(NaN,1)
+	"maximum number of time steps across trials"
+	maxtimesteps::TI
 	"gradient of the log-likelihood with respect to glm parameters"
 	∇ℓglm::VVθ
 	"gradient of the log-likelihood with respect to all parameters, even those not being fit"
-	∇ℓlatent::VR
+	∇ℓlatent::VR=zeros(length(fieldnames(FHMDDM.Latentθ)))
 	"number of parameters that influence the prior probabilities of the accumulator"
 	nθ_pa₁::TI = length(indexθ_pa₁)
 	"number of parameters that influence the transition probabilities of the accumulator"
@@ -971,8 +962,6 @@ Container of variables used by both the log-likelihood and gradient computation
 	nθ_pcₜcₜ₋₁::TI = length(indexθ_pcₜcₜ₋₁)
 	"number of the parameters that influence the lapse rate"
 	nθ_ψ::TI = length(indexθ_ψ)
-	"partial derivative of the initial probability of the accumulator"
-	∇pa₁::VVR
 	"prior probability of the coupling"
 	πᶜ::VR
 	"transpose of the prior probability of the coupling. It is a row vector"
@@ -987,6 +976,12 @@ Container of variables used by both the log-likelihood and gradient computation
 	Ξ::TI
 	"condition likelihood of a behavioral choice"
 	p𝑑_a::VVVR
+	"normalization parameters in the forward-backward algorithm"
+	D::VR = zeros(maxtimesteps)
+	"forward terms for the choice only chains"
+	fᶜ=collect(zeros(Ξ) for t=1:maxtimesteps)
+	"partial derivative of the initial probability of the accumulator"
+	∇pa₁::VVR=collect(zeros(Ξ) for q=1:nθ_pa₁)
 	"prior distribution of the accumulator"
 	p𝐚₁::VR=zeros(eltype(Aᵃsilent),Ξ)
 end
@@ -1070,86 +1065,140 @@ end
 end
 
 """
-	Expected output of the model and conditional probabilities of the mdoel
+	TrialSample
+
+Behavioral choice and neuronal spike trains simulated by running the model forward in time using the auditory click
 """
-@with_kw struct Predictions{TI<:Integer,
-							VVF<:Vector{<:Vector{<:AbstractFloat}},
-							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}},
-							VVVVF<:Vector{<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}}}
-	"probability of the accumulator variable"
-	p𝐚::VVVVF
-	"posterior probability of the accumulator variable conditioned on the behavioral choice"
-	p𝐚_𝑑::VVVVF
-	"posterior probability of the accumulator variable conditioned on the spike trains"
-	p𝐚_𝐘::VVVVF
-	"posterior probability of the accumulator variable conditioned on both the behavioral choice and the spiking"
-	p𝐚_𝐘𝑑::VVVVF
-	"posterior probability of the coupling variable conditioned on both the behavioral choice and the spiking"
-	p𝐜_𝐘𝑑::VVVVF
-	"expected probability of a right choice, estimated as the mean across samples"
-	p𝑑::VVF
-	"probability of a right choice conditioned on the spike trains"
-	p𝑑_𝐘::VVF
-	"expected spike response, estimated as the mean across samples"
-	λΔt::VVVF
-	"expected spike response conditioned on the observed behavioral choice. This is computed by first calculating the conditional probability of the accumulator at the last time step, given the observed choice, and then generating values of the accumulator backward in time."
-	λΔt_𝑑::VVVF
-	"number of samples used to compute the predictions"
-	nsamples::TI
+@with_kw struct TrialSample{B<:Bool, VVI<:Vector{<:Vector{<:Integer}}}
+	choice::B
+	spiketrains::VVI
 end
 
 """
-	Summary
+	TrialsetSample
+
+Simulated behavioral choice and neuronal spike trains on every trial of a trialset
+"""
+@with_kw struct TrialsetSample{VS<:Vector{<:TrialSample}}
+	trials::VS
+end
+
+"""
+	Sample
+
+Behavioral choice and neuronal spike trains simulated by running the model forward in time using the auditory clicks on every trial of every trialset
+"""
+@with_kw struct Sample{VS<:Vector{<:TrialsetSample}}
+	trialsets::VS
+end
+
+"""
+	Expectation of the choice and spike train on a single trial
+
+The unconditioned spike train of the n-th neuron on this trial can be computed as `spiketrain_leftchoice[n].*(1-rightchoice) .+ spiketrain_rightchoice[n].*rightchoice`
+
+If no left choice occurred during simulations, then `spiketrain_leftchoice[n][t]` is zero for all `n` and `t`.
+
+If we have a vector `𝐄` whose each element is a composite of the type `ExpectedEmissions` corresponding to a single trial, then the left-choice conditioned peri-stimulus time historam of the n-th neuron can be computed as follows
+```julia-repl
+julia> maxtimesteps = maximum((length(E.spiketrain_leftchoice[n]) for E in 𝐄))
+julia> psth_leftchoice, psth_rightchoice, weights_leftchoice, weights_rightchoice = zeros(maxtimesteps), zeros(maxtimesteps), zeros(maxtimesteps), zeros(maxtimesteps)
+julia> for E in 𝐄
+			for t in eachindex(E.spiketrain_leftchoice[n])
+				psth_leftchoice[t] += E.spiketrain_rightchoice[n]
+			end
+		end
+```
+"""
+@with_kw struct ExpectedEmissions{F<:AbstractFloat, VVF<:Vector{<:Vector{<:AbstractFloat}}}
+	"expectation of the choice random variable. This can be interpreted as the expected probability of a right choice"
+	rightchoice::F
+	"expectation of the spike trains, conditioned on a left choice. The element `spiketrain_leftchoice[n][t]` corresponds to the n-th neuron at the t-th time step."
+	spiketrain_leftchoice::VVF
+	"expectation of the spike trains, conditioned on right choice"
+	spiketrain_rightchoice::VVF
+end
+
+
+"""
+	Quantities helpful for understanding the model
+"""
+@with_kw struct Characterization{VVE<:Vector{<:Vector{<:ExpectedEmissions}},
+							VVF<:Vector{<:Vector{<:AbstractFloat}},
+							VVVVF<:Vector{<:Vector{<:Vector{<:Vector{<:AbstractFloat}}}}}
+	"probability of the accumulator variable given the actual auditory clicks. The element `paccumulator[i][m][t][j]` corresponds to the probability of the accumulator in the j-th state during the t-th time step of the m-th trial in the i-th trialset"
+	paccumulator::VVVVF
+	"posterior probability of the accumulator variable conditioned on the clicks and the behavioral choice. The format is identical to that of `paccumulator`."
+	paccumulator_choice::VVVVF
+	"posterior probability of the accumulator variable conditioned on the clicks, behavioral choice, and spike trains. The format is identical to that of `paccumulator`."
+	paccumulator_choicespikes::VVVVF
+	"posterior probability of the accumulator variable conditioned on the clicks and spike trains. The format is identical to that of `paccumulator`."
+	paccumulator_spikes::VVVVF
+	"log(base 2)-likelihood of the observed behavioral choice. The element `LLchoice[i][m]` is the log-likelihood of the choice in the m-th trial in the i-th trialset."
+	LLchoice::VVF
+	"log(base 2)-likelihood of the observed choice under a Bernoulli model. The format is identical to that of the field `LLchoice`."
+	LLchoice_bernoulli::VVF
+	"log(base 2)-likelihood of the observed choice conditioned on the spike trains. The format is identical to that of the field `LLchoice`."
+	LLchoice_spikes::VVF
+	"log(base 2)-likelihood of the spike count at each time step. Element `LLspikes[i][n][m][t]` is the log-likelihood of observed spike count at the t-time step of the m-th trial for the n-th neuron in the i-th trialset."
+	LLspikes::VVVVF
+	"log(base 2)-likelihood of the spike count at each time step under a homogeneous Poisson model. The format is identical to that of the field `LLspikes`."
+	LLspikes_poisson::VVVVF
+	"expectation of the choice and spike trains computed averaging across simulations of the model. The element `expectedemissions[i][m]` contains the expected choice and the choice-conditioned spike trains of each neuron on the m-th trial of the i-th trialset."
+	expectedemissions::VVE
+end
+
+"""
+	ModelSummary
 
 Features of the model useful for analysis
 """
-@with_kw struct Summary{F<:AbstractFloat,
-						LT<:Latentθ,
-						MF<:Matrix{<:AbstractFloat},
-						VI<:Vector{<:Integer},
-						VF<:Vector{<:AbstractFloat},
-						VMF<:Vector{<:Matrix{<:AbstractFloat}},
-						VS<:Vector{<:String},
-						VVGT<:Vector{<:Vector{<:GLMθ}},
-						VVI<:Vector{<:Vector{<:Integer}}}
+@with_kw struct ModelSummary{F<:AbstractFloat,
+							LT<:Latentθ,
+							MF<:Matrix{<:AbstractFloat},
+							VF<:Vector{<:AbstractFloat},
+							VMF<:Vector{<:Matrix{<:AbstractFloat}},
+							VS<:Vector{<:String},
+							VVGT<:Vector{<:Vector{<:GLMθ}},
+							VVI<:Vector{<:Vector{<:Integer}}}
 	"the log of the likelihood of the data given the parameters"
 	loglikelihood::F
 	"the log of the posterior probability of the parameters"
 	logposterior::F
 	"values of the parameters of the latent variable in their native space"
-	θnative::LT
+	thetanative::LT
 	"values of the parameters of the latent variable mapped to real space"
-	θreal::LT
+	thetareal::LT
 	"initial values of parameters of the latent variable in their space"
-	θ₀native::LT
+	theta0native::LT
 	"parameters of each neuron's GLM. The element `θglm[i][n]` corresponds to the n-th neuron in the i-th trialset"
-	θglm::VVGT
+	thetaglm::VVGT
 	"temporal basis vectors for accumulator encoding"
-	Φₐ::MF
+	temporal_basis_vectors_accumulator::VMF
 	"temporal basis vectors for the post-spike kernel"
-	Φₕ::MF
+	temporal_basis_vectors_postspike::VMF
 	"temporal basis vectors for the pre-movement kernel"
-	Φₘ::MF
+	temporal_basis_vectors_premovement::VMF
 	"temporal basis vectors for the post-stereoclick kernel"
-	Φₜ::MF
-	"temporal basis vectors for the photostimulus kernel"
-	Φₚ::MF
-	"time steps of the temporal basis vectors for the photostimulus kernel"
-	Φₚtimesteps::VI
+	temporal_basis_vectors_poststereoclick::VMF
 	"parameters concatenated into a vector"
 	parametervalues::VF
 	"name of each parameter"
 	parameternames::VS
 	"a vector of L2 penalty matrices"
-	𝐀::VMF
+	penaltymatrices::VMF
 	"index of the parameters regularized by the L2 penalty matrices"
-	index𝐀::VVI
+	penaltymatrixindices::VVI
 	"cofficients of the penalty matrices"
-	𝛂::VF
+	penaltycoefficients::VF
 	"names of each L2 regularization penalty"
 	penaltynames::VS
 	"precision matrix of the gaussian prior on the parameters"
-	𝚲::MF
+	precisionmatrix::MF
+	"hessian of the log-likelihood function evaluated at the current parameters"
+	hessian_loglikelihood::MF = fill(NaN, length(parametervalues), length(parametervalues))
+	"hessian of the log-posterior function evaluated at the current parameters and hyperparameters"
+	hessian_logposterior::MF = fill(NaN, length(parametervalues), length(parametervalues))
 end
 
 """
@@ -1157,15 +1206,11 @@ end
 
 Results of cross-validation
 """
-@with_kw struct CVResults{P<:Predictions, VC<:Vector{<:CVIndices}, VS<:Vector{<:Summary}, VVF<:Vector{<:Vector{<:AbstractFloat}}}
+@with_kw struct CVResults{C<:Characterization, VC<:Vector{<:CVIndices}, VS<:Vector{<:ModelSummary}}
+	"a composite containing quantities that are computed out-of-sample and used to characterize the model`"
+	characterization::C
 	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
 	cvindices::VC
-	"out-of-sample predictions: a structure of the type `Predictions`"
-	predictions::P
-	"Difference between the log-likelihood of the behavioral choices under the model and under a null model. The null model is a homogeneous Bernoulli parametrized by the fraction of right choices in the training data. Element `rll_choice[i][m]` indicate the log-likelihood of the choice in the m-th trial of the i-th trialset"
-	rll_choice::VVF
-	"Difference between the log-likelihood of spike trains predicted under the model and under a null model, divided by the number of spikes in the spike train. The null model is a homogeneous Poisson whose intensity is compued by averaging the spike train in the training data. Element `rll_spikes[i][n]` has the unit of bits per spike and corresponds to the n-th neuron in the i-th trialset."
-	rll_spikes::VVF
 	"summaries of the training models"
 	trainingsummaries::VS
 end

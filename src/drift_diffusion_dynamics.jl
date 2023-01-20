@@ -19,7 +19,6 @@ function adapt(clicks::Clicks, k::T1, ϕ::T2) where {T1<:Real, T2<:Real}
 	if nclicks == 0
 		Adaptedclicks(C=zeros(T,0))
 	else
-		@assert nclicks > 0
 	    C = zeros(T, nclicks)
 		C[1] = 1.0 - (1.0-ϕ)*exp(-k*clicks.time[1])
 	    for i = 2:nclicks
@@ -1302,6 +1301,27 @@ function transitionmatrix!(A::Matrix{T},
 end
 
 """
+	transitionmatrix(clicks, Aᵃinput, Aᵃsilent, t)
+
+Select the transition matrix depending on whether clicks had occurred
+
+ARGUMENT
+-`clicks`: a composite containing the timing and source of the auditory clicks in one trial
+-`Aᵃinput`: nested array whose element `Aᵃinput[i][j,k]` represents the transition probability from state k to state j for the i-th time step during which auditory clicks occured
+-`Aᵃsilent`: transition matrix for a time step when no clicks occured
+-`t`: time step
+
+RETURN
+-either `Aᵃsilent` or an element of `Aᵃinput`
+"""
+function transitionmatrix(clicks::Clicks,
+						Aᵃinput::Vector{<:Matrix{<:Real}},
+						Aᵃsilent::Matrix{<:Real},
+						t::Integer)
+	isempty(clicks.inputindex[t]) ? Aᵃsilent : Aᵃinput[clicks.inputindex[t][1]]
+end
+
+"""
 	check∇∇priorprobability(model)
 
 Maximum absolute difference between the automatically computed and hand-coded first and second order partial derivatives of the prior probabilities of the accumulator
@@ -1505,8 +1525,6 @@ end
     expm1_div_x(x)
 """
 function expm1_div_x(x)
-
     y = exp(x)
     y == 1. ? one(y) : (y-1.)/log(y)
-
 end

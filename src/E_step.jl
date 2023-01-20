@@ -40,34 +40,9 @@ function scaledlikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}
 	        end
 	    end
 		for m in eachindex(p𝐘𝑑[i])
-			choicelikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, ψ)
+			conditionallikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, ψ)
 			p𝐘𝑑[i][m][end] .*= p𝑑_a[i][m]
 		end
-    end
-    return nothing
-end
-
-"""
-    choicelikelihood!(p𝑑, choice, ψ)
-
-Conditional likelihood of a right choice given the state of the accumulator
-
-MODIFIED ARGUMENT
--`p𝑑`: A vector for in-place computation
-
-UNMODIFIED ARGUMENT
--`choice`: the observed choice, either right (`choice`=true) or left.
--`ψ`: the prior probability of a lapse state
-"""
-function choicelikelihood!(p𝑑::Vector{<:Real}, choice::Bool, ψ::Real)
-	zeroindex = cld(size(p𝑑,1),2)
-    p𝑑[zeroindex] = 0.5
-    if choice
-        p𝑑[1:zeroindex-1] .= ψ/2
-        p𝑑[zeroindex+1:end] .= 1-ψ/2
-    else
-        p𝑑[1:zeroindex-1]   .= 1-ψ/2
-        p𝑑[zeroindex+1:end] .= ψ/2
     end
     return nothing
 end
@@ -86,6 +61,14 @@ RETURN
 """
 function posteriors(model::Model)
 	memory = Memoryforgradient(model)
+	posteriors!(memory, model)
+	return memory.γ
+end
+
+"""
+	posteriors!(memory, model)
+"""
+function posteriors!(memory::Memoryforgradient, model::Model)
 	P = update!(memory, model)
 	posteriors!(memory, P, model)
 	return memory.γ
@@ -129,36 +112,33 @@ UNMODIFIED ARGUMENT
 """
 function forward!(memory::Memoryforgradient, P::Probabilityvector, θnative::Latentθ, trial::Trial)
 	@unpack clicks, index_in_trialset, τ₀, trialsetindex = trial
-	@unpack Aᵃinput, Aᵃsilent, Aᶜᵀ, D, f, K, ℓ, p𝐚₁, πᶜ, Ξ = memory
+	@unpack Aᵃinput, Aᵃsilent, Aᶜᵀ, choiceLLscaling, D, f, K, ℓ, p𝐚₁, πᶜ, Ξ = memory
 	γ = memory.γ[trialsetindex]
 	p𝐘𝑑 = memory.p𝐘𝑑[trialsetindex][index_in_trialset]
+	accumulator_prior_transitions!(Aᵃinput, P, p𝐚₁, trial)
+	p𝐚 = p𝐚₁
 	t = 1
-	priorprobability!(P, trial.previousanswer)
-	p𝐚₁ .= P.𝛑
 	@inbounds for j=1:Ξ
 		for k = 1:K
-			f[t][j,k] = p𝐘𝑑[t][j,k] * p𝐚₁[j] * πᶜ[k]
+			f[t][j,k] = p𝐘𝑑[t][j,k] * p𝐚[j] * πᶜ[k]
 		end
 	end
 	D[t] = sum(f[t])
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
-	if length(clicks.time) > 0
-		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	end
 	@inbounds for t=2:trial.ntimesteps
-		if t ∈ clicks.inputtimesteps
-			clickindex = clicks.inputindex[t][1]
-			Aᵃ = Aᵃinput[clickindex]
-			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-			transitionmatrix!(Aᵃ, P)
-		else
-			Aᵃ = Aᵃsilent
-		end
+		Aᵃ = isempty(clicks.inputindex[t]) ? Aᵃsilent : Aᵃinput[clicks.inputindex[t][1]]
 		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
 		D[t] = sum(f[t])
 		f[t] ./= D[t]
 		ℓ[1] += log(D[t])
+		if choiceLLscaling > 1
+			p𝐚 = Aᵃ*p𝐚
+		end
+	end
+	if choiceLLscaling > 1
+		p𝑑_a = memory.p𝑑_a[trial.trialsetindex][trial.index_in_trialset]
+		ℓ[1] += (choiceLLscaling-1)*log(dot(p𝑑_a, p𝐚))
 	end
 	return nothing
 end
@@ -207,125 +187,29 @@ function backward!(memory::Memoryforgradient, P::Probabilityvector, trial::Trial
 end
 
 """
-	joint_posteriors_of_coupling(model)
+	accumulator_prior_transitions!(Aᵃinput, P, p𝐚₁, trial)
 
-Sum the joint posteriors of the coupling variable at two consecutive time steps across time
-
-ARGUMENT
--`model`: custom type containing the settings, data, and parameters of a factorial hidden Markov drift-diffusion model
-
-RETURN
--`∑χ`: joint posterior probabilities of the coupling variables at two consecutive time step conditioned on the emissions at all time steps in the trialset. Element `∑χ[j,k]` represent p{c(t)=j, c(t-1)=k ∣ 𝐘, 𝑑) summed across trials and trialsets
-
-"""
-function joint_posteriors_of_coupling!(memory::Memoryforgradient, model::Model, ∑χ::Matrix{<:Real}, ∑γ::Vector{<:Real})
-	P = update!(memory, model)
-	memory.ℓ .= 0.0
-	∑χ .= 0.0
-	∑γ .= 0.0
-	@inbounds for s in eachindex(model.trialsets)
-		for m in eachindex(model.trialsets[s].trials)
-			joint_posteriors_of_coupling!(memory, P, ∑χ, ∑γ, model, s, m)
-		end
-	end
-	return nothing
-end
-
-"""
-	joint_posteriors_of_coupling!(∑χ, memory, P, model, s, m)
-
-Sum the joint posteriors of the coupling variable at two consecutive time steps across time
-
-Update the gradient
+Update the prior distribution and transition matrices of the accumulator for one trial
 
 MODIFIED ARGUMENT
--`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
--`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
-- `∑χ`: joint posterior probabilities of the coupling variables at two consecutive time step
+-`Aᵃinput`: nested array whose element `Aᵃinput[i][j,k]` represents the transition probability from state k to state j for the i-th time step during which auditory clicks occured
+-`P`: a composite used to compute the probability vector of the accumulator
+-`p𝐚₁`: vector whose element `p𝐚₁[i]` corresponds to the prior probability of the accumulator in the i-th state
 
 UNMODIFIED ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters of the model
--`s`: index of the trialset
--`m`: index of the trial
+
 """
-function joint_posteriors_of_coupling!(memory::Memoryforgradient,
-					P::Probabilityvector,
-					∑χ::Matrix{<:Real},
-					∑γ::Vector{<:Real},
-					model::Model,
-					s::Integer,
-					m::Integer)
-	trial = model.trialsets[s].trials[m]
-	p𝐘𝑑 = memory.p𝐘𝑑[s][m]
-	@unpack θnative = model
-	@unpack clicks = trial
-	@unpack inputtimesteps, inputindex = clicks
-	@unpack Aᵃinput, Aᵃsilent, Aᶜ, Aᶜᵀ, D, f, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ, K, ℓ, ∇ℓlatent, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_pc₁, nθ_pcₜcₜ₋₁, ∇pa₁, πᶜ, ∇πᶜ, Ξ = memory
-	t = 1
+function accumulator_prior_transitions!(Aᵃinput::Vector{<:Matrix{<:AbstractFloat}},
+										P::Probabilityvector,
+										p𝐚₁::Vector{<:AbstractFloat},
+										trial::Trial)
+	adaptedclicks = adapt(trial.clicks, P.k, P.ϕ)
 	priorprobability!(P, trial.previousanswer)
-	@inbounds for j=1:Ξ
-		for k = 1:K
-			f[t][j,k] = p𝐘𝑑[t][j,k] * P.𝛑[j] * πᶜ[k]
-		end
-	end
-	D[t] = sum(f[t])
-	f[t] ./= D[t]
-	ℓ[1] += log(D[t])
-	if length(clicks.time) > 0
-		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	end
+	p𝐚₁ .= P.𝛑
 	@inbounds for t=2:trial.ntimesteps
-		if t ∈ clicks.inputtimesteps
-			clickindex = clicks.inputindex[t][1]
-			Aᵃ = Aᵃinput[clickindex]
-			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-			transitionmatrix!(Aᵃ, P)
-		else
-			Aᵃ = Aᵃsilent
-		end
-		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
-		D[t] = sum(f[t])
-		f[t] ./= D[t]
-		ℓ[1] += log(D[t])
-	end
-	b = ones(Ξ,K)
-	f⨀b = f # reuse memory
-	@inbounds for t = trial.ntimesteps:-1:1
-		if t < trial.ntimesteps
-			if t+1 ∈ clicks.inputtimesteps
-				clickindex = clicks.inputindex[t+1][1]
-				Aᵃₜ₊₁ = Aᵃinput[clickindex]
-			else
-				Aᵃₜ₊₁ = Aᵃsilent
-			end
-			b = transpose(Aᵃₜ₊₁) * (b.*p𝐘𝑑[t+1]./D[t+1]) * Aᶜ
-			f⨀b[t] .*= b
-		end
-		if t > 1
-			if t ∈ clicks.inputtimesteps
-				clickindex = clicks.inputindex[t][1]
-				Aᵃₜ = Aᵃinput[clickindex]
-			else
-				Aᵃₜ = Aᵃsilent
-			end
-			for j = 1:K
-	 			for k = 1:K
-					∑χ[j,k] += sum_product_over_accumulator_states(D[t],f[t-1],b,p𝐘𝑑[t],Aᵃₜ,Aᶜ,j,k)
-				end
-			end
-		end
-	end
-	∑γ .+= dropdims(sum(f⨀b[1],dims=1),dims=1)
-	offset = 0
-	for i = 1:m-1
-		offset += model.trialsets[s].trials[i].ntimesteps
-	end
-	for t = 1:trial.ntimesteps
-		τ = offset+t
-		for i = 1:Ξ
-			for k = 1:K
-				memory.γ[s][i,k][τ] = f⨀b[t][i,k]
-			end
+		if !isempty(trial.clicks.inputindex[t])
+			update_for_transition_probabilities!(P, adaptedclicks, trial.clicks, t)
+			transitionmatrix!(Aᵃinput[trial.clicks.inputindex[t][1]], P)
 		end
 	end
 	return nothing
@@ -357,7 +241,6 @@ function sum_product_over_accumulator_states(D::Real, fₜ₋₁::Matrix{<:Real}
 	return s/D
 end
 
-
 """
 	choiceposteriors!(memory, model)
 
@@ -378,7 +261,7 @@ function choiceposteriors!(memory::Memoryforgradient, model::Model)
 	@unpack p𝑑_a, p𝐘𝑑 = memory
 	@inbounds for i in eachindex(p𝐘𝑑)
 		for m in eachindex(p𝐘𝑑[i])
-			choicelikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, θnative.ψ[1])
+			conditionallikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, θnative.ψ[1])
 			for j = 1:Ξ
 				for k = 1:K
 					p𝐘𝑑[i][m][end][j,k] = p𝑑_a[i][m][j]
@@ -412,29 +295,6 @@ function update_for_latent_dynamics!(memory::Memoryforgradient, options::Options
 	transitionmatrix!(memory.Aᵃsilent, P)
 	updatecoupling!(memory, θnative)
 	return P
-end
-
-"""
-	posteriorcoupled(model)
-
-Posterior probability of being in the first coupling state
-
-ARGUMENT
--`model`: instance of the factorial hidden markov drift diffusion model
-
-OUTPUT
--`fbz`: a nested array whose element `fbz[i][m][t]` represents the posterior porobability that the neural population is coupled to the accumulator in the timestep t of trial m of trialset i.
-"""
-function posterior_first_state(model::Model)
-	γ = posteriors(model)
-	fb = sortbytrial(γ, model)
-	map(fb) do fb # trialset
-		map(fb) do fb # trial
-			map(fb) do fb #timestep
-				sum(fb[:,1])
-			end
-		end
-	end
 end
 
 """

@@ -130,72 +130,20 @@ RETURN
 ```
 """
 function loglikelihood!(model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
-	log_s = log(model.options.sf_y)
 	if concatenatedθ != memory.concatenatedθ
 		P = update!(memory, model, concatenatedθ)
 		memory.ℓ[1] = 0.0
-		@inbounds for s in eachindex(model.trialsets)
-			N = length(model.trialsets[s].mpGLMs)
-			for m in eachindex(model.trialsets[s].trials)
-				T = model.trialsets[s].trials[m].ntimesteps
+		log_s = log(model.options.sf_y)
+		@inbounds for trialset in model.trialsets
+			N = length(trialset.mpGLMs)
+			for trial in trialset.trials
+				T = trial.ntimesteps
 				memory.ℓ[1] -= N*T*log_s
-				memory.ℓ[1] += loglikelihood(memory.p𝐘𝑑[s][m], memory.p𝑑_a[s][m], memory, P, model.θnative, model.trialsets[s].trials[m])
+				forward!(memory, P, model.θnative, trial)
 			end
 		end
 	end
 	memory.ℓ[1]
-end
-
-"""
-	loglikelihood(p𝐘𝑑, θnative, trial)
-
-Compute the log-likelihood of the data from one trial
-
-ARGUMENT
--`p𝐘𝑑`: a matrix whose element `p𝐘𝑑[t][i,j]` represents the conditional likelihood `p(𝐘ₜ, d ∣ 𝐚ₜ=i, 𝐜ₜ=j)`
--`θnative`: model parameters in their native space
--`trial`: stimulus and behavioral information of one trial
-
-RETURN
--`ℓ`: log-likelihood of the data from one trial
-"""
-function loglikelihood(p𝐘𝑑::Vector{<:Matrix{<:Real}},
-					   p𝑑_a::Vector{<:Real},
-   					   memory::Memoryforgradient,
-					   P::Probabilityvector,
-					   θnative::Latentθ,
-					   trial::Trial)
-	@unpack clicks = trial
-	@unpack Aᵃinput, Aᵃsilent, Aᶜᵀ, choiceLLscaling, πᶜᵀ = memory
-    if length(clicks.time) > 0
-		adaptedclicks = adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	end
-	priorprobability!(P, trial.previousanswer)
-	p𝐚ₜ = P.𝛑
-	f = p𝐘𝑑[1] .* p𝐚ₜ .* πᶜᵀ
-	D = sum(f)
-	f ./= D
-	ℓ = log(D)
-	@inbounds for t = 2:trial.ntimesteps
-		if isempty(clicks.inputindex[t])
-			Aᵃ = Aᵃsilent
-		else
-			Aᵃ = Aᵃinput[clicks.inputindex[t][1]]
-			update_for_transition_probabilities!(P, adaptedclicks, clicks, t)
-			transitionmatrix!(Aᵃ, P)
-		end
-		f = p𝐘𝑑[t].*(Aᵃ * f * Aᶜᵀ)
-		D = sum(f)
-		f ./= D
-		ℓ += log(D)
-		if choiceLLscaling > 1
-			p𝐚ₜ = Aᵃ*p𝐚ₜ
-		end
-	end
-	if choiceLLscaling > 1
-		ℓ += (choiceLLscaling-1)*log(dot(p𝑑_a, p𝐚ₜ))
-	end
-	return ℓ
 end
 
 """
@@ -576,10 +524,8 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 								∇Aᶜ=∇Aᶜ,
 								choiceLLscaling = scale_factor_choiceLL(model),
 								concatenatedθ=similar(concatenatedθ),
-								D = zeros(maxtimesteps),
 								Δt=options.Δt,
 								f=f,
-								fᶜ=collect(zeros(Ξ) for t=1:maxtimesteps),
 								indexθ=indexθ,
 								indexθ_pa₁=indexθ_pa₁,
 								indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
@@ -588,9 +534,8 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 								indexθ_ψ=indexθ_ψ,
 								γ=γ,
 								K=K,
+								maxtimesteps=maxtimesteps,
 								∇ℓglm=∇ℓglm,
-								∇ℓlatent=zeros(13),
-								∇pa₁ = collect(zeros(Ξ) for q=1:nθ_pa₁),
 								πᶜ=πᶜ,
 								∇πᶜ=∇πᶜ,
 								p𝑑_a=p𝑑_a,

@@ -292,7 +292,7 @@ function savetrace(MAP_values_converged::Bool,
 					iteration::Integer,
 					model::Model;
 					folderpath::String=dirname(model.options.datapath))
-	modelsummary = dictionary(Summary(model))
+	modelsummary = dictionary(ModelSummary(model))
 	dict = Dict((key=>modelsummary[key] for key in keys(modelsummary))...,
 				"MAP_values_converged"=>MAP_values_converged,
 				"hessian_loglikelihood"=>𝐇,

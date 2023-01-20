@@ -8,13 +8,10 @@ If the model has already been optimized, a results file is expected.
 ARGUMENT
 - `datapath`: full path of the data file
 
-OPTIONAL ARGUMENT
--`prefix`: a string that precedes the name of all files containing the results
-
 RETURN
 - a structure containing information for a factorial hidden Markov drift-diffusion model
 """
-function Model(datapath::String; prefix::String="results")
+function Model(datapath::String)
     dataMAT = read(matopen(datapath))
 	nunits = 0
 	for rawtrialset in dataMAT["data"]
@@ -22,44 +19,7 @@ function Model(datapath::String; prefix::String="results")
 	end
     options = Options(nunits, dataMAT["options"])
 	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
-	resultspath = joinpath(dirname(options.datapath), prefix*".mat")
-    if isfile(resultspath) && !isempty(prefix)
-        Model(options, resultspath, trialsets)
-    else
-        Model(options, trialsets)
-    end
-end
-
-"""
-    Model(options, resultspath, trialsets)
-
-Load a previously fitted factorial hidden Markov drift-diffusion model
-
-ARGUMENT
--`options`: model settings
--`resultspath`: full path of the file containing the learned values of the parameters
--`trialsets`: data used to constrain the model
-
-RETURN
-- a structure containing information for a factorial hidden Markov drift-diffusion model
-"""
-function Model(options::Options, resultspath::String, trialsets::Vector{<:Trialset})
-    resultsMAT = matopen(resultspath)
-	glmθ = read(resultsMAT, "thetaglm")
-	for i in eachindex(trialsets)
-		for n in eachindex(trialsets[i].mpGLMs)
-			sortparameters!(trialsets[i].mpGLMs[n].θ, glmθ[i][n])
-		end
-	end
-	gaussianprior = GaussianPrior(options, trialsets)
-	gaussianprior.𝛂 .= vec(read(resultsMAT, "penaltycoefficients"))
-    precisionmatrix!(gaussianprior)
-	Model(options=options,
-		   gaussianprior=gaussianprior,
-		   θnative=Latentθ(read(resultsMAT, "thetanative")),
-		   θreal=Latentθ(read(resultsMAT, "thetareal")),
-		   θ₀native=Latentθ(read(resultsMAT, "theta0native")),
-		   trialsets=trialsets)
+	Model(options, trialsets)
 end
 
 """
@@ -106,7 +66,7 @@ function Trialset(options::Options, trialset::Dict)
 	@assert all(movementtimes_s .> 0)
 	photostimulus_decline_on_s = collect(trial["photostimulus_decline_on_s"] for trial in trials)
 	photostimulus_incline_on_s = collect(trial["photostimulus_incline_on_s"] for trial in trials)
-	𝐘 = map(x->convert.(Int, vec(x["y"])), vec(trialset["units"]))
+	𝐘 = map(x->convert.(UInt8, vec(x["y"])), vec(trialset["units"]))
 	mpGLMs = MixturePoissonGLM(movementtimes_s, options, photostimulus_decline_on_s, photostimulus_incline_on_s, 𝐓, 𝐘)
 	preceding_timesteps = vcat(0, cumsum(𝐓[1:end-1]))
 	trials = collect(Trial(options.a_latency_s, options.Δt, m, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))

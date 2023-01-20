@@ -367,7 +367,6 @@ function dictionary(options::Options)
 			"lqu_w_h"=>	options.lqu_wₕ,
     		"minpa"=>	options.minpa,
     		"objective"=> options.objective,
-			"resultspath"=>options.resultspath,
 			"scalechoiceLL"=>options.scalechoiceLL,
     		"sf_y"=>options.sf_y,
 			"tbf_accu_begins0"=>options.tbf_accu_begins0,
@@ -575,7 +574,6 @@ function Options(nunits::Integer, options::Dict)
 			minpa = options["minpa"],
 			nunits = nunits,
 			objective = options["objective"],
-			resultspath = options["resultspath"],
 			scalechoiceLL = options["scalechoiceLL"],
 			sf_y = options["sf_y"],
 			tbf_accu_begins0 = options["tbf_accu_begins0"],
@@ -649,3 +647,8 @@ function sortbytrial(γ::Vector{<:Matrix{<:Vector{T}}}, model::Model) where {T<:
 	end
 	return fb
 end
+
+"""
+	dictionary(x)
+"""
+dictionary(x) = Dict((String(fieldname)=>getfield(x,fieldname) for fieldname in fieldnames(typeof(x)))...)
