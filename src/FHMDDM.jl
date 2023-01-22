@@ -1,6 +1,7 @@
 module FHMDDM
 using   Distributed,
         Distributions,
+        DSP,
         ForwardDiff,
         LinearAlgebra,
         LineSearches,
@@ -14,11 +15,9 @@ import  Flux
 export  Characterization,
         concatenateparameters,
         crossvalidate,
-        drawsamples,
         expectedemissions,
         indexparameters,
         initializeparameters!,
-        initialize_for_stochastic_transition!,
         Model,
         maximize_choice_posterior!,
         maximizeposterior!,
@@ -26,10 +25,9 @@ export  Characterization,
         ModelSummary,
         ∇∇loglikelihood,
         learnparameters!,
-        posterior_first_state,
         simulate,
+        simulateandsave,
         save,
-        savedata,
         test
 include("types.jl") # This list contains files that in which functions and types are specified. The file "types.jl" has to be listed first, but the order of the other files does not matter.
 include("accumulatortransformation.jl")
