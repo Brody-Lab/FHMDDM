@@ -116,7 +116,8 @@ ARGUMENT
 function packagedata(trial::Trial, a_latency_s::AbstractFloat)
 	Dict("choice" => trial.choice,
          "clicktimes" => packagedata(trial.clicks, a_latency_s),
-		 "movementtime_s"=> trial.movementtime_s,
+		 "gamma"=>trial.γ,
+		 "movementtimestep"=> trial.movementtimestep,
 		 "photostimulus_decline_on_s"=> trial.photostimulus_decline_on_s,
 		 "photostimulus_incline_on_s"=> trial.photostimulus_incline_on_s,
 		 "ntimesteps"=> trial.ntimesteps,

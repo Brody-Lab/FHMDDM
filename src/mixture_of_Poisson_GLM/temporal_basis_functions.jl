@@ -360,12 +360,11 @@ function photostimulusbasis!(𝐔::Matrix{<:AbstractFloat}, indices::Vector{Bool
 end
 
 """
-	premovementbasis(options, movementtimes_s, Φ, 𝐓)
+	premovementbasis(movementtimesteps, Φ, 𝐓)
 
 Temporal basis functions for the premovement kernel
 
 ARGUMENT
--`options`: settings of the model
 -`movementtimes_s`: time of movement relative to the stereoclick, in seconds
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 -`𝐓`: number of timesteps
@@ -373,21 +372,20 @@ ARGUMENT
 RETURN
 -`𝐔`: A matrix whose element 𝐔[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 """
-function premovementbasis(movementtimes_s::Vector{<:AbstractFloat}, options::Options, Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
+function premovementbasis(movementtimesteps::Vector{<:Integer}, Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
 	nbins, D = size(Φ)
 	𝐔 = zeros(sum(𝐓), D)
 	if D > 0
-		movementbin = ceil.(Int, movementtimes_s./options.Δt) # movement times are always positive
 		τ = 0
 		for i=1:length(𝐓)
 			T = 𝐓[i]
-			if movementbin[i] < nbins
-				j₀ = nbins - movementbin[i] + 1
+			if movementtimesteps[i] < nbins
+				j₀ = nbins - movementtimesteps[i] + 1
 				for (t,j) in zip(1:T, j₀:nbins)
 					𝐔[τ+t,:] = Φ[j,:]
 				end
 			else
-				t₀ = movementbin[i] - nbins + 1
+				t₀ = movementtimesteps[i] - nbins + 1
 				for (t,j) in zip(t₀:T, 1:nbins)
 					𝐔[τ+t,:] = Φ[j,:]
 				end

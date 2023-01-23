@@ -298,7 +298,7 @@ ARGUMENT
 RETURN
 -a vector whose each element is a composite containing the data and parameters of the Poisson mixture generalized linear model of a neuron
 """
-function MixturePoissonGLM(movementtimes_s::Vector{<:AbstractFloat},
+function MixturePoissonGLM(movementtimesteps::Vector{<:Integer},
 							options::Options,
 							photostimulus_decline_on_s::Vector{<:AbstractFloat},
  							photostimulus_incline_on_s::Vector{<:AbstractFloat},
@@ -312,7 +312,7 @@ function MixturePoissonGLM(movementtimes_s::Vector{<:AbstractFloat},
 	Φₕ = spikehistorybasis(options)
 	𝐔ₕ = map(𝐲->spikehistorybasis(Φₕ, 𝐓, 𝐲), 𝐘)
 	Φₘ = premovementbasis(options)
-	𝐔ₘ = premovementbasis(movementtimes_s, options, Φₘ, 𝐓)
+	𝐔ₘ = premovementbasis(movementtimesteps, Φₘ, 𝐓)
 	Φₜ = timebasis(options)
 	𝐔ₜ = timebasis(Φₜ, 𝐓)
 	Φₚ, Φₚtimesteps, 𝐔ₚ = photostimulusbasis(options, photostimulus_incline_on_s, photostimulus_decline_on_s, 𝐓)

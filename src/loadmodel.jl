@@ -61,15 +61,14 @@ OUTPUT
 function Trialset(options::Options, trialset::Dict)
 	trialsetindex = convert(Int,trialset["index"])
     trials = vec(trialset["trials"])
-	𝐓 = map(x->convert(Int, x["ntimesteps"]), trials)
-	movementtimes_s = map(x->x["movementtime_s"], trials)
-	@assert all(movementtimes_s .> 0)
-	photostimulus_decline_on_s = collect(trial["photostimulus_decline_on_s"] for trial in trials)
-	photostimulus_incline_on_s = collect(trial["photostimulus_incline_on_s"] for trial in trials)
-	𝐘 = map(x->convert.(UInt8, vec(x["y"])), vec(trialset["units"]))
-	mpGLMs = MixturePoissonGLM(movementtimes_s, options, photostimulus_decline_on_s, photostimulus_incline_on_s, 𝐓, 𝐘)
 	preceding_timesteps = vcat(0, cumsum(𝐓[1:end-1]))
 	trials = collect(Trial(options.a_latency_s, options.Δt, m, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
+	𝐘 = map(x->convert.(UInt8, vec(x["y"])), vec(trialset["units"]))
+	photostimulus_decline_on_s = collect(trial["photostimulus_decline_on_s"] for trial in trials)
+	photostimulus_incline_on_s = collect(trial["photostimulus_incline_on_s"] for trial in trials)
+	movementtimesteps = collect(trial.movementtimestep for trial in trials)
+	𝐓 = collect(trial.ntimesteps for trial in trials)
+	mpGLMs = MixturePoissonGLM(movementtimesteps, options, photostimulus_decline_on_s, photostimulus_incline_on_s, 𝐓, 𝐘)
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end
 
@@ -103,7 +102,8 @@ function Trial(a_latency_s::AbstractFloat,
 	clicks = Clicks(a_latency_s, Δt, leftclicks, ntimesteps, rightclicks)
 	Trial(clicks=clicks,
 		  choice=trial["choice"],
-		  movementtime_s=trial["movementtime_s"],
+		  γ=trial["gamma"],
+		  movementtimestep=ceil(Int, trial["movementtime_s"]/Δt),
 		  ntimesteps=ntimesteps,
 		  photostimulus_incline_on_s=trial["photostimulus_incline_on_s"],
 		  photostimulus_decline_on_s=trial["photostimulus_decline_on_s"],

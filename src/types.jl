@@ -245,10 +245,12 @@ Spike trains are not included. In sampled data, the generatives values of the la
     clicks::TC
     "behavioral choice"
     choice::TB
+	"log of the ratio of the generative right and left click rate"
+	γ::TF
 	"index of the trial in the trialset"
 	index_in_trialset::TI
 	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
-	movementtime_s::TF; @assert movementtime_s > 0
+	movementtimestep::TI; @assert movementtimestep > 0
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
 	"time when the offset ramp of the photostimulus began"
@@ -1100,14 +1102,6 @@ The unconditioned spike train of the n-th neuron on this trial can be computed a
 If no left choice occurred during simulations, then `spiketrain_leftchoice[n][t]` is zero for all `n` and `t`.
 
 If we have a vector `𝐄` whose each element is a composite of the type `ExpectedEmissions` corresponding to a single trial, then the left-choice conditioned peri-stimulus time historam of the n-th neuron can be computed as follows
-```julia-repl
-julia> maxtimesteps = maximum((length(E.spiketrain_leftchoice[n]) for E in 𝐄))
-julia> psth_leftchoice, psth_rightchoice, weights_leftchoice, weights_rightchoice = zeros(maxtimesteps), zeros(maxtimesteps), zeros(maxtimesteps), zeros(maxtimesteps)
-julia> for E in 𝐄
-			for t in eachindex(E.spiketrain_leftchoice[n])
-				psth_leftchoice[t] += E.spiketrain_rightchoice[n]
-			end
-		end
 ```
 """
 @with_kw struct ExpectedEmissions{F<:AbstractFloat, VVF<:Vector{<:Vector{<:AbstractFloat}}}
@@ -1213,4 +1207,65 @@ Results of cross-validation
 	cvindices::VC
 	"summaries of the training models"
 	trainingsummaries::VS
+end
+
+"""
+	SpikeTrainLinearFilter
+
+Linear filter used to smooth the spike train
+"""
+@with_kw struct SpikeTrainLinearFilter{VF<:Vector{<:AbstractFloat}}
+	"the function with which the spike train is convolved"
+	impulseresponse::VF
+	"because of lack of spike train responses before the beginning of the trial, the initial response needs to reweighed"
+	weights::VF=1.0./(conv(ones(length(impulseresponse)), impulseresponse)[1:length(impulseresponse)])
+end
+
+"""
+	PerieventTimeHistogram
+
+The mean across trials of a single condition (e.g. trials that ended with a left choice) of the filtered spike train of one neuron, and the estimated 95% confidence interval of the trial mean
+"""
+@with_kw struct PerieventTimeHistogram{CIM<:Bootstrap.ConfIntMethod,
+									S<:String,
+									STLF<:SpikeTrainLinearFilter,
+									VF<:Vector{<:AbstractFloat}}
+	"method used to compute the confidence interval. The default is the bias-corrected and accelerated confidence interval (Efron & Tibshirani, 1993) for a confidence level of 0.95. The confidence level is the fraction of time when a random confidence interval constructed using the method below contains the true peri-stimulus time histogram."
+	confidence_interval_method::CIM = BCaConfInt(0.95)
+	"the inear filter used to smooth the spike train"
+	linearfilter::STLF
+	"estimate of the lower limit of the confidence interval of the peri-event time histogram based on observed spike trains"
+	lowerconfidencelimit::VF
+	"estimate of the peri-event time histogram based on observed spike trains"
+	observed::VF
+	"estimate of the peri-event time histogram based on simulated spike trains"
+	predicted::VF
+	"An event in the trial (e.g. steroclick) corresponding to which the peri-stimulus time histogram is aligned, i.e., when time=0 is defined."
+	referenceevent::String="stereoclick"
+	"time, in seconds, from the reference event"
+	time_s::VF
+	"estimate of the upper limit of the confidence interval of the peri-event time histogram based on observed spike trains"
+	upperconfidencelimit::VF
+end
+
+"""
+	PETHSet
+
+A set of peri-event time histogram of one neuron.
+"""
+@with_kw struct PETHSet{PETH::PerieventTimeHistogram}
+	"average across trials that ended in a left choice, including both correct and incorrect trials"
+	leftchoice::PETH
+	"average across trials on which the aggregate evidence favored left and the reward is baited on the left"
+	leftevidence::PETH
+	"average across trials on which the animal made a left choice and the evidence was strongly leftward. Therefore, only correct trials are included. Evidence strength is defined by the generative log-ratio of click rates: `γ` ≡ log(right click rate) - log(left click rate). Strong left evidence evidence include trials for which γ < -2.25"
+	leftchoice_strong_leftevidence::PETH
+	"average across trials on which the animal made a left choice and the generatative `γ` < -2.25 && `γ` < 0"
+	leftchoice_weak_leftevidence::PETH
+	rightchoice::PETH
+	rightevidence::PETH
+	rightchoice_strong_rightevidence::PETH
+	rightchoice_weak_rightevidence::PETH
+	"average across all trials"
+	unconditioned::PETH
 end
