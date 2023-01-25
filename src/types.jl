@@ -1218,7 +1218,7 @@ Linear filter used to smooth the spike train
 	"the function with which the spike train is convolved"
 	impulseresponse::VF
 	"because of lack of spike train responses before the beginning of the trial, the initial response needs to reweighed"
-	weights::VF=1.0./(conv(ones(length(impulseresponse)), impulseresponse)[1:length(impulseresponse)])
+	weights::VF
 end
 
 """
@@ -1241,7 +1241,7 @@ The mean across trials of a single condition (e.g. trials that ended with a left
 	"estimate of the peri-event time histogram based on simulated spike trains"
 	predicted::VF
 	"An event in the trial (e.g. steroclick) corresponding to which the peri-stimulus time histogram is aligned, i.e., when time=0 is defined."
-	referenceevent::String="stereoclick"
+	referenceevent::S="stereoclick"
 	"time, in seconds, from the reference event"
 	time_s::VF
 	"estimate of the upper limit of the confidence interval of the peri-event time histogram based on observed spike trains"
@@ -1253,7 +1253,7 @@ end
 
 A set of peri-event time histogram of one neuron.
 """
-@with_kw struct PETHSet{PETH::PerieventTimeHistogram}
+@with_kw struct PETHSet{PETH<:PerieventTimeHistogram}
 	"average across trials that ended in a left choice, including both correct and incorrect trials"
 	leftchoice::PETH
 	"average across trials on which the aggregate evidence favored left and the reward is baited on the left"

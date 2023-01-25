@@ -61,13 +61,13 @@ OUTPUT
 function Trialset(options::Options, trialset::Dict)
 	trialsetindex = convert(Int,trialset["index"])
     trials = vec(trialset["trials"])
+	𝐓 = map(x->convert(Int, x["ntimesteps"]), trials)
 	preceding_timesteps = vcat(0, cumsum(𝐓[1:end-1]))
-	trials = collect(Trial(options.a_latency_s, options.Δt, m, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
 	𝐘 = map(x->convert.(UInt8, vec(x["y"])), vec(trialset["units"]))
 	photostimulus_decline_on_s = collect(trial["photostimulus_decline_on_s"] for trial in trials)
 	photostimulus_incline_on_s = collect(trial["photostimulus_incline_on_s"] for trial in trials)
+	trials = collect(Trial(options.a_latency_s, options.Δt, m, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
 	movementtimesteps = collect(trial.movementtimestep for trial in trials)
-	𝐓 = collect(trial.ntimesteps for trial in trials)
 	mpGLMs = MixturePoissonGLM(movementtimesteps, options, photostimulus_decline_on_s, photostimulus_incline_on_s, 𝐓, 𝐘)
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end
@@ -100,10 +100,15 @@ function Trial(a_latency_s::AbstractFloat,
 	rightclicks = typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
 	ntimesteps = convert(Int, trial["ntimesteps"])
 	clicks = Clicks(a_latency_s, Δt, leftclicks, ntimesteps, rightclicks)
+	if haskey(trial, "movementtimestep")
+		movementtimestep = convert(Int, trial["movementtimestep"])
+	else
+		movementtimestep = ceil(Int, trial["movementtime_s"]/Δt)
+	end
 	Trial(clicks=clicks,
 		  choice=trial["choice"],
 		  γ=trial["gamma"],
-		  movementtimestep=ceil(Int, trial["movementtime_s"]/Δt),
+		  movementtimestep=movementtimestep,
 		  ntimesteps=ntimesteps,
 		  photostimulus_incline_on_s=trial["photostimulus_incline_on_s"],
 		  photostimulus_decline_on_s=trial["photostimulus_decline_on_s"],

@@ -1,5 +1,6 @@
 module FHMDDM
-using   Distributed,
+using   Bootstrap,
+        Distributed,
         Distributions,
         DSP,
         ForwardDiff,
