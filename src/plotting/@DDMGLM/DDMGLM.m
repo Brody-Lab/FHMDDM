@@ -1,5 +1,7 @@
 classdef DDMGLM
     methods (Static)
+        %%%
+        plot_peth(pethset, conditions, varargin)
         %%
         function options = tabulateoptions(analysispath)
             % tabulate the settings of all models fitted in analysis
