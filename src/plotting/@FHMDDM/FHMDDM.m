@@ -1,7 +1,16 @@
-classdef DDMGLM
+classdef FHMDDM
+% FHMDDM Factorial hidden Markov drift-diffusion model
     methods (Static)
-        %%%
-        plot_peth(pethset, conditions, varargin)
+        %%
+        C = colors
+        %%
+        plot_peth(pethset, condition, time_s, varargin)
+        %%
+        plot_pethset(pethset, time_s, varargin)
+        %%
+        prepareaxes()
+        %%
+        shadeplot(x,lower,upper,varargin)
         %%
         function options = tabulateoptions(analysispath)
             % tabulate the settings of all models fitted in analysis
