@@ -88,7 +88,7 @@ for condition = ["leftevidence", "rightevidence"]
         'linestyle_predicted_mean', P.linestyle_predicted_mean, ...
         'referenceevent', P.referenceevent, ...
         'show_observed_CI', true)
-    title('grouped by choice')
+    title('grouped by evidence')
 end
 k = k + 1;
 axeses(k) = subplot(1,naxeses,k);
@@ -98,7 +98,7 @@ for condition = ["leftchoice", "rightchoice"]
         'linestyle_predicted_mean', P.linestyle_predicted_mean, ...
         'referenceevent', P.referenceevent, ...
         'show_observed_CI', true)
-    title('grouped by evidence')
+    title('grouped by choice')
 end
 k = k + 1;
 axeses(k) = subplot(1,naxeses,k);

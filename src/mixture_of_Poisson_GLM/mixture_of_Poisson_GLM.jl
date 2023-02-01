@@ -175,15 +175,15 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	end
 	𝐔 = @view 𝐗[:, 𝐗columns_𝐮]
 	mul!(∇Q.𝐮, 𝐔', sum(∑ᵢ_dQᵢₖ_dLᵢₖ))
+	𝐕ᵀ = 𝐕'
 	if fit_𝛃
-		𝐕ᵀ = 𝐕'
 		@inbounds for k = 1:K
 			mul!(∇Q.𝐯[k], 𝐕ᵀ, ∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 			mul!(∇Q.𝛃[k], 𝐕ᵀ, ∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 		end
 	else
 		@inbounds for k = 1:K
-			mul!(∇Q.𝐯[k], 𝐕', ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
+			mul!(∇Q.𝐯[k], 𝐕ᵀ, ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 		end
 	end
 	if ∇Q.fit_b

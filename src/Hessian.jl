@@ -14,7 +14,7 @@ RETURN
 function ∇∇loglikelihood(model::Model)
 	ℓ, ∇ℓ, ∇∇ℓ = twopasshessian(model)
 	native2real!(∇ℓ, ∇∇ℓ, model)
-	if model.options.scalechoiceLL
+	if scale_factor_choiceLL(model) != 1.0
 		∇∇scalechoiceLL!(ℓ, ∇ℓ, ∇∇ℓ, model)
 	end
 	indexθ = indexparameters(model)

@@ -46,6 +46,8 @@ Model settings
 	b_scalefactor::TF=10.0
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
+	"Exponent used to compute the scale factor of the log-likelihood of the choices. The scale factor is computed by raising the product of the number of neurons and the average number of time steps in each trial to the exponent. An exponent of 0 means no scaling"
+	choiceLL_scaling_exponent::TF=0.0
 	"full path of the data"
     datapath::TS=""
 	"duration of each timestep in seconds"
@@ -152,8 +154,6 @@ Model settings
 	nunits::TI
 	"value to maximized to learn the parameters"
 	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
-	"whether to scale the log-likelihood of the choices to be of similar magnitude of the log-likelihood of the spike trains"
-	scalechoiceLL::TB=true
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
