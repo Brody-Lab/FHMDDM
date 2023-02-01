@@ -9,8 +9,9 @@ classdef FHMDDM
         fit_paths = find_fit_paths(analysisname)
         plot_peth(pethset, condition, time_s, varargin)
         plot_pethset(pethset, time_s, varargin)
+        plot_psychometric(choices, Deltaclicks, Echoices, varargin)
         prepareaxes()
-        shadeplot(x,lower,upper,varargin)
+        handle = shadeplot(x,lower,upper,varargin)
         options = tabulateoptions(analysispath)
     end
 end

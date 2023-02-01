@@ -1,4 +1,4 @@
-function [] = shadeplot(x,lower,upper,varargin)
+function handle = shadeplot(x,lower,upper,varargin)
 % SHADEPLOT plot a horizontal strip of shading
 %   SHADEPLOT(X,LOWER,UPPER) plots a strip of shading defined by x-values X, lower bounds LOWER
 %   along the y-axis, and upper bounds UPPER
@@ -36,3 +36,4 @@ Y=[upper(:), lower(:)-upper(:)];
 h = area(x,Y);
 set(h(2),'edgecolor','none','facecolor', P.facecolor, 'facealpha', P.facealpha);
 set(h(1),'EdgeColor','none','FaceColor', 'none');
+handle = h(2);

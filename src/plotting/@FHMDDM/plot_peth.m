@@ -1,10 +1,10 @@
 function plot_peth(pethset, condition, time_s, varargin)
 %PLOT_PETH Plot the peri-event time histogram (PETH) of one neuron under on task condition
-%   PLOT_PETH(PETHSET, CONDITION, TIME_s) plots the PETH in the task condition specified by the
+%   PLOT_PETH(PETHSET, CONDITION, TIME_S) plots the PETH in the task condition specified by the
 %   string array CONDITION. The portion of the PETH to be plotted is specified by the vector TIME_S.
 %
-%   PLOT_PETH(...,PARAM1,VAL1,PARAM2,VAL2,...) specifies one or more of
-%   the following name/value pairs:
+%   PLOT_PETH(...,PARAM1,VAL1,PARAM2,VAL2,...) specifies one or more of the following name/value
+%   pairs:
 %
 %       `Axes`                      The axes in which the plots are made
 %
