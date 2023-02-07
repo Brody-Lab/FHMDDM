@@ -147,3 +147,20 @@ Package the data of one neuron into a Dict for saving
 function packagedata(mpGLM::MixturePoissonGLM)
 	Dict("y"=>mpGLM.𝐲)
 end
+
+"""
+	analyzeandsave(foldername, model)
+
+Perform routine analyses and save them to a folder
+
+The folder is contained within the parent folder containing the data.
+"""
+function analyzeandsave(computehessian::Bool, foldername::String, model::Model)
+	optimization_folder_path = joinpath(dirname(model.options.datapath), foldername)
+	modelsummary = ModelSummary(model; computehessian=computehessian)
+	save(modelsummary, optimization_folder_path)
+	characterization = Characterization(model)
+	save(characterization, optimization_folder_path)
+	psthsets = FHMDDM.poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
+	save(psthsets, optimization_folder_path)
+end

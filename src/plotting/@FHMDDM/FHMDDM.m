@@ -7,6 +7,7 @@ classdef FHMDDM
         R2 = coefficient_of_determination(conditions, indices, peth)
         C = colors
         fit_paths = find_fit_paths(analysisname)
+        log_posterior_curvature(S, varargin)
         plot_peth(pethset, condition, time_s, varargin)
         plot_pethset(pethset, time_s, varargin)
         plot_psychometric(choices, Deltaclicks, Echoices, varargin)

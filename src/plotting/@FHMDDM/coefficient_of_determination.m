@@ -10,7 +10,7 @@ function R2 = coefficient_of_determination(conditions, indices, peth)
 %   vector CONDITIONS.
 validateattributes(conditions, {'string'},{'vector'})
 validateattributes(peth, {'struct'},{'scalar'})
-validateattributes(indices, {'numeric'}, {'vector', 'integer'})
+validateattributes(indices, {'numeric', 'logical'}, {'vector'})
 [SSresidual, SStotal] = deal(0);
 for condition = conditions
     pred = peth.(condition).predicted(indices);

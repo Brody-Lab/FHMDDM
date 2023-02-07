@@ -12,8 +12,11 @@ using   Bootstrap,
         Random,
         SpecialFunctions,
         StatsFuns
-import  Flux
-export  Characterization,
+import  CSV,
+        DataFrames,
+        Flux
+export  analyzeandsave,
+        Characterization,
         concatenateparameters,
         crossvalidate,
         expectedemissions,

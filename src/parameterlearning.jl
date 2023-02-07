@@ -40,8 +40,8 @@ function initializeparameters!(model::Model; printtime::Bool=true, show_trace::B
 	if !isempty(latentθfit)
 		fitonlychoices!(model; show_trace=show_trace)
 	end
+	stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
 	if printtime
-		stats = @timed initialize_GLM_parameters!(model; show_trace=show_trace)
 		println("Initializing the GLM parameters took ", stats.time, " seconds")
 	end
 	return nothing

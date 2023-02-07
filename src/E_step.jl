@@ -331,7 +331,7 @@ end
 """
 	posteriors!(memory, i, n, model)
 
-Posterior probability of the latent variables conditioned on the spike train of one neuron
+Posterior probability of the latent variables conditioned on the choie and the spike train of one neuron
 
 MODIFIED ARGUMENT
 -`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
@@ -346,6 +346,10 @@ RETURN
 """
 function posteriors!(memory::Memoryforgradient, i::Integer, n::Integer, model::Model)
 	likelihood!(memory.p𝐘𝑑[i], model.trialsets[i].mpGLMs[n])
+	for m in eachindex(memory.p𝐘𝑑[i])
+		conditionallikelihood!(memory.p𝑑_a[i][m], model.trialsets[i].trials[m].choice, model.θnative.ψ[1])
+		memory.p𝐘𝑑[i][m][end] .*= memory.p𝑑_a[i][m]
+	end
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	posteriors!(memory, P, model)
 	return memory.γ[i]

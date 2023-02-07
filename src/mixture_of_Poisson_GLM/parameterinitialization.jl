@@ -28,11 +28,22 @@ function initialize_GLM_parameters!(model::Model; iterations::Integer=5, show_tr
 			end
 		end
 	end
+	maximize_expectation_of_loglikelihood!(model;iterations=iterations, show_trace=show_trace)
+end
+
+"""
+	maximize_expectation_of_loglikelihood!(model)
+
+Learn the parameters of each neuron's Poisson mixture GLM in the model
+"""
+function maximize_expectation_of_loglikelihood!(model::Model; iterations::Integer=5, show_trace::Bool=false)
+	memory = FHMDDM.Memoryforgradient(model)
+	P = update!(memory, model)
 	for j = 1:iterations
 		posteriors!(memory, P, model)
 		for i in eachindex(model.trialsets)
-			for n in eachindex(model.trialsets[i].mpGLMs)
-				maximize_expectation_of_loglikelihood!(model.trialsets[i].mpGLMs[n], memory.γ[i]; show_trace=show_trace)
+			for mpGLM in model.trialsets[i].mpGLMs
+				maximize_expectation_of_loglikelihood!(mpGLM, memory.γ[i]; show_trace=show_trace)
 			end
 		end
 	end
