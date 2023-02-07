@@ -37,9 +37,9 @@ end
 """
     Options
 
-Model settings
+Fixed hyperparameters
 """
-@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}}
+@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}, TVS<:Vector{<:String}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
 	"scale factor for the accumulator transformation parameter"
@@ -150,10 +150,14 @@ Model settings
 	lqu_wₕ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_wₕ[1]) && (lqu_wₕ[1] <= lqu_wₕ[2]) && (lqu_wₕ[2] < lqu_wₕ[3]) && (lqu_wₕ[3] < Inf)
 	"minimum value of the prior and transition probabilities of the accumulator"
 	minpa::TF=1e-8
-	"total number of units across all trialsets"
-	nunits::TI
+	"schemes for selecting neurons. Each element corresponds to a trialset"
+	neuron_selection_schemes::TVS=String[]
+	"absolute path of the folder where the parsed data, summary, and analyses of the model would be saved"
+	outputpath::TF
 	"value to maximized to learn the parameters"
 	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
+	"names of the recordings. Each element corresponds to a trialset"
+	recording_ids::TVS=String[]
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
@@ -201,6 +205,8 @@ Model settings
 	tbf_time_linear::TB=true
 	tbf_time_scalefactor::TF=20.0
 	tbf_time_stretch::TF=1.0
+	"schemes for selecting trials. Each element corresponds to a trialset"
+	trial_selection_schemes::TVS=String[]
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end
