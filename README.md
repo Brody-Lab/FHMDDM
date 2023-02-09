@@ -272,9 +272,8 @@ EI_dorsomedial_frontal =
 
 The term $u_t$ is the component of the linear predictor independent of the accumulated evidence and is given by
 
-$$
-u_t \equiv g + u^{stereo}_t + u^{move}_t + u^{hist}_t
-$$
+$$u_t \equiv g + u^{stereo}_t + u^{move}_t + u^{hist}_t$$
+
 where $g$ is a constant specifying the gain, $u^{stereo}_t$ is the input from the post-stereoclick filter, $u^{move}_t$ is the input from the pre-movement filter, and $u^{hist}_t$ is the input from the post-spike filter.
 
 The gain of the third neuron can be found be
