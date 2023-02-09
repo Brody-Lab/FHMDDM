@@ -299,7 +299,7 @@ Finally, let's also plot the pre-movement and post-spike filters.
 
 ```
 >> y = Summary.temporal_basis_vectors_premovement{1}*Summary.thetaglm{1}{3}.u_premovement;
-vfigure('position', [100 100 300 250])
+>> figure('position', [100 100 300 250])
 >> FHMDDM.prepareaxes
 >> plot(0-(1:numel(y))*0.01, y, 'k-')
 >> xlabel('time before movement (s)')
