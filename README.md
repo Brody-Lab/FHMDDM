@@ -125,14 +125,14 @@ First, let's plot the choice-conditioned PSTH of the third neuron in the first [
 >> FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, "leftchoice", time_s)
 >> FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, "rightchoice", time_s)
 ```
-<img src="/assets/analysis_2023_02_08b_example_psth_conditioned_on_choice_3.svg" height="150">
+<img src="/assets/analysis_2023_02_08b_example_observed_psth_conditioned_on_choice_neuron_3.svg" height="150">
 
 The unconditioned PSTH of the same neuron can be plotted,
 ```
 >> clf
 >> FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, "unconditioned", time_s)
 ```
-<img src="/assets/analysis_2023_02_08b_example_psth_unconditioned_3.svg" height="150">
+<img src="/assets/analysis_2023_02_08b_example_observed_psth_unconditioned_neuron_3.svg" height="150">
 
 as well as the neuron's PSTH conditioned on both the choice and the strength of the evidence:
 ```
@@ -143,7 +143,7 @@ as well as the neuron's PSTH conditioned on both the choice and the strength of 
     FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, condition, time_s, 'show_observed_CI', false)
 end
 ```
-<img src="/assets/analysis_2023_02_08b_example_psth_conditioned_on_choice_evidence_3.svg" height="150">
+<img src="/assets/analysis_2023_02_08b_example_observed_psth_conditioned_on_choice_evidence_neuron_3.svg" height="150">
 
 Are these PSTH's recoverable under the model? If simulated data were generated as emissions from the model, and the same optimization scheme were used to fit the simulated data, what the predictions from simulation?
 ```
