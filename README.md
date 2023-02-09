@@ -10,6 +10,9 @@ The code for fitting the model and computing quantities to characterizing the mo
   * [examining the results](#examining-the-results)
     * [PSTH](#plotting-the-peri-stimulus-time-histogram-psth)
     * [parameters](#examining-the-parameters)
+      * [drift-diffusion parameters](#drift-diffusion-parameters)
+      * [accumulator encoding weights](#encoding-weight-of-accumulated-evidence)
+      * [other GLM parameters](#other-glm-parameterss)
 * [`Model` type](#model-composite-type)
   * [fixed options](#fixed-hyperparameters-model-options)
   * [data](#data-model-trialsets)
@@ -69,6 +72,9 @@ If an error occurs and requires recompilation, Julia must be restarted.
 
 ##  specifying the model options
 The fixed hyperparameters of model are documented in a comma-separated values (CSV) file named `options.csv`: An example can be seen [here](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_08b_example/options.csv). Each column corresponds to a hyperparameter, and each row corresponds to a separate model. Depending on the goals of the analysis separate models can be fit to the same or different recording sessions. In this example, a single model is fit to the recording session `T176_2018_05_03`. For description of each model option, see [types.jl](/src/types.jl).
+
+## preparing the data
+Instructions on preparing the data using `options.csv` will be provided in the future.
 
 ## fitting the model
 We will prepare two scripts, a Julia script for fitting the model, and a shell script to interact with the computational cluster's job scheduler and to run the Julia script. The typical Julia script is:
@@ -171,6 +177,7 @@ end
 ```
 >> Summary = load(fullfile(T.fitpath{1}, ['results' filesep 'modelsummary.mat']))
 ```
+### drift-diffusion parameters
 The value of the per-click noise that was learned is given by
 ```
 >> Summary.thetanative.sigma2_s
@@ -178,6 +185,138 @@ ans =
 
     6.9237
 ```
+###  encoding weight of accumulated evidence
+The conditional firing rate of a neuron, given the state of the accumulated evidence, at a time step $t$ is given by
+
+$$
+\lambda_t \equiv \text{softplus}((w\mid a_t)a_t + u_t)
+$$
+where $w \mid a$ is the state-dependent encoding weight and depends on whether the accumulated evidence reached the absorbing bound $B$:
+
+$$ w\mid (a>-B \mid a<B) = w_{pre}$$
+$$ w\mid (a=-B \mid a = B) = w_{post}$$
+
+Let's extract the pre-commitment and post-commitment encoding weights of the accumulated evidence
+
+```
+>> scalefactor = Summary.temporal_basis_vectors_accumulator{1}(1);
+>> wpre = cellfun(@(x) x.v{1}(1)*scalefactor, Summary.thetaglm{1})
+>> wpost = cellfun(@(x) x.beta{1}(1)*scalefactor, Summary.thetaglm{1})
+```
+
+The scale factor is a technical thing used to help the optimization converge and des not impact the results. 
+
+Let's compute the engagement index, which quantifies the relative engagement of each neuron in the pre- and post-commitment states
+
+```
+>> engagementindices = (abs(wpre)-abs(wpost))./(abs(wpre)+abs(wpost))
+>> figure('position', [100 100 250, 200])
+>> FHMDDM.prepareaxes
+>> histogram(engagementindices, -1:0.2:1)
+>> xlabel('engagement index')
+>> ylabel('neurons')
+```
+
+<img src="/assets/analysis_2023_02_08b_example_engagementindex_histogram.svg" height="150">
+
+It appears that most of the choice-selective neurons used to fit the model are more strongly engaged before, than after, decision commitment. How well can the engagement indices be recovered?
+
+```
+>> figure('position', [100 100 400 200])
+>> FHMDDM.prepareaxes
+>> set(gca, 'DataAspectRatio', [1,1,1])
+>> plot(engagementindices, recoveredindices, 'k.')
+>> xlabel('inferred')
+>> ylabel('recovered')
+```
+
+<img src="/assets/analysis_2023_02_08b_example_engagementindex_recovery.svg" height="150">
+
+The goodness-of-recovery, as assessed using the coefficient-of-determination, is given by
+
+```
+>> SStotal = sum((mean(engagementindices)-engagementindices).^2);
+>> SSresisdual = sum((recoveredindices-engagementindices).^2);
+>> 1 - SSresisdual/SStotal
+ans =
+
+    0.9616
+```
+
+Is the estimation of the engagement index biased by the optimization procedure?
+```
+>> bootci(1e3, @median, recoveredindices-engagementindices)
+ans =
+
+   -0.0313
+    0.0129
+```
+It does not appear so here, because the 95% bootstrap confidence interval of the median difference overlaps with 0.
+
+Are the engagement indices different between dorsomedial frontal cortex and medial prefrontal cortex?
+
+```
+>> load(fullfile(T.fitpath{1}, 'data.mat'), 'data')
+>> brainareas = cellfun(@(x) x.brainarea, data{1}.units);
+>> EI_medial_prefrontal = median(engagementindices(brainareas=="PrL" | brainareas == "MO"))
+>> EI_medial_prefrontal =
+
+    0.6535
+>> EI_dorsomedial_frontal = median(engagementindices(brainareas=="Cg1" | brainareas == "M2"))
+EI_dorsomedial_frontal =
+
+    0.2916
+```
+
+
+# other GLM parameters
+
+The term $u_t$ is the component of the linear predictor independent of the accumulated evidence and is given by
+
+$$
+u_t \equiv g + u^{stereo}_t + u^{move}_t + u^{hist}_t
+$$
+where $g$ is a constant specifying the gain, $u^{stereo}_t$ is the input from the post-stereoclick filter, $u^{move}_t$ is the input from the pre-movement filter, and $u^{hist}_t$ is the input from the post-spike filter.
+
+The gain of the third neuron can be found be
+```
+>> Summary.thetaglm{1}{3}.u_gain
+ans =
+
+    8.8468
+```
+
+Let's visualize the linear filter defining the time-varying input  of the stereoclick to this neuron
+```
+>> y = Summary.temporal_basis_vectors_poststereoclick{1}*Summary.thetaglm{1}{3}.u_poststereoclick;
+>> figure('position', [100 100 300 250])
+>> FHMDDM.prepareaxes
+>> plot((1:numel(y))*0.01, y, 'k-')
+>> xlabel('time from stereoclick (s)')
+```
+<img src="/assets/analysis_2023_02_08b_example_poststereoclick_filter.svg" height="150">
+
+Finally, let's also plot the pre-movement and post-spike filters. 
+
+```
+>> y = Summary.temporal_basis_vectors_premovement{1}*Summary.thetaglm{1}{3}.u_premovement;
+vfigure('position', [100 100 300 250])
+>> FHMDDM.prepareaxes
+>> plot(0-(1:numel(y))*0.01, y, 'k-')
+>> xlabel('time before movement (s)')
+```
+
+<img src="/assets/analysis_2023_02_08b_example_premovement_filter.svg" height="150">
+
+```
+>> y = Summary.temporal_basis_vectors_postspike{1}*Summary.thetaglm{1}{3}.u_postspike;
+>> figure('position', [100 100 300 250])
+>> FHMDDM.prepareaxes
+>> plot((1:numel(y))*0.01, y, 'k-')
+>> xlabel('time after spike (s)')
+```
+
+<img src="/assets/analysis_2023_02_08b_example_postspike_filter.svg" height="150">
  
 #  `Model` composite type
 The data, parameters, and hyperparameters of an FHMDDM are organized within the fields of in a composite object of the composite type (similar to a MATLAB structure) `Model`:
