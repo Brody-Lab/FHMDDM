@@ -191,9 +191,9 @@ The conditional firing rate of a neuron, given the state of the accumulated evid
 $$\lambda_t \equiv \text{softplus}((w\mid a_t)a_t + u_t)$$
 where $w \mid a$ is the state-dependent encoding weight and depends on whether the accumulated evidence reached the absorbing bound $B$:
 
-$$ w\mid (a>-B \mid a<B) = w_{pre}$$
+$$w \mid (a > -B \mid a < B) = w_{pre}$$
 
-$$ w\mid (a=-B \mid a = B) = w_{post}$$
+$$w \mid (a=-B \mid a = B) = w_{post}$$
 
 Let's extract the pre-commitment and post-commitment encoding weights of the accumulated evidence
 
