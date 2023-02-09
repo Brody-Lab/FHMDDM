@@ -1,9 +1,19 @@
-[[TOC]]
-
-# factorial hidden markov drift-diffusion model (FHMDDM)
+# factorial hidden Markov drift-diffusion model (FHMDDM)
 
 The code for fitting the model and computing quantities to characterizing the model is in the programming language Julia, whereas the code for plotting the said quantities are in MATLAB. 
 
+# table of contents
+* [tutorial](#tutorial)
+  * [installing the FHMDDM repository](#installing-the-fhmddm-repository)
+  * [specifying the model options](#specifying-the-model-options)
+  * [fitting the model](#fitting-the-model)
+  * [examining the results](#examining-the-results)
+    * [PSTH](#plotting-the-peri-stimulus-time-histogram-psth)
+    * [parameters](#examining-the-parameters)
+* [`Model` type](#model-composite-type)
+  * [fixed options](#fixed-hyperparameters-model-options)
+  * [data](#data-model-trialsets)
+  * [parameters](#parameters)
 # tutorial
 The following tutorial shows how to fit the model to a recording session on `spock`, the Princeton Neuroscience Institute's (PNI) computation cluster, and the visualizing the results on a Windows machine
 
@@ -30,8 +40,35 @@ pkg> up
 pkg> <backspace>
 julia>
 ```
+Check whether the `FHMDDM` repository has been loaded. If information is requested for `Model`, the prompt below should be seen. `Model` is both a composite type as well as the name of a function. 
+```
+julia> using FHMDDM
+julia> ?
+help?> Model
+Model
+
+  A factorial hidden Markov drift-diffusion model
+
+  ───────────────────────────────────────────────────────────
+
+  Model(datapath; fit_to_choices)
+
+  Load a factorial hidden Markov drift diffusion model from a MATLAB file.
+
+  If the model has already been optimized, a results file is expected.
+
+  ARGUMENT
+
+    •  datapath: full path of the data file
+
+  RETURN
+
+    •  a structure containing information for a factorial hidden Markov drift-diffusion model
+```
+If an error occurs and requires recompilation, Julia must be restarted.
+
 ##  specifying the model options
-The fixed hyperparameters of model are documented in a comma-separated values (CSV) file named `options.csv`: An example can be seen [here](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_06d_MAP/options.csv). Each column corresponds to a hyperparameter, and each row corresponds to a separate model. Depending on the goals of the analysis separate models can be fit to the same or different recording sessions. In this example, two models are both fit to the recording session `T176_2018_05_03`, and the only difference between the two models is the height of the absorbing bound of the drift-diffusion process.
+The fixed hyperparameters of model are documented in a comma-separated values (CSV) file named `options.csv`: An example can be seen [here](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_08b_example/options.csv). Each column corresponds to a hyperparameter, and each row corresponds to a separate model. Depending on the goals of the analysis separate models can be fit to the same or different recording sessions. In this example, a single model is fit to the recording session `T176_2018_05_03`. For description of each model option, see [types.jl](/src/types.jl).
 
 ## fitting the model
 We will prepare two scripts, a Julia script for fitting the model, and a shell script to interact with the computational cluster's job scheduler and to run the Julia script. The typical Julia script is:
@@ -51,12 +88,97 @@ learnparameters!(model)
 
 # save a summary of the model, as well as compute and save quantities useful for characterizing the model. The first argument specifies not to compute the Hessian matrix, which can take a long time. The second argument specifies the name of the folder that will be created to contain the summary and the analyses, within the folder that contains the data. The absolute path of the folder is given by `joinpath(dirname(model.options.datapath), results)`
 analyzeandsave(false, "results", model)
+
+# simulate data based on the learned parameters
+samplepaths = simulateandsave(model,1)
+simulation = Model(samplepaths[1])
+
+# recover parameters by fitting to simulated data
+learnparameters!(simulation)
+analyzeandsave(false, "recovery", simulation)
 ```
 
-* [example Julia script](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_06d_MAP/optimize.jl)
-* [example shell script](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_06d_MAP/optimize.sh) that calls the Julia script. 
- 
+* [example Julia script](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_08b_example/optimize.jl)
+* [example shell script](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_08b_example/optimize.sh) that calls the Julia script. 
 
+Once the scripts are prepared, run the Julia script on the cluster by calling `sbatch`. For the example above, the following would be called:
+```
+sbatch /usr/people/zhihaol/Documents/tzluo/analyses/analysis_2023_02_08a_choiceLL_scaling_exponent/optimize.sh
+```
+## examining the results
+Code for plotting the results was written in MATLAB 2019a. To use the plotting tools, add the folder `/plotting` into MATLAB's search path. First, let's tabulate the models and their options. Here we are assuming that the MATLAB script is saved in the same folder where the `options.csv` is located:
+```
+>> analysispath = fileparts(matlab.desktop.editor.getActiveFilename)
+>> T = FHMDDM.tabulateoptions(analysispath)
+T =
+
+  1×131 table
+```
+### plotting the peri-stimulus time histogram (PSTH)
+First, let's plot the choice-conditioned PSTH of the third neuron in the first [trialset](#data-model-trialsets) (there is only one trialset). Only the first second is plotted:
+```
+>> PSTH = load(fullfile(T.fitpath{i}, 'results\pethsets_stereoclick.mat'));
+>> figure('position', [100 100 275 250])
+>> trialset=1;
+>> neuron=3;
+>> time_s = PSTH.time_s(PSTH.time_s<=1);
+>> FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, "leftchoice", time_s)
+>> FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, "rightchoice", time_s)
+```
+<img src="/assets/analysis_2023_02_08b_example_psth_conditioned_on_choice_3.svg" height="150">
+
+The unconditioned PSTH of the same neuron can be plotted,
+```
+>> clf
+>> FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, "unconditioned", time_s)
+```
+<img src="/assets/analysis_2023_02_08b_example_psth_unconditioned_3.svg" height="150">
+
+as well as the neuron's PSTH conditioned on both the choice and the strength of the evidence:
+```
+>> for condition = ["leftchoice_weak_leftevidence", ...
+                 "leftchoice_strong_leftevidence", ...
+                 "rightchoice_weak_rightevidence", ...
+                 "rightchoice_strong_rightevidence"]
+    FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, condition, time_s, 'show_observed_CI', false)
+end
+```
+<img src="/assets/analysis_2023_02_08b_example_psth_conditioned_on_choice_evidence_3.svg" height="150">
+
+Are these PSTH's recoverable under the model? If simulated data were generated as emissions from the model, and the same optimization scheme were used to fit the simulated data, what the predictions from simulation?
+```
+>> PSTHrecovered = load(fullfile(T.fitpath{i}, 'sample1\recovery\pethsets_stereoclick.mat'));
+>> clf
+>> for condition = ["leftchoice", "rightchoice"]
+  FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, condition, time_s)
+end
+```
+<img src="/assets/analysis_2023_02_08b_example_recovery_psth_conditioned_on_choice_neuron_3.svg" height="150">
+
+```
+>> clf
+>> for condition = ["leftchoice_weak_leftevidence", ...
+                 "leftchoice_strong_leftevidence", ...
+                 "rightchoice_weak_rightevidence", ...
+                 "rightchoice_strong_rightevidence"]
+  FHMDDM.plot_peth(PSTH.pethsets{trialset}{neuron}, condition, time_s)
+end
+```
+
+<img src="/assets/analysis_2023_02_08b_example_recovery_psth_conditioned_on_choice_evidence_neuron_3.svg" height="150">
+
+### examining the parameters
+```
+>> Summary = load(fullfile(T.fitpath{1}, ['results' filesep 'modelsummary.mat']))
+```
+The value of the per-click noise that was learned is given by
+```
+>> Summary.thetanative.sigma2_s
+ans =
+
+    6.9237
+```
+ 
 #  `Model` composite type
 The data, parameters, and hyperparameters of an FHMDDM are organized within the fields of in a composite object of the composite type (similar to a MATLAB structure) `Model`:
 ```

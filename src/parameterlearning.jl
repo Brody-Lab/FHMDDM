@@ -138,7 +138,9 @@ RETURN
 -log of the posterior probability of the parameters, minus the parameter-independent terms
 """
 function logposterior!(model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
-	loglikelihood!(model, memory, concatenatedθ) - 0.5(concatenatedθ'*model.gaussianprior.𝚲*concatenatedθ)
+	L = loglikelihood!(model, memory, concatenatedθ) - 0.5(concatenatedθ'*model.gaussianprior.𝚲*concatenatedθ)
+	@assert !isnan(L)
+	return L
 end
 
 """
