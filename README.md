@@ -26,8 +26,8 @@ In a shell, log into `spock`:
 ```
 After providing credentials, load a version of Julia and run it
 ```
-[<netID>scotty ~]$ module load julia\1.6.0
-[<netID>scotty ~]$ julia
+[<netID>spock ~]$ module load julia\1.6.0
+[<netID>spock ~]$ julia
 julia>
 ```
 ## installing the FHMDDM repository
