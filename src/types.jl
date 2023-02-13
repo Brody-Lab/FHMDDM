@@ -1169,6 +1169,8 @@ Features of the model useful for analysis
 	thetaglm::VVGT
 	"temporal basis vectors for accumulator encoding"
 	temporal_basis_vectors_accumulator::VMF
+	"temporal basis vectors for gain"
+	temporal_basis_vectors_gain::VF
 	"temporal basis vectors for the post-spike kernel"
 	temporal_basis_vectors_postspike::VMF
 	"temporal basis vectors for the pre-movement kernel"

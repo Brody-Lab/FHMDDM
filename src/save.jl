@@ -18,6 +18,7 @@ function ModelSummary(model::Model; computehessian::Bool=false)
 			theta0native=model.θ₀native,
 			thetaglm=map(trialset->map(mpGLM->mpGLM.θ, trialset.mpGLMs), model.trialsets),
 			temporal_basis_vectors_accumulator=collect(trialset.mpGLMs[1].Φₐ for trialset in model.trialsets),
+			temporal_basis_vectors_gain=collect(trialset.mpGLMs[1].𝐗[1,1] for trialset in model.trialsets),
 	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φₕ for trialset in model.trialsets),
 	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φₘ for trialset in model.trialsets),
 	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φₜ for trialset in model.trialsets),

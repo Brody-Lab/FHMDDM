@@ -124,12 +124,14 @@ function forward!(memory::Memoryforgradient, P::Probabilityvector, θnative::Lat
 		end
 	end
 	D[t] = sum(f[t])
+	D[t] = max(D[t], nextfloat(0.0))
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
 	@inbounds for t=2:trial.ntimesteps
 		Aᵃ = isempty(clicks.inputindex[t]) ? Aᵃsilent : Aᵃinput[clicks.inputindex[t][1]]
 		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
 		D[t] = sum(f[t])
+		D[t] = max(D[t], nextfloat(0.0))
 		f[t] ./= D[t]
 		ℓ[1] += log(D[t])
 		if choiceLLscaling > 1

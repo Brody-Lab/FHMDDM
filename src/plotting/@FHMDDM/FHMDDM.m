@@ -13,6 +13,7 @@ classdef FHMDDM
         plot_psychometric(choices, Deltaclicks, Echoices, varargin)
         prepareaxes()
         handle = shadeplot(x,lower,upper,varargin)
+        startup()
         options = tabulateoptions(analysispath)
     end
 end

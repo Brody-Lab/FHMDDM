@@ -130,7 +130,7 @@ RETURN
 ```
 """
 function loglikelihood!(model::Model, memory::Memoryforgradient, concatenatedθ::Vector{<:Real})
-	if concatenatedθ != memory.concatenatedθ
+	if (concatenatedθ != memory.concatenatedθ) || isnan(memory.ℓ[1])
 		P = update!(memory, model, concatenatedθ)
 		memory.ℓ[1] = 0.0
 		log_s = log(model.options.sf_y)
@@ -207,6 +207,7 @@ function loglikelihood(concatenatedθ::Vector{type}, indexθ::Indexθ, model::Mo
 			p𝐚ₜ = probabilityvector(minpa, θnative.μ₀[1]+θnative.wₕ[1]*trial.previousanswer, √θnative.σ²ᵢ[1], 𝛏)
 			f = p𝐘𝑑[s][m][1] .* p𝐚ₜ .* πᶜᵀ
 			D = sum(f)
+			D = max(D, nextfloat(0.0))
 			f./=D
 			ℓ+=log(D)
 			if length(trial.clicks.time) > 0
@@ -225,6 +226,7 @@ function loglikelihood(concatenatedθ::Vector{type}, indexθ::Indexθ, model::Mo
 				end
 				f = p𝐘𝑑[s][m][t] .* (Aᵃ * f * Aᶜᵀ)
 				D = sum(f)
+				D = max(D, nextfloat(0.0))
 				f./=D
 				ℓ+=log(D)
 				if choiceLLscaling > 1
@@ -343,6 +345,7 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 		end
 	end
 	D[t] = sum(f[t])
+	D[t] = max(D[t], nextfloat(0.0))
 	f[t] ./= D[t]
 	ℓ[1] += log(D[t])
 	@inbounds for t=2:trial.ntimesteps
@@ -357,6 +360,7 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 		end
 		f[t] = p𝐘𝑑[t] .* (Aᵃ * f[t-1] * Aᶜᵀ)
 		D[t] = sum(f[t])
+		D[t] = max(D[t], nextfloat(0.0))
 		f[t] ./= D[t]
 		ℓ[1] += log(D[t])
 		if choiceLLscaling > 1
@@ -369,6 +373,7 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 	if choiceLLscaling > 1
 		fᶜ[trial.ntimesteps] .*= p𝑑_a
 		Dᶜ = sum(fᶜ[trial.ntimesteps])
+		Dᶜ = max(Dᶜ, nextfloat(0.0))
 		ℓ[1] += (choiceLLscaling-1)*log(Dᶜ)
 		fᶜ[trial.ntimesteps] ./= Dᶜ
 		bᶜ = p𝑑_a./Dᶜ # backward term for the last time step
