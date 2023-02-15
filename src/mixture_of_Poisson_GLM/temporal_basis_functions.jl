@@ -104,7 +104,7 @@ function spikehistorybasis(options::Options)
 end
 
 """
-	temporal_basis_functions(begins0, ends0, hz, period, scalefactor, stretch, 𝐓)
+	temporal_basis_functions(begins0, Δt, duration_s, ends0, hz, linear, period, scalefactor, stretch)
 
 Value of each temporal basis at each time bin in a trialset
 
@@ -134,7 +134,7 @@ function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, duration_s:
 end
 
 """
-	temporal_basis_functions(begins0, ends0, nfunctions, ntimesteps, period, scalefactor, stretch)
+	temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, period, scalefactor, stretch)
 
 Value of each temporal basis at each time bin in a trialset
 

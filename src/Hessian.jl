@@ -106,7 +106,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	if length(clicks.time) > 0
 		adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
 	end
-	FHMDDM.update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
+	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, nθ_py, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
@@ -440,7 +440,7 @@ function linearpredictor(mpGLMs::Vector{<:MixturePoissonGLM})
 end
 
 """
-	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, offset)
+	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, nθ_py, mpGLMs, offset)
 
 Update the conditional likelihood of spiking and its gradient and the gradient and Hessian of the conditional log-likelihoods
 
@@ -455,6 +455,7 @@ UNMODIFIED ARGUMENT
 -`Δt`: duration of each time step, in second
 -`𝐋`: linear predictors. Element `𝐋[n][i,j][τ]` corresponds to the n-th neuron, the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
 -`mpGLMs`: Mixture of Poisson GLM of each neuron
+-`nθ_py`: numer of parameters in each GLM
 -`ntimesteps`: number of time steps in the trial
 -`offset`: the time index in the trialset corresponding to the time index 0 in the trial
 """
@@ -466,6 +467,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 						Δt::Real,
 						𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
 						mpGLMs::Vector{<:MixturePoissonGLM},
+						nθ_py::Vector{<:Integer},
 						ntimesteps::Integer,
 						offset::Integer,
 						𝛚::Vector{<:Vector{<:Real}},
@@ -492,7 +494,7 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 		end
 		r = 0
 		for n=1:nneurons
-			for q in eachindex(∇logpy[t][n])
+			for q = 1:nθ_py[n]
 				r+=1
 				for i=1:Ξ
 					for j=1:K
@@ -607,7 +609,7 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 			for m=1:n𝐮
 				∇logpy[m][i,j] = dℓ_dL*𝐗[τ,m]
 			end
-			offset = fit_𝛃 && ((i==1) || (i==Ξ)) ? offset𝛃 : offset𝐯
+			offset = (fit_𝛃 && ((i==1) || (i==Ξ))) ? offset𝛃 : offset𝐯
 			for m=1:n𝐯
 				∇logpy[m+offset][i,j] = dℓ_dL*dL_d𝐯[m]
 			end

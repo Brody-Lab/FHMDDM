@@ -17,11 +17,11 @@ function ModelSummary(model::Model; computehessian::Bool=false)
 			thetareal=model.θreal,
 			theta0native=model.θ₀native,
 			thetaglm=map(trialset->map(mpGLM->mpGLM.θ, trialset.mpGLMs), model.trialsets),
-			temporal_basis_vectors_accumulator=collect(trialset.mpGLMs[1].Φₐ for trialset in model.trialsets),
-			temporal_basis_vectors_gain=collect(trialset.mpGLMs[1].𝐗[1,1] for trialset in model.trialsets),
-	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φₕ for trialset in model.trialsets),
-	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φₘ for trialset in model.trialsets),
-	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φₜ for trialset in model.trialsets),
+			temporal_basis_vectors_gain=collect(collect(mpGLM.Φgain for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
+			temporal_basis_vectors_accumulator=collect(trialset.mpGLMs[1].Φaccumulator for trialset in model.trialsets),
+	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φpostspike for trialset in model.trialsets),
+	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φpremovement for trialset in model.trialsets),
+	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φpoststereoclick for trialset in model.trialsets),
 			parametervalues=concatenateparameters(model),
 			parameternames=nameparameters(model),
 	        penaltycoefficients=model.gaussianprior.𝛂,
@@ -118,11 +118,12 @@ function packagedata(trial::Trial, a_latency_s::AbstractFloat)
 	Dict("choice" => trial.choice,
          "clicktimes" => packagedata(trial.clicks, a_latency_s),
 		 "gamma"=>trial.γ,
-		 "movementtimestep"=> trial.movementtimestep,
+		 "movementtime_s"=> trial.movementtime_s,
+		 "ntimesteps"=> trial.ntimesteps,
 		 "photostimulus_decline_on_s"=> trial.photostimulus_decline_on_s,
 		 "photostimulus_incline_on_s"=> trial.photostimulus_incline_on_s,
-		 "ntimesteps"=> trial.ntimesteps,
-		 "previousanswer" => trial.previousanswer)
+		 "previousanswer" => trial.previousanswer,
+		 "stereoclick_time_s"=>trial.stereoclick_time_s)
 end
 
 """

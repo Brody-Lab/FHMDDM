@@ -186,7 +186,7 @@ function subsample(trialset::Trialset, trialindices::Vector{<:Integer}, timestep
 	trials = trialset.trials[trialindices]
 	𝛕₀ = cumsum(vcat(0, collect(trials[m].ntimesteps for m=1:length(trials)-1)))
 	trials = collect(FHMDDM.reindex(index_in_trialset, τ₀, trial) for (index_in_trialset, τ₀, trial) in zip(1:length(trials), 𝛕₀, trials))
-    Trialset(trials = trials, mpGLMs = map(mpGLM->subsample(mpGLM, timesteps), trialset.mpGLMs))
+    Trialset(trials = trials, mpGLMs = map(mpGLM->subsample(mpGLM, timesteps, trialindices), trialset.mpGLMs))
 end
 
 """

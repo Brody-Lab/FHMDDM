@@ -168,6 +168,8 @@ Model settings
 	tbf_accu_stretch::TF=0.1
 	"scale factor of the gain parameter"
 	tbf_gain_scalefactor::TF=1.0
+	"maximum number of basis functions"
+	tbf_gain_maxfunctions::TI=6
 	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter. The setting `tbf_hist_linear` determines whether a linear function is included in the basis."
 	tbf_hist_begins0::TB=false
 	tbf_hist_dur_s::TF=0.25
@@ -250,6 +252,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	"index of the trial in the trialset"
 	index_in_trialset::TI
 	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
+	movementtime_s::TF; @assert movementtime_s > 0
+	"time of leaving the center port, relative to the time of the stereoclick, in time steps"
 	movementtimestep::TI; @assert movementtimestep > 0
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
@@ -259,6 +263,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	photostimulus_incline_on_s::TF
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
+	"time of the stereoclick, in seconds, in the sessions"
+	stereoclick_time_s::TF
 	"number of timesteps in the trialset preceding this trial"
 	τ₀::TI
     "index of the trialset to which this trial belongs"
@@ -321,17 +327,19 @@ Mixture of Poisson generalized linear model
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
 	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
-	Φₐ::MF
+	Φaccumulator::MF
+	"values of the basis functions parametrizing the slow drift in gain on each trial"
+	Φgain::MF
 	"Values of the smooth temporal basis functions used to parametrize the post-spike filter"
-	Φₕ::MF
+	Φpostspike::MF
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the animal leaving the center and the neuron's probability of spiking. The timing is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. The columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
-	Φₘ::MF
+	Φpremovement::MF
 	"temporal basis vectors for the photostimulus"
-	Φₚ::MF
+	Φpostphotostimulus::MF
 	"time steps of the temporal basis vectors relative to the onset of the photostimulus"
-	Φₚtimesteps::UI
+	Φpostphotostimulus_timesteps::UI
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
-	Φₜ::MF
+	Φpoststereoclick::MF
 	"parameters"
 	θ::Tθ
     "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
@@ -339,19 +347,19 @@ Mixture of Poisson generalized linear model
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
     "columns corresponding to the gain"
-	𝐗columns_gain::UI = 1:1
+	𝐗columns_gain::UI = θ.indices𝐮.gain
 	"columns corresponding to the spike history input"
-	𝐗columns_hist::UI = 𝐗columns_gain[end] .+ (1:size(Φₕ,2))
+	𝐗columns_hist::UI = θ.indices𝐮.postspike
 	"columns corresponding to the input from time from the beginning of the trial"
-	𝐗columns_time::UI = (𝐗columns_gain[end] + size(Φₕ,2)) .+ (1:size(Φₜ,2))
+	𝐗columns_time::UI = θ.indices𝐮.poststereoclick
 	"columns corresponding to the input from time before mvoement"
-	𝐗columns_move::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2)) .+ (1:size(Φₘ,2))
+	𝐗columns_move::UI = θ.indices𝐮.premovement
 	"columns corresponding to the input from time before mvoement"
-	𝐗columns_phot::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₚ,2))
+	𝐗columns_phot::UI = θ.indices𝐮.postphotostimulus
 	"columns corresponding to the state-independent inputs"
-	𝐗columns_𝐮::UI = 𝐗columns_gain[1]:(𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2) + size(Φₚ,2))
+	𝐗columns_𝐮::UI = 1:(size(𝐗,2)-size(𝐕,2))
 	"columns corresponding to the input from the accumulator"
-	𝐗columns_𝐯::UI = 𝐗columns_𝐮[end] .+ (1:size(𝐕,2))
+	𝐗columns_𝐯::UI = (size(𝐗,2)-size(𝐕,2)+1):size(𝐗,2)
 	"number of accumulator states"
 	Ξ::TI=length(d𝛏_dB)
 	"Poisson observations"
@@ -1152,6 +1160,7 @@ Features of the model useful for analysis
 							MF<:Matrix{<:AbstractFloat},
 							VF<:Vector{<:AbstractFloat},
 							VMF<:Vector{<:Matrix{<:AbstractFloat}},
+							VVMF<:Vector{<:Vector{<:Matrix{<:AbstractFloat}}},
 							VS<:Vector{<:String},
 							VVGT<:Vector{<:Vector{<:GLMθ}},
 							VVI<:Vector{<:Vector{<:Integer}}}
@@ -1169,14 +1178,14 @@ Features of the model useful for analysis
 	thetaglm::VVGT
 	"temporal basis vectors for accumulator encoding"
 	temporal_basis_vectors_accumulator::VMF
-	"temporal basis vectors for gain"
-	temporal_basis_vectors_gain::VF
+	"temporal basis vectors for the gain on each trial"
+	temporal_basis_vectors_gain::VVMF
 	"temporal basis vectors for the post-spike kernel"
 	temporal_basis_vectors_postspike::VMF
-	"temporal basis vectors for the pre-movement kernel"
-	temporal_basis_vectors_premovement::VMF
 	"temporal basis vectors for the post-stereoclick kernel"
 	temporal_basis_vectors_poststereoclick::VMF
+	"temporal basis vectors for the pre-movement kernel"
+	temporal_basis_vectors_premovement::VMF
 	"parameters concatenated into a vector"
 	parametervalues::VF
 	"name of each parameter"

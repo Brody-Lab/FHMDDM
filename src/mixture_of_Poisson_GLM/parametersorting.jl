@@ -163,9 +163,9 @@ OUTPUT
 -a vector whose each element is a composite containing index of each parameter
 """
 function indexparameters(trialset::Trialset; includeunfit::Bool=false, initialization::Bool=false, offset::Integer=0)
-	concatenatedθ = concatenateparameters(trialset.mpGLMs[1].θ; includeunfit=includeunfit, initialization=initialization)
-	nparameters = length(concatenatedθ)
-	collect(indexparameters(trialset.mpGLMs[n].θ; includeunfit=includeunfit, initialization=initialization, offset=offset+nparameters*(n-1)) for n=1:length(trialset.mpGLMs))
+	parametercounts = collect(length(concatenateparameters(trialset.mpGLMs[n].θ;includeunfit=includeunfit, initialization=initialization)) for n=1:length(trialset.mpGLMs)-1)
+	cumulativeoffsets = cumsum(vcat(offset, parametercounts))
+	collect(indexparameters(mpGLM.θ; includeunfit=includeunfit, initialization=initialization, offset=cumulativeoffset) for (mpGLM, cumulativeoffset) in zip(trialset.mpGLMs, cumulativeoffsets))
 end
 
 """
@@ -193,23 +193,23 @@ function indexparameters(trialsets::Vector{<:Trialset}; includeunfit::Bool=false
 end
 
 """
-	Indices𝐮(npostspike, npoststereoclick, npremovement, npostphotostimulus)
+	Indices𝐮(ngain, npostspike, npoststereoclick, npremovement, npostphotostimulus)
 
 Indices of the encoding weights of the temporal basis vectors of each filter that is independent of the accumulator
 
 ARGUMENT
--number of temporal basis vectors for the post-spike, post-stereoclick, pre-movement, and post-phostimulus filters
+-number of temporal basis vectors for the gain, and the post-spike, post-stereoclick, pre-movement, and post-phostimulus filters
 
 OUTPUT
 -a composite containing the indices of the weights of the temporal basis vectors of each filter
 """
-function Indices𝐮(npostspike::Integer, npoststereoclick::Integer, npremovement::Integer, npostphotostimulus::Integer)
+function Indices𝐮(ngain::Integer, npostspike::Integer, npoststereoclick::Integer, npremovement::Integer, npostphotostimulus::Integer)
 	indices = UnitRange{Int}[]
 	k = 0
 	for name in fieldnames(Indices𝐮)
 		if name ==:gain
-			indices = vcat(indices, [1:1])
-			k += 1
+			indices = vcat(indices, [k .+ (1:ngain)])
+			k += ngain
 		elseif name == :postspike
 			indices = vcat(indices, [k .+ (1:npostspike)])
 			k += npostspike
