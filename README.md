@@ -26,7 +26,7 @@ In a shell, log into `spock`:
 ```
 After providing credentials, load a version of Julia and run it
 ```
-[<netID>spock ~]$ module load julia\1.6.0
+[<netID>spock ~]$ module load julia/1.6.0
 [<netID>spock ~]$ julia
 julia>
 ```
