@@ -109,7 +109,7 @@ analyzeandsave(false, "recovery", simulation)
 
 Once the scripts are prepared, run the Julia script on the cluster by calling `sbatch`. For the example above, the following would be called:
 ```
-sbatch /usr/people/zhihaol/Documents/tzluo/analyses/analysis_2023_02_08a_choiceLL_scaling_exponent/optimize.sh
+sbatch /usr/people/zhihaol/Documents/tzluo/analyses/analysis_2023_02_09a_stereoclickonly/optimize.sh
 ```
 ## examining the results
 Code for plotting the results was written in MATLAB 2019a. To use the plotting tools, add the folder `/plotting` into MATLAB's search path. First, let's tabulate the models and their options. Here we are assuming that the MATLAB script is saved in the same folder where the `options.csv` is located:
