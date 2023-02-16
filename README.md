@@ -38,7 +38,7 @@ julia> ]
 ```
 Add the `FHMDDM` repository
 ```
-(v1.6) pkg> add https://github.com/Brody-Lab/FHMDDM.git
+(v1.6) pkg> add https://github.com/Brody-Lab/FHMDDM.git#2023_02_12
 pkg> up
 pkg> <backspace>
 julia>
