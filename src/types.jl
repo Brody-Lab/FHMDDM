@@ -1207,20 +1207,6 @@ Features of the model useful for analysis
 end
 
 """
-	CVResults
-
-Results of cross-validation
-"""
-@with_kw struct CVResults{C<:Characterization, VC<:Vector{<:CVIndices}, VS<:Vector{<:ModelSummary}}
-	"a composite containing quantities that are computed out-of-sample and used to characterize the model`"
-	characterization::C
-	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
-	cvindices::VC
-	"summaries of the training models"
-	trainingsummaries::VS
-end
-
-"""
 	SpikeTrainLinearFilter
 
 Linear filter used to smooth the spike train
@@ -1279,4 +1265,20 @@ A set of peri-event time histogram of one neuron.
 	rightchoice_weak_rightevidence::PETH
 	"average across all trials"
 	unconditioned::PETH
+end
+
+"""
+	CVResults
+
+Results of cross-validation
+"""
+@with_kw struct CVResults{C<:Characterization, VC<:Vector{<:CVIndices}, VS<:Vector{<:ModelSummary}, VVP<:Vector{<:Vector{<:PETHSet}}}
+	"a composite containing quantities that are computed out-of-sample and used to characterize the model`"
+	characterization::C
+	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
+	cvindices::VC
+	"post-stereoclick time histogram sets"
+	psthsets::VVP
+	"summaries of the training models"
+	trainingsummaries::VS
 end

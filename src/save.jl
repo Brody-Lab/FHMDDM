@@ -163,6 +163,6 @@ function analyzeandsave(computehessian::Bool, foldername::String, model::Model)
 	save(modelsummary, optimization_folder_path)
 	characterization = Characterization(model)
 	save(characterization, optimization_folder_path)
-	psthsets = FHMDDM.poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
+	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
 	save(psthsets, optimization_folder_path)
 end

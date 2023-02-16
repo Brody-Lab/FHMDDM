@@ -317,7 +317,7 @@ ARGUMENT
 function Characterization(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model}, trainingmodels::Vector{<:Model}; nsamples::Integer=100)
 	characterization_each_fold = map((testmodel, trainingmodel)->Characterization(testmodel, trainingmodel; nsamples=nsamples), testmodels, trainingmodels)
 	ntrialsets = length(cvindices[1].testingtrials)
-	trialindices = collect(vcat((cvindex.testingtrials[i] for cvindex in cvindices)...) for i=1:ntrialsets)
+	trialindices = collect(sortperm(vcat((cvindex.testingtrials[i] for cvindex in cvindices)...)) for i=1:ntrialsets)
 	values =
 		map(fieldnames(Characterization)) do fieldname
 			map(1:ntrialsets) do i
