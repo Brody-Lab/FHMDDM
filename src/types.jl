@@ -1079,8 +1079,10 @@ end
 
 Behavioral choice and neuronal spike trains simulated by running the model forward in time using the auditory click
 """
-@with_kw struct TrialSample{B<:Bool, VVI<:Vector{<:Vector{<:Integer}}}
+@with_kw struct TrialSample{B<:Bool, VF<:Vector{<:AbstractFloat}, VVF<:Vector{<:Vector{<:AbstractFloat}}, VVI<:Vector{<:Vector{<:Integer}}}
+	accumulator::VF
 	choice::B
+	λ::VVF
 	spiketrains::VVI
 end
 

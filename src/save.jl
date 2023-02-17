@@ -82,30 +82,6 @@ function save(options::Dict, trialsets::Vector{<:Trialset})
 end
 
 """
-    savedata(model)
-
-Save the data used to fit a model.
-
-This function is typically used when the data is sampled
-
-ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters used to fit a factorial hidden Markov drift-diffusion mdoel
-
-OPTIONAL ARGUMENT
--`filename`: the data will be saved at the path `joinpath(dirname(model.options.datapath), filename)`
-"""
-function savedata(model::Model; filename::String=basename(model.options.datapath))
-    data =  map(model.trialsets, 1:length(model.trialsets)) do trialset, index
-                Dict("trials"=>map(trial->packagedata(trial, model.options.a_latency_s), trialset.trials),
-                     "units"=>map(mpGLM->packagedata(mpGLM), trialset.mpGLMs),
-                     "index"=>index)
-            end
-    dict = Dict("data"=>data, "options"=>dictionary(model.options))
-    path = joinpath(dirname(model.options.datapath), filename)
-    matwrite(path, dict)
-end
-
-"""
 	packagedata(trial, a_latency_s)
 
 Package the data in one trial into a Dict for saving

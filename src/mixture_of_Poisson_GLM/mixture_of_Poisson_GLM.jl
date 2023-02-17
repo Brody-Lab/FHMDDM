@@ -453,7 +453,8 @@ ARGUMENT
 -`𝛕`: time steps in the trialset. The number of time steps in the trial corresponds to the length of 𝛕.
 
 RETURN
--`𝐲̂`: a vector representing the sampled spiking response at each time step
+-`𝛌`: a vector of floats representing the spikes per second at each time step
+-`𝐲̂`: a vector of integers representing the sampled spiking response at each time step
 """
 function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
 	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
@@ -462,6 +463,7 @@ function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::
 	K = length(𝐯)
 	max_spikes_per_step = floor(1000Δt)
     𝐲̂ = zeros(eltype(𝐲), length(𝛕))
+	𝛌 = zeros(length(𝛕))
     for t = 1:length(𝛕)
         τ = 𝛕[t]
         j = a[t]
@@ -479,8 +481,8 @@ function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::
 				L += 𝐡[lag]*𝐲̂[t-lag]
 			end
 		end
-        λ = softplus(L)
-        𝐲̂[t] = min(rand(Poisson(λ*Δt)), max_spikes_per_step)
+        𝛌[t] = softplus(L)
+        𝐲̂[t] = min(rand(Poisson(𝛌[t]*Δt)), max_spikes_per_step)
     end
-	return 𝐲̂
+	return 𝛌, 𝐲̂
 end
