@@ -63,11 +63,12 @@ function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ:
 	Ξ, K = size(p)
 	for k=1:K
 		for j=1:Ξ
+			Lⱼₖ = L
 			ωⱼ𝐯ₖ = evidenceinput(j,k,mpGLM)
 			for q in eachindex(ωⱼ𝐯ₖ)
-				L += 𝐕[τ,q]*ωⱼ𝐯ₖ[q]
+				Lⱼₖ += 𝐕[τ,q]*ωⱼ𝐯ₖ[q]
 			end
-			p[j,k] = poissonlikelihood(Δt, L, 𝐲[τ])
+			p[j,k] = poissonlikelihood(Δt, Lⱼₖ, 𝐲[τ])
 		end
 	end
 	return nothing
