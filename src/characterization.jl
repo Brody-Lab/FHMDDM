@@ -263,6 +263,7 @@ function ExpectedEmissions(model::Model, nsamples)
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	a = zeros(Int, memory.maxtimesteps)
 	c = zeros(Int, memory.maxtimesteps)
+	𝛏 = model.trialsets[1].mpGLMs[1].d𝛏_dB.*model.θnative.B[1]
 	map(model.trialsets) do trialset
 		𝐄𝐞 = map(mpGLM->externalinput(mpGLM), trialset.mpGLMs)
 		𝐡 = map(mpGLM->postspikefilter(mpGLM), trialset.mpGLMs)
@@ -273,7 +274,7 @@ function ExpectedEmissions(model::Model, nsamples)
 			E𝐘right = deepcopy(E𝐘left)
 			nright = 0
 			for s = 1:nsamples
-				trialsample = sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset)
+				trialsample = sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset, 𝛏)
 				nright += trialsample.choice
 				E𝐘 = trialsample.choice ? E𝐘right : E𝐘left
 				for (E𝐲, 𝐲) in zip(E𝐘, trialsample.spiketrains)

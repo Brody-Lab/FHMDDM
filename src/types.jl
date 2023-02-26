@@ -1080,9 +1080,13 @@ end
 Behavioral choice and neuronal spike trains simulated by running the model forward in time using the auditory click
 """
 @with_kw struct TrialSample{B<:Bool, VF<:Vector{<:AbstractFloat}, VVF<:Vector{<:Vector{<:AbstractFloat}}, VVI<:Vector{<:Vector{<:Integer}}}
+	"a nested array whose element `accumulator[i][m][t]` is the value of the accumulated evidence on the t-th time step of the m-th trial on the i-th trialset"
 	accumulator::VF
+	"`true` mean a right choice and `false` a left choice"
 	choice::B
+	"a nested array whose element lambda_spikes_per_s[i][m][n][t] is the value of generative spikes per s of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
 	λ::VVF
+	"a nested array whose element spiketrains[i][m][n][t] is the spike train response of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
 	spiketrains::VVI
 end
 
