@@ -1,0 +1,10 @@
+﻿name,trial_type,laseron,maxtrials,responded,violated
+complete,,,1000000,1,0
+auditory,a,,1000000,1,0
+complete_noopto,,0,1000000,1,0
+complete_opto,,1,1000000,1,0
+auditory_noopto,a,0,1000000,1,0
+auditory_opto,a,1,1000000,1,0
+auditory_max10,a,,10,1,0
+auditory_opto_max10,a,1,10,1,0
+auditory_noopto_max10,a,0,10,1,0
