@@ -1,4 +1,6 @@
 ﻿name,criterion,reference_event,t0_s,dur_s,mask_movement,min_abs_choice_auROC,min_firing_rate,maxneurons,brain_areas,unitindex
+2023_03_07_unit91,unitindex,stereoclick,0.01,0.31,1,0.1,2,1000,,91
+2023_03_07_unit83,unitindex,stereoclick,0.01,0.31,1,0.1,2,1000,,83
 2023_01_04,choice_auROC_fr,stereoclick,0.01,0.31,1,0.1,2,1000,,
 2023_01_04,choice_auROC_fr,stereoclick,0.11,0.41,1,0.1,2,1000,,
 2023_01_04,choice_auROC_fr,stereoclick,0.21,0.51,1,0.1,2,1000,,

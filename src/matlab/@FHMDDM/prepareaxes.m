@@ -10,6 +10,7 @@ else
     a = varargin{:};
 end
 validateattributes(a, {'matlab.graphics.axis.Axes'}, {'scalar'})
+set(a, 'FontName','Arial')
 set(a, 'FontSize',14)
 set(a, 'ActivePositionProperty', 'outerposition')
 set(a, 'Color', 'None')
