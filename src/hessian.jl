@@ -42,15 +42,11 @@ RETURN
 ```
 """
 function twopasshessian(model::Model)
-	@unpack trialsets = model
-	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
-	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
-	@inbounds for trialsetindex in eachindex(trialsets)
-		𝐋 = FHMDDM.linearpredictor(trialsets[trialsetindex].mpGLMs)
-		offset = 0
-		for trialindex in eachindex(trialsets[trialsetindex].trials)
-			FHMDDM.twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
-			offset+=model.trialsets[trialsetindex].trials[trialindex].ntimesteps
+	sameacrosstrials = Sameacrosstrials(model)
+	memoryforhessian = Memoryforhessian(model, sameacrosstrials)
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			twopasshessian!(memoryforhessian, model, sameacrosstrials, trial)
 		end
 	end
 	@unpack ℓ, ∇ℓ, ∇∇ℓ = memoryforhessian
@@ -63,34 +59,26 @@ function twopasshessian(model::Model)
 end
 
 """
-	twopasshessian!
+	twopasshessian!(memoryforhessian, model, sameacrosstrials, trial)
 
 Compute the hessian for one trial as the Jacobian of the expectation conjugate gradient
 
 MODIFIED ARGUMENT
--`memoryforhessian`: a structure containing quantities used in each trial
+-`memoryforhessian`: structure containing intermediate quantities that are modified for each trial
 
 UNMODIFIED ARGUMENT
--`𝐋`: a nested array whose element 𝐋[n][j,k][t] corresponds to n-th neuron, j-th accumualtor state, k-th coupling state, and the t-th time bin in the trialset
+-`model`: structure containing the data, parameters, and hyperparameters
+-`sameacrosstrials`: structure containing intermediate quantities that are fixed across trials
+-`trial`: structure containing the data of the trial being used for computation
 """
-function twopasshessian!(memoryforhessian::Memoryforhessian,
-						 𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
-						 model::Model,
-						 sameacrosstrials::Sameacrosstrials,
-						 offset::Integer,
-						 trialindex::Integer,
-						 trialsetindex::Integer)
-	trial = model.trialsets[trialsetindex].trials[trialindex]
-	@unpack mpGLMs = model.trialsets[trialsetindex]
-	@unpack clicks = trial
+function twopasshessian!(memoryforhessian::Memoryforhessian, model::Model, sameacrosstrials::Sameacrosstrials, trial::Trial)
 	@unpack θnative = model
+	@unpack K, Ξ = model.options
+	@unpack clicks, trialindex = trial
+	@unpack mpGLMs = model.trialsets[trialsetindex]
 	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, D, ∇D, ∇b = memoryforhessian
 	@unpack P, ∇pa₁, ∇∇pa₁, Aᵃinput, ∇Aᵃinput, ∇∇Aᵃinput = memoryforhessian
-	@unpack λ, ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
-	𝛚 = memoryforhessian.𝛚[trialsetindex]
-	d𝛚_db = memoryforhessian.d𝛚_db[trialsetindex]
-	d²𝛚_db² = memoryforhessian.d²𝛚_db²[trialsetindex]
-	@unpack Δt, K, Ξ = sameacrosstrials
+	@unpack ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
 	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent = sameacrosstrials
 	@unpack Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
 	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ = sameacrosstrials
@@ -103,10 +91,8 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[trialsetindex]
 	indexθ_trialset = sameacrosstrials.indexθ_trialset[trialsetindex]
 	nθ_trialset = sameacrosstrials.nθ_trialset[trialsetindex]
-	if length(clicks.time) > 0
-		adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	end
-	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, nθ_py, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
+	adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	update_emissions!(memoryforhessian, mpGLMs, sameacrosstrials, trial)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
@@ -417,97 +403,6 @@ function forward!(∇D::Vector{<:Real},
 end
 
 """
-    linearpredictor(mpGLMs)
-
-Linear combination of the weights in the j-th accumulator state and k-th coupling state
-
-ARGUMENT
--`mpGLMs`: a vector of mixture of Poisson generalized linear models
-
-RETURN
--`𝐋`: a nested array whose element 𝐋[n][j,k][t] corresponds to n-th neuron, j-th accumualtor state, k-th coupling state, and the t-th time bin in the trialset
-"""
-function linearpredictor(mpGLMs::Vector{<:MixturePoissonGLM})
-	map(mpGLMs) do mpGLM
-		Ξ = length(mpGLM.d𝛏_dB)
-		K = length(mpGLM.θ.𝐯)
-		map(CartesianIndices((Ξ,K))) do index
-			j = index[1]
-			k = index[2]
-			linearpredictor(mpGLM, j, k)
-		end
-	end
-end
-
-"""
-	update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, nθ_py, mpGLMs, offset)
-
-Update the conditional likelihood of spiking and its gradient and the gradient and Hessian of the conditional log-likelihoods
-
-MODIFIED ARGUMENT
--`λ`:: conditional rate of each neuron at each time step. Element `λ[n][t][i,j]` corresponds to the n-th neuron, t-th time step in a trial, i-th accumulator state, and j-th coupling state
--`∇logpy`: partial derivatives of the conditional log-likelihood of each neuron at each time step. Element `∇logpy[t][n][q][i,j]` corresponds to the t-th time step in a trial, n-th neuron, q-th parameter, i-th accumulator state, and j-th coupling state.
- -`∇∇logpy`: partial derivatives of the conditional log-likelihood of each neuron at each time step. Element `∇∇logpy[t][n][q,r][i,j]` corresponds to the t-th time step in a trial, n-th neuron, q-th and r-th parameter, i-th accumulator state, and j-th coupling state.
--`pY`: conditional likelihood of the spiking of all neurons. Element `pY[t][i,j]` corresponds to the t-th time step in a trial, i-th accumulator state, and j-th coupling state
--`∇pY`: partial derivative of the conditional likelihood of the spiking of all neurons. Element `∇pY[t][q][i,j]` corresponds to the t-th time step in a trial, q-th paramaeter,  i-th accumulator state, and j-th coupling state
-
-UNMODIFIED ARGUMENT
--`Δt`: duration of each time step, in second
--`𝐋`: linear predictors. Element `𝐋[n][i,j][τ]` corresponds to the n-th neuron, the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
--`mpGLMs`: Mixture of Poisson GLM of each neuron
--`nθ_py`: numer of parameters in each GLM
--`ntimesteps`: number of time steps in the trial
--`offset`: the time index in the trialset corresponding to the time index 0 in the trial
-"""
-function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
-						∇logpy::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
-						∇∇logpy::Vector{<:Vector{<:Matrix{<:Matrix{<:Real}}}},
-						pY::Vector{<:Matrix{<:Real}},
-						∇pY::Vector{<:Vector{<:Matrix{<:Real}}},
-						Δt::Real,
-						𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
-						mpGLMs::Vector{<:MixturePoissonGLM},
-						nθ_py::Vector{<:Integer},
-						ntimesteps::Integer,
-						offset::Integer,
-						𝛚::Vector{<:Vector{<:Real}},
-						d𝛚_db::Vector{<:Vector{<:Real}},
-						d²𝛚_db²::Vector{<:Vector{<:Real}})
-	dL_d𝐯 = zeros(length(mpGLMs[1].θ.𝐯[1]))
-	nneurons = length(mpGLMs)
-	@inbounds for n = 1:nneurons
-		FHMDDM.conditionalrate!(λ[n], 𝐋[n], ntimesteps, offset)
-		for t = 1:ntimesteps
-			τ = t + offset
-			FHMDDM.∇∇conditional_log_likelihood!(∇logpy[t][n], ∇∇logpy[t][n], dL_d𝐯, Δt, 𝐋[n], λ[n][t], mpGLMs[n], 𝛚[n], d𝛚_db[n], d²𝛚_db²[n], τ)
-		end
-	end
-	Ξ = length(𝛚[1])
-	K = length(mpGLMs[1].θ.𝐯)
-	@inbounds for t = 1:ntimesteps
-		τ = t + offset
-		for ij in eachindex(pY[t])
-			pY[t][ij] = 1.0
-			for n=1:nneurons
-				pY[t][ij] *= poissonlikelihood(λ[n][t][ij]*Δt, mpGLMs[n].𝐲[τ])
-			end
-		end
-		r = 0
-		for n=1:nneurons
-			for q = 1:nθ_py[n]
-				r+=1
-				for i=1:Ξ
-					for j=1:K
-						∇pY[t][r][i,j] = ∇logpy[t][n][q][i,j]*pY[t][i,j]
-					end
-				end
-			end
-		end
-	end
-	return nothing
-end
-
-"""
 	update_emissions!(∂pY𝑑_∂ψ, pY, ∇pY, choice, ψ)
 
 Update the conditional likelihood of the emissions as well as its gradient
@@ -526,112 +421,6 @@ function update_emissions!(∂pY𝑑_∂ψ::Matrix{<:Real}, pY::Matrix{<:Real}, 
 	conditionallikelihood!(pY, choice, ψ)
 	@inbounds for q in eachindex(∇pY)
 		conditionallikelihood!(∇pY[q], choice, ψ)
-	end
-	return nothing
-end
-
-"""
-	conditionalrate!(λ, 𝐋, offset)
-
-MODIFIED ARGUMENT
--`λ`: matrix whose element `λ[t][i,j]` is the Poisson rate at the t-th timestep of a trial given the i-th accumulator state and j-th coupling state
-
-UNMODIFIED ARGUMENT
--`𝐋`: matrix whose element `𝐋[i,j][τ]` is the linear predictor given the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
--`offset`: the time index in the trialset corresponding to the time index 0 in the trial
-"""
-function conditionalrate!(λ::Vector{<:Matrix{<:Real}},
-						  𝐋::Matrix{<:Vector{<:Real}},
-						  ntimesteps::Integer,
-						  offset::Integer)
-	for t = 1:ntimesteps
-		τ = t + offset
-		for jk in eachindex(λ[t])
-			λ[t][jk] = softplus(𝐋[jk][τ])
-		end
-	end
-	return nothing
-end
-
-"""
-	∇∇conditional_log_likelihood!(∇logpy, ∇∇logpy, dL_d𝐯, Δt, 𝐋, λ, mpGLM, τ)
-
-Gradient and Hessian of the conditional log-likelihood of one neuron at single timestep
-
-MODIFIED ARGUMENT
--`∇logpy`: Gradient of the conditional log-likelihood of a neuron's response at a single time. Element ∇logpy[i][j,k] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(j), c(t)=k} with respect to the i-th parameter of the neuron's GLM
--`∇∇logpy`: Hessian of the conditional log-likelihood. Element ∇∇logpy[i,j][k,l] correponds to the partial derivative of log p{y(n,t) ∣ a(t)=ξ(k), c(t)=l} with respect to the i-th and j-th parameters of the neuron's GLM
--`dL_d𝐯`: memory for computing the derivative of the linear predictor with respect to the linear filters of the accumulator. The element `dL_d𝐯[q]` corresponds to the q-th linear filter in one of the coupling states.
-
-UNMODIFIED ARGUMENT
--`Δt`: width of time step
--`𝐋`: linear predictors. Element `𝐋[i,j][τ]` corresponds to the i-th accumulator state and j-th coupling state for the τ-timestep in the trialset
--`λ`: Conditional Poisson whose element λ[i,j] corresponds to a(t)=ξ(i), c(t)=j
--`mpGLM`: a composite containing the data and parameters of a Poisson mixture generalized linear model
--`𝛚`: transformed values of the accumulator
--`d𝛚_db`: first derivative of the transformed values of the accumulator with respect to the transformation parameter
--`d²𝛚_db²`: second derivative of the transformed values of the accumulator with respect to the transformation parameter
--`τ` time step in the trialset
-"""
-function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
-										∇∇logpy::Matrix{<:Matrix{<:Real}},
-										dL_d𝐯::Vector{<:Real},
-										Δt::Real,
-										𝐋::Matrix{<:Vector{<:Real}},
-										λ::Matrix{<:Real},
-										mpGLM::MixturePoissonGLM,
-										𝛚::Vector{<:Real},
-										d𝛚_db::Vector{<:Real},
-										d²𝛚_db²::Vector{<:Real},
-										τ::Integer)
-	@unpack 𝐗, Ξ, 𝐕, 𝐲 = mpGLM
-	@unpack b, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
-	K = length(𝐯)
-	n𝐮 = length(𝐮)
-	n𝐯 = length(𝐯[1])
-	indexb = n𝐮 + 2*K*n𝐯 + 1
-	Vₜᵀ𝐯 = zeros(K)
-	for j = 1:K
-		for q=1:n𝐯
-			Vₜᵀ𝐯[j] += 𝐕[τ,q]*𝐯[j][q]
-		end
-	end
-	for i = 1:Ξ
-		for m=1:n𝐯
-			dL_d𝐯[m] = 𝐕[τ,m]*𝛚[i]
-		end
-		for j = 1:K
-			d²ℓ_dL², dℓ_dL = FHMDDM.differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[i,j][τ], λ[i,j], 𝐲[τ])
-			dL_db = Vₜᵀ𝐯[j]*d𝛚_db[i]
-			d²L_db² = Vₜᵀ𝐯[j]*d²𝛚_db²[i]
-			offset𝐯 = n𝐮 + (j-1)*n𝐯
-			offset𝛃 = n𝐮 + (K+j-1)*n𝐯
-			for m=1:n𝐮
-				∇logpy[m][i,j] = dℓ_dL*𝐗[τ,m]
-			end
-			offset = (fit_𝛃 && ((i==1) || (i==Ξ))) ? offset𝛃 : offset𝐯
-			for m=1:n𝐯
-				∇logpy[m+offset][i,j] = dℓ_dL*dL_d𝐯[m]
-			end
-			∇logpy[indexb][i,j] = dℓ_dL*dL_db
-			for m=1:n𝐮
-				for n=m:n𝐮
-					∇∇logpy[m,n][i,j] = d²ℓ_dL²*𝐗[τ,m]*𝐗[τ,n]
-				end
-				for n=1:n𝐯
-					∇∇logpy[m,n+offset][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_d𝐯[n]
-				end
-				∇∇logpy[m,indexb][i,j] = d²ℓ_dL²*𝐗[τ,m]*dL_db
-			end
-			for m=1:n𝐯
-				for n=m:n𝐯
-					∇∇logpy[m+offset, n+offset][i,j] = d²ℓ_dL² * dL_d𝐯[m] * dL_d𝐯[n]
-				end
-				d²L_dvdb = 𝐕[τ,m]*d𝛚_db[i]
-				∇∇logpy[m+offset,indexb][i,j] = d²ℓ_dL²*dL_d𝐯[m]*dL_db + dℓ_dL*d²L_dvdb
-			end
-			∇∇logpy[indexb,indexb][i,j] = d²ℓ_dL²*dL_db^2 + dℓ_dL*d²L_db²
-		end
 	end
 	return nothing
 end
@@ -928,6 +717,7 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 	∇f = collect(collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets) for t=1:maxtimesteps)
 	∇b = collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets)
 	λ = collect(collect(zeros(Ξ,K) for t=1:maxtimesteps) for n = 1:maxneurons)
+	𝐋 = linearpredictor(model.trialsets)
 	∇logpy = collect(collect(collect(zeros(Ξ,K) for q=1:max_nθ_py) for n=1:maxneurons) for t=1:maxtimesteps)
 	∇∇logpy=map(1:maxtimesteps) do t
 				map(1:maxneurons) do n
@@ -982,6 +772,7 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					∇∇ℓ=zeros(S.nθ_alltrialsets,S.nθ_alltrialsets),
 					∂pY𝑑_∂ψ=zeros(Ξ,K),
 					λ=λ,
+					𝐋=𝐋,
 					∇logpy=∇logpy,
 					∇∇logpy=∇∇logpy,
 					𝛚 = 𝛚,

@@ -68,6 +68,8 @@ Model settings
 	fit_λ::TB=true
 	"whether to fit the constant added to the mean of the distribution of the accumulator variable at the first time step"
 	fit_μ₀::TB=true
+	"whether to fit an overdispersion parameter for the model of each neuron's spike count response. If true, the count response model is negative binomial rather than Poisson"
+	fit_overdispersion::TB=true
 	"whether to fit the strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
 	fit_ϕ::TB=true
 	"whether the prior probability of the first state is fitted"
@@ -290,16 +292,20 @@ end
 Parameters of a mixture of Poisson generalized linear model
 """
 @with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
+	"overdispersion parameter in real space. It is mapped into a nonnegative value using the softplus function."
+	a::VR=[-Inf]
     "nonlinearity in accumulator transformation"
-	b::VR
+	b::VR=[NaN]
 	"scale factor for the nonlinearity of accumulator transformation"
 	b_scalefactor::R
 	"order by which parameters are concatenated"
-	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :b]
+	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :a, :b]
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
 	fit_𝛃::B
+	"whether to fit an overdispersion parameter. If so, the count response model is negative binomial rather than Poisson"
+	fit_overdispersion::B
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
 	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
@@ -843,6 +849,7 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 								VMMR<:Vector{<:Matrix{<:Matrix{<:Real}}},
 								VVVMR<:Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
 								VVMMR<:Vector{<:Vector{<:Matrix{<:Matrix{<:Real}}}},
+								VVMVR<:Vector{<:Vector{<:Matrix{<:Vector{<:Real}}}},
 								PT<:Probabilityvector}
 	"log-likelihood"
 	ℓ::VR = zeros(1)
@@ -868,6 +875,8 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 	∇f::VVMR
 	"gradient of the backward term. Element '∇b[q][i,j]' corresponds to the q-th parameter among all parameters in the model, i-th accumulator state, and j-th coupling state"
 	∇b::VMR
+	"linear predictor"
+	𝐋::VVMVR
 	"conditional Poisson rate of each neuron at each time step of a trial. Element `λ[n][t][i,j]` corresponds to the n-th neuron in a trialset, t-th time step in a trial, i-th accumulator state, and j-th coupling state"
 	λ::VVMR
 	"first-order partial derivatives of the log-likelihood of the spiking of each neuron at each time step. Element '∇logpy[t][n][q][i,j]' corresponds to t-th time step in a trial, n-th neuron in a trialset, q-th parameter of that neuron's GLM, i-th accumulator state, and j-th coupling state"

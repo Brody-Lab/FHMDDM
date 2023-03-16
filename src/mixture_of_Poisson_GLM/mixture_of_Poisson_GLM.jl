@@ -55,7 +55,8 @@ UNMODIFIED ARGUMENT
 """
 function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ::Integer)
 	@unpack Δt, θ, 𝐗, 𝐕, 𝐲 = mpGLM
-	@unpack 𝐮 = θ
+	@unpack a, fit_overdispersion, 𝐮 = θ
+	α = inverselink(a[1])
 	L = 0
 	for i in eachindex(𝐮)
 		L += 𝐗[τ,i]*𝐮[i]
@@ -68,7 +69,7 @@ function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ:
 			for q in eachindex(ωⱼ𝐯ₖ)
 				Lⱼₖ += 𝐕[τ,q]*ωⱼ𝐯ₖ[q]
 			end
-			p[j,k] = poissonlikelihood(Δt, Lⱼₖ, 𝐲[τ])
+			p[j,k] = fit_overdispersion ? negbinlikelihood(α, Δt, Lⱼₖ, 𝐲[τ]) : poissonlikelihood(Δt, Lⱼₖ, 𝐲[τ])
 		end
 	end
 	return nothing
@@ -89,10 +90,12 @@ RETURN
 """
 function scaledlikelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer, s::Real)
     @unpack Δt, 𝐲 = mpGLM
+	@unpack a, fit_overdispersion = mpGLM.θ
+	α = inverselink(a[1])
     𝐋 = linearpredictor(mpGLM, j, k)
     𝐩 = 𝐋
     @inbounds for i=1:length(𝐩)
-        𝐩[i] = scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
+        𝐩[i] = fit_overdispersion ? s*negbinlikelihood(α, Δt, 𝐋[i], 𝐲[i]) : scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
     end
     return 𝐩
 end
@@ -115,9 +118,11 @@ RETURN
 """
 function scaledlikelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer, k::Integer, s::Real)
     @unpack Δt, 𝐲 = mpGLM
+	@unpack a, fit_overdispersion = mpGLM.θ
+	α = inverselink(a[1])
     𝐋 = linearpredictor(mpGLM, j, k)
     @inbounds for i=1:length(𝐩)
-		𝐩[i] *= scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
+		𝐩[i] *= fit_overdispersion ? s*negbinlikelihood(α, Δt, 𝐋[i], 𝐲[i]) : scaledpoissonlikelihood(Δt, 𝐋[i], s, 𝐲[i])
     end
     return nothing
 end
@@ -138,7 +143,7 @@ UNMODIFIED ARGUMENT
 """
 function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
 	@unpack Δt, 𝐕, 𝐗, 𝐗columns_𝐮, Ξ, 𝐲 = mpGLM
-	@unpack fit_b, fit_𝛃, 𝐯  = mpGLM.θ
+	@unpack a, fit_b, fit_𝛃, fit_overdispersion, 𝐯 = mpGLM.θ
 	𝛚 = transformaccumulator(mpGLM)
 	d𝛚_db = dtransformaccumulator(mpGLM)
 	Ξ, K = size(γ)
@@ -153,11 +158,24 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 	if ∇Q.fit_b
 		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
 	end
+	if fit_overdispersion
+		α = inverselink(a[1])
+		g = zeros(2)
+		∑ᵢₖ_dQᵢₖ_da = 0.0
+	end
 	@inbounds for k = 1:K
 		for i = 1:Ξ
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				if fit_overdispersion
+					μ = inverselink(𝐋[t])
+					differentiate_loglikelihood_wrt_overdispersion_mean!(g, α, Δt, μ, 𝐲[t])
+					∑ᵢₖ_dQᵢₖ_da += g[1]
+					dℓ_dL = g[2]*differentiate_inverselink(𝐋[t])
+				else
+					dℓ_dL = differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				end
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
 				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
 				if fit_𝛃
 					if (i==1) || (i==Ξ)
@@ -187,6 +205,9 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Matrix{<:Vector{<:Real}}
 			mul!(∇Q.𝐯[k], 𝐕ᵀ, ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
 		end
 	end
+	if fit_overdispersion
+		∇Q.a[2] = ∑ᵢₖ_dQᵢₖ_da*differentiate_inverselink(a[1])
+	end
 	if ∇Q.fit_b
 		∇Q.b[1] = 0.0
 		@inbounds for k = 1:K
@@ -199,9 +220,9 @@ end
 """
     expectation_of_loglikelihood(γ, mpGLM, x)
 
-ForwardDiff-compatible computation of the expectation of the log-likelihood of the mixture of Poisson generalized model of one neuron
+ForwardDiff-compatible computation of the expectation of the log-likelihood of the mixture of Poisson generalized linear model (mpGLM) of one neuron
 
-Ignores the log(y!) term, which does not depend on the parameters
+Terms that do not depend on the parameters, such as the `log(y!)` term in the non-overdispersed Poisson model, are ignored
 
 ARGUMENT
 -`γ`: posterior probability of the latent variable
@@ -214,6 +235,8 @@ RETURN
 function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpGLM::MixturePoissonGLM, x::Vector{<:Real}; initialization::Bool=false)
 	mpGLM = MixturePoissonGLM(x, mpGLM; initialization=initialization)
     @unpack Δt, 𝐲 = mpGLM
+	@unpack a, fit_overdispersion = mpGLM.θ
+	α = inverselink(a[1])
     T = length(𝐲)
     Ξ,K = size(γ)
     Q = 0.0
@@ -221,7 +244,8 @@ function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpG
 	    for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
             for t = 1:T
-				Q += γ[i,k][t]*poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
+				ℓ = fit_overdispersion ? negbinloglikelihood(α, Δt, inverselink(𝐋[t]), 𝐲[t]) : poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
+				Q += γ[i,k][t]*ℓ
             end
         end
     end
@@ -378,67 +402,6 @@ function MixturePoissonGLM(d𝛏_dB::Vector{<:AbstractFloat},
 end
 
 """
-	GLMθ(indices𝐮, options, n𝐯)
-
-Randomly initiate the parameters for a mixture of Poisson generalized linear model
-
-ARGUMENT
--`indices𝐮`: indices of the encoding weights of the temporal basis vectors of each filter that is independent of the accumulator
--`n𝐯`: number of temporal basis vectors specifying the time-varying weight of the accumulator
--`options`: settings of the model
-
-OUTPUT
--an instance of `GLMθ`
-"""
-function GLMθ(indices𝐮::Indices𝐮, n𝐯::Integer, options::Options)
-	n𝐮 = maximum(vcat((getfield(indices𝐮, field) for field in fieldnames(Indices𝐮))...))
-	θ = GLMθ(b = fill(NaN,1),
-			b_scalefactor = options.b_scalefactor,
-			fit_b = options.fit_b,
-			fit_𝛃 = options.fit_𝛃,
-			𝐮 = fill(NaN, n𝐮),
-			indices𝐮=indices𝐮,
-			𝐯 = collect(fill(NaN,n𝐯) for k=1:options.K))
-	randomizeparameters!(θ, options)
-	return θ
-end
-
-"""
-	randomizeparameters!(θ, options)
-
-Randomly initialize parameters of a mixture of Poisson GLM
-
-MODIFIED ARGUMENT
--`θ`: structure containing parameters of a mixture of Poisson GLM
-
-UNMODIFIED ARGUMENT
--`options`: hyperparameters of the model
-"""
-function randomizeparameters!(θ::GLMθ, options::Options)
-	for i in eachindex(θ.𝐮)
-		θ.𝐮[i] = 1.0 .- 2rand()
-	end
-	θ.𝐮[θ.indices𝐮.gain] ./= options.tbf_gain_scalefactor
-	θ.𝐮[θ.indices𝐮.postspike] ./= options.tbf_hist_scalefactor
-	θ.𝐮[θ.indices𝐮.poststereoclick] ./= options.tbf_time_scalefactor
-	θ.𝐮[θ.indices𝐮.premovement] ./= options.tbf_move_scalefactor
-	θ.𝐮[θ.indices𝐮.postphotostimulus] ./= options.tbf_phot_scalefactor
-	K = length(θ.𝐯)
-	if K > 1
-		𝐯₀ = (-1.0:2.0/(K-1):1.0)./options.tbf_accu_scalefactor
-		for k = 1:K
-			θ.𝐯[k] .= 𝐯₀[k]
-		end
-	else
-		θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./options.tbf_accu_scalefactor
-	end
-	for k = 1:K
-		θ.𝛃[k] .= θ.fit_𝛃 ? -θ.𝐯[k] : 0.0
-	end
-	θ.b[1] = 0.0
-end
-
-"""
 	samplespiketrain(a, c, 𝐄𝐞, 𝐡, mpGLM, 𝛚, 𝛕)
 
 Generate a sample of spiking response on each time step of one trial
@@ -458,7 +421,8 @@ RETURN
 """
 function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
 	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
-	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
+	@unpack a, 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
+	α = inverselink(a[1])
 	max_spikehistory_lag = length(𝐡)
 	K = length(𝐯)
 	max_spikes_per_step = floor(1000Δt)
@@ -482,7 +446,14 @@ function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::
 			end
 		end
         𝛌[t] = softplus(L)
-        𝐲̂[t] = min(rand(Poisson(𝛌[t]*Δt)), max_spikes_per_step)
+		if fit_overdispersion
+			μ = 𝛌[t]
+			p = probabilitysuccess(α,Δt,μ)
+			r = 1/α
+			𝐲̂[t] = min(rand(NegativeBinomial(r,p)), max_spikes_per_step)
+		else
+			𝐲̂[t] = min(rand(Poisson(𝛌[t]*Δt)), max_spikes_per_step)
+		end
     end
 	return 𝛌, 𝐲̂
 end

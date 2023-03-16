@@ -1,4 +1,66 @@
 """
+	GLMθ(indices𝐮, options, n𝐯)
+
+Randomly initiate the parameters for a mixture of Poisson generalized linear model
+
+ARGUMENT
+-`indices𝐮`: indices of the encoding weights of the temporal basis vectors of each filter that is independent of the accumulator
+-`n𝐯`: number of temporal basis vectors specifying the time-varying weight of the accumulator
+-`options`: settings of the model
+
+OUTPUT
+-an instance of `GLMθ`
+"""
+function GLMθ(indices𝐮::Indices𝐮, n𝐯::Integer, options::Options)
+	n𝐮 = maximum(vcat((getfield(indices𝐮, field) for field in fieldnames(Indices𝐮))...))
+	θ = GLMθ(b_scalefactor = options.b_scalefactor,
+			fit_b = options.fit_b,
+			fit_𝛃 = options.fit_𝛃,
+			fit_overdispersion = options.fit_overdispersion,
+			𝐮 = fill(NaN, n𝐮),
+			indices𝐮=indices𝐮,
+			𝐯 = collect(fill(NaN,n𝐯) for k=1:options.K))
+	randomizeparameters!(θ, options)
+	return θ
+end
+
+"""
+	randomizeparameters!(θ, options)
+
+Randomly initialize parameters of a mixture of Poisson GLM
+
+MODIFIED ARGUMENT
+-`θ`: structure containing parameters of a mixture of Poisson GLM
+
+UNMODIFIED ARGUMENT
+-`options`: hyperparameters of the model
+"""
+function randomizeparameters!(θ::GLMθ, options::Options)
+	θ.a[1] = θ.fit_overdispersion ? rand() : -Inf
+	θ.b[1] = 0.0
+	for i in eachindex(θ.𝐮)
+		θ.𝐮[i] = 1.0 .- 2rand()
+	end
+	θ.𝐮[θ.indices𝐮.gain] ./= options.tbf_gain_scalefactor
+	θ.𝐮[θ.indices𝐮.postspike] ./= options.tbf_hist_scalefactor
+	θ.𝐮[θ.indices𝐮.poststereoclick] ./= options.tbf_time_scalefactor
+	θ.𝐮[θ.indices𝐮.premovement] ./= options.tbf_move_scalefactor
+	θ.𝐮[θ.indices𝐮.postphotostimulus] ./= options.tbf_phot_scalefactor
+	K = length(θ.𝐯)
+	if K > 1
+		𝐯₀ = (-1.0:2.0/(K-1):1.0)./options.tbf_accu_scalefactor
+		for k = 1:K
+			θ.𝐯[k] .= 𝐯₀[k]
+		end
+	else
+		θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./options.tbf_accu_scalefactor
+	end
+	for k = 1:K
+		θ.𝛃[k] .= θ.fit_𝛃 ? -θ.𝐯[k] : 0.0
+	end
+end
+
+"""
 	initialize_GLM_parameters!(model)
 
 Initialize the GLM parameters using expectation-maximization.
@@ -174,51 +236,78 @@ UNMODIFIED ARGUMENT
 """
 function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
     @unpack Δt, 𝐕, 𝐗, 𝐲, d𝛏_dB = mpGLM
-	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
+	@unpack a, 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
 	d𝛏_dB² = d𝛏_dB.^2
 	Ξ, K = size(γ)
 	T = length(𝐲)
 	Q[1] = 0.0
 	∇Q .= 0.0
 	∇∇Q .= 0.0
-	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(type,T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(type,T) for k=1:K)
-	if fit_𝛃
-		∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-		∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-	else
-		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+	∑ᵢₖ_dQᵢₖ_dLᵢₖ = zeros(type,T)
+	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = zeros(type,T)
+	∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ = zeros(type,T)
+	∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+	∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+	∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+	∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+	if fit_overdispersion
+		α = inverselink(a[1])
+		H = zeros(2,2)
+		g = zeros(2)
+		∑_d²Q_da² = 0.0
+		∑_dQ_da = 0.0
+		dα_da = differentiate_inverselink(a[1])
+		d²α_da² = differentiate_twice_inverselink(a[1])
+		∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+		∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 	end
 	@inbounds for i = 1:Ξ
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
-				d²ℓ_dL², dℓ_dL, ℓ = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
-				Q[1] += γ[i,k][t]*ℓ
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
-				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
-				if fit_𝛃
+				if fit_overdispersion
+					μ = inverselink(𝐋[t])
+					ℓ = negbinloglikelihood(α, Δt, μ, y)
+					differentiate_loglikelihood_wrt_overdispersion_mean!(H, g, α, Δt, μ, 𝐲[t])
+					dℓ_dα = g[1]
+					d²ℓ_dα² = H[1,1]
+					dℓ_da = dℓ_dα*dα_da
+					d²ℓ_da² = d²ℓ_dα²*dα_da^2 + dℓ_dα*d²α_da²
+					∑_dQ_da += γ[i,k][t]*dℓ_da
+					∑_d²Q_da² += γ[i,k][t]*d²ℓ_da²
+					dℓ_dμ = g[2]
+					dμ_dL = differentiate_inverselink(𝐋[t])
+					dℓ_dL = dℓ_dμ*dμ_dL
+					d²ℓ_dμ² = H[2,2]
+					d²μ_dL² = differentiate_twice_inverselink(𝐋[t])
+					d²ℓ_dL² = d²ℓ_dμ²*dμ_dL^2 + dℓ_dμ*d²μ_dL²
+					d²ℓ_dαdμ = H[2,1]
+					d²ℓ_dadL = d²ℓ_dαdμ*dα_da*dμ_dL
+					d²Qᵢₖ_dadLᵢₖ = γ[i,k][t]*d²ℓ_dadL
+					∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ[t] += d²Qᵢₖ_dadLᵢₖ
 					if (i==1) || (i==Ξ)
-						∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-						∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-						∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+						∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dadLᵢₖ*d𝛏_dB[i]
 					else
-						∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-						∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-						∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+						∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dadLᵢₖ*d𝛏_dB[i]
 					end
 				else
-					∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-					∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-					∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+					d²ℓ_dL², dℓ_dL, ℓ = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
+				end
+				Q[1] += γ[i,k][t]*ℓ
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
+				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
+				∑ᵢₖ_dQᵢₖ_dLᵢₖ[t] += dQᵢₖ_dLᵢₖ
+				∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²[t] += d²Qᵢₖ_dLᵢₖ²
+				if (i==1) || (i==Ξ)
+					∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+					∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+					∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+				else
+					∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+					∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+					∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
 				end
 			end
 		end
@@ -227,13 +316,10 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 	n𝐯 = length(𝐯[1])
 	indices𝐮 = 1:n𝐮
 	indices𝐯 = collect(indices𝐮[end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
-	if fit_𝛃
-		indices𝛃 = collect(indices𝐯[end][end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
-	end
+	indices𝛃 = collect(indices𝐯[end][end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
+	indexa = 1 + (fit_𝛃 ? indices𝛃[end][end] : indices𝐯[end][end])
 	𝐔 = @view 𝐗[:, 1:n𝐮]
 	𝐔ᵀ, 𝐕ᵀ = transpose(𝐔), transpose(𝐕)
-	∑ᵢₖ_dQᵢₖ_dLᵢₖ = sum(∑ᵢ_dQᵢₖ_dLᵢₖ)
-	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = sum(∑ᵢ_d²Qᵢₖ_dLᵢₖ²)
 	∇Q[indices𝐮] .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
 	∇∇Q[indices𝐮, indices𝐮] .= 𝐔ᵀ*(∑ᵢₖ_d²Qᵢₖ_dLᵢₖ².*𝐔)
 	if fit_𝛃
@@ -247,10 +333,27 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 		end
 	else
 		@inbounds for k = 1:K
-			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
+			∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = ∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k] + ∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
+			∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = ∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k] + ∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k]
+			∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = ∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k] + ∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k]
+			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB
+			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB.*𝐕)
+			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB².*𝐕)
 		end
+	end
+	if fit_overdispersion
+		∇Q[indexa] = ∑_dQ_da
+		∇∇Q[indices𝐮, indexa] = 𝐔ᵀ*∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ
+		if fit_𝛃
+			@inbounds for k = 1:K
+				∇∇Q[indices𝐯[k], indexa] .= 𝐕ᵀ*∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k]
+				∇∇Q[indices𝛃[k], indexa] .= 𝐕ᵀ*∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k]
+			end
+		else
+			∑ᵢ_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = ∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k] + ∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k]
+			∇∇Q[indices𝐯[k], indexa] .= 𝐕ᵀ*∑ᵢ_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB
+		end
+		∇∇Q[indexa, indexa] = ∑_d²Q_da²
 	end
 	for i = 1:size(∇∇Q,1)
 		for j = i+1:size(∇∇Q,2)

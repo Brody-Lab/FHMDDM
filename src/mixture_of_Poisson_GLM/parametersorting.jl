@@ -21,6 +21,12 @@ function concatenateparameters(glmθ::GLMθ; includeunfit::Bool=false, initializ
 				else
 					emptyvector
 				end
+			elseif name==:a
+				if (includeunfit || glmθ.fit_overdispersion)
+					glmθ.a
+				else
+					emptyvector
+				end
 			elseif name==:b
 				if !initialization && (includeunfit || glmθ.fit_b)
 					glmθ.b
@@ -282,6 +288,8 @@ function nameparameters(glmθ::GLMθ)
 					parameternames = vcat(parameternames, "postcommitment_encoding_"*string(k)*"_"*string(q))
 				end
 			end
+		elseif (name == :a) & glmθ.fit_overdispersion
+			parameternames = vcat(parameternames, "overdispersion")
 		elseif (name == :b) & glmθ.fit_b
 			parameternames = vcat(parameternames, "transformation")
 		end
@@ -351,6 +359,11 @@ function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; includeunfit
 						θ.𝛃[k][q] = concatenatedθ[offset]
 					end
 				end
+			end
+		elseif name == :a
+			if (includeunfit || θ.fit_overdispersion)
+				offset += 1
+				θ.a[1] = concatenatedθ[offset]
 			end
 		elseif name == :b
 			if !initialization && (includeunfit || θ.fit_b)
