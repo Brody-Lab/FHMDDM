@@ -125,71 +125,20 @@ UNMODIFIED ARGUMENT
 function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Matrix{<:Vector{<:Real}}; show_trace::Bool=false, iterations::Integer=20)
 	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	nparameters = length(x₀)
+	D = GLMDerivatives(mpGLM)
 	Q = fill(NaN,1)
 	∇Q = fill(NaN, nparameters)
 	∇∇Q = fill(NaN, nparameters, nparameters)
-	f(x) = negexpectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,x)
-	∇f!(∇, x) = negexpectation_of_∇loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
-	∇∇f!(∇∇, x) = negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+	f(x) = negexpectation_of_loglikelihood!(mpGLM,D,Q,∇Q,∇∇Q,γ,x)
+	∇f!(∇, x) = negexpectation_of_∇loglikelihood!(∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)
+	∇∇f!(∇∇, x) = negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)
     results = Optim.optimize(f, ∇f!, ∇∇f!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
 	sortparameters!(mpGLM.θ, Optim.minimizer(results); initialization=true)
 	return nothing
 end
 
 """
-	negexpectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,x)
-
-Negative expectation of the log-likelihood under the posterior probability of the latent variables
-
-MODIFIED ARGUMENT
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
--`Q`: an one-element vector that quantifies the expectation
--`∇Q`: gradient of the expectation with respect to the filters in the k-th state
--`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
--`x`: filters
-"""
-function negexpectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
-	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
-	if (x != x₀) || isnan(Q[1])
-		sortparameters!(mpGLM.θ, x; initialization=true)
-		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
-	end
-	-Q[1]
-end
-
-"""
-	negexpectation_of_∇loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
-
-Gradient of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
-
-MODIFIED ARGUMENT
--`∇`: gradient of the negative of the expectation
--`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
--`Q`: an one-element vector that quantifies the expectation
--`∇Q`: gradient of the expectation with respect to the filters in the k-th state
--`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
-
-UNMODIFIED ARGUMENT
--`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
--`x`: filters
-"""
-function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
-	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
-	if (x != x₀) || isnan(Q[1])
-		sortparameters!(mpGLM.θ, x; initialization=true)
-		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
-	end
-	for i in eachindex(∇)
-		∇[i] = -∇Q[i]
-	end
-	return nothing
-end
-
-"""
-	negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+	negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)
 
 Hessian of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
 
@@ -197,6 +146,7 @@ MODIFIED ARGUMENT
 -`∇∇`: Hessian of the negative of the expectation
 -`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
 -`Q`: an one-element vector that quantifies the expectation
+-`D`: an object for in-place computation of first and second derivatives of the log-likelihood
 -`∇Q`: gradient of the expectation with respect to the filters in the k-th state
 -`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
 
@@ -204,11 +154,11 @@ UNMODIFIED ARGUMENT
 -`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
 -`x`: filters
 """
-function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, D::GLMDerivatives, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
 	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
 		sortparameters!(mpGLM.θ, x; initialization=true)
-		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
+		expectation_of_∇∇loglikelihood!(D,Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	nparameters = length(x)
 	for i =1:nparameters
@@ -220,11 +170,54 @@ function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::M
 end
 
 """
-	expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
+	negexpectation_of_loglikelihood!(mpGLM,D,Q,∇Q,∇∇Q,γ,x)
+
+Negative expectation of the log-likelihood under the posterior probability of the latent variables
+
+MODIFIED ARGUMENT
+-`∇`: gradient of the negative of the expectation
+
+For other modified and unmodified arguments see documentation for `negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)`
+
+RETURN
+-a scalar that is the negative of the expectation of the log-likelihood under the posterior probability distribution
+"""
+function negexpectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, D::GLMDerivatives, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
+	if (x != x₀) || isnan(Q[1])
+		sortparameters!(mpGLM.θ, x; initialization=true)
+		expectation_of_∇∇loglikelihood!(D,Q,∇Q,∇∇Q,γ,mpGLM)
+	end
+	-Q[1]
+end
+
+"""
+	negexpectation_of_∇loglikelihood!(∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)
+
+Gradient of the negative of the expectation of the log-likelihood under the posterior probability of the latent variables
+
+ARGUMENT
+For other modified and unmodified arguments see documentation for `negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)`
+"""
+function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, D::GLMDerivatives, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
+	if (x != x₀) || isnan(Q[1])
+		sortparameters!(mpGLM.θ, x; initialization=true)
+		expectation_of_∇∇loglikelihood!(D,Q,∇Q,∇∇Q,γ,mpGLM)
+	end
+	for i in eachindex(∇)
+		∇[i] = -∇Q[i]
+	end
+	return nothing
+end
+
+"""
+	expectation_of_∇∇loglikelihood!(D, Q,∇Q,∇∇Q,γ,k,mpGLM)
 
 Compute the expectation of the log-likelihood and its gradient and Hessian
 
 ARGUMENT
+-`D`: an object for in-place computation of first and second derivatives of the log-likelihood
 -`Q`: expectation of the log-likelihood under the posterior probability of the latent variables. Only the component in the coupling state `k` is included
 -`∇Q`: first-order derivatives of the expectation
 -`∇∇Q`: second-order derivatives of the expectation
@@ -234,7 +227,7 @@ UNMODIFIED ARGUMENT
 -`k`: index of the coupling state
 -`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
 """
-function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
+function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
     @unpack Δt, 𝐕, 𝐗, 𝐲, d𝛏_dB = mpGLM
 	@unpack a, 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
 	d𝛏_dB² = d𝛏_dB.^2
@@ -253,13 +246,9 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
 	if fit_overdispersion
-		α = inverselink(a[1])
-		H = zeros(2,2)
-		g = zeros(2)
+		differentiate_twice_overdispersion!(D, a[1])
 		∑_d²Q_da² = 0.0
 		∑_dQ_da = 0.0
-		dα_da = differentiate_inverselink(a[1])
-		d²α_da² = differentiate_twice_inverselink(a[1])
 		∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 		∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 	end
@@ -267,37 +256,21 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
+				differentiate_twice_loglikelihood!(D,𝐋[t],mpGLM.𝐲[t])
 				if fit_overdispersion
-					μ = inverselink(𝐋[t])
-					ℓ = negbinloglikelihood(α, Δt, μ, y)
-					differentiate_loglikelihood_wrt_overdispersion_mean!(H, g, α, Δt, μ, 𝐲[t])
-					dℓ_dα = g[1]
-					d²ℓ_dα² = H[1,1]
-					dℓ_da = dℓ_dα*dα_da
-					d²ℓ_da² = d²ℓ_dα²*dα_da^2 + dℓ_dα*d²α_da²
-					∑_dQ_da += γ[i,k][t]*dℓ_da
-					∑_d²Q_da² += γ[i,k][t]*d²ℓ_da²
-					dℓ_dμ = g[2]
-					dμ_dL = differentiate_inverselink(𝐋[t])
-					dℓ_dL = dℓ_dμ*dμ_dL
-					d²ℓ_dμ² = H[2,2]
-					d²μ_dL² = differentiate_twice_inverselink(𝐋[t])
-					d²ℓ_dL² = d²ℓ_dμ²*dμ_dL^2 + dℓ_dμ*d²μ_dL²
-					d²ℓ_dαdμ = H[2,1]
-					d²ℓ_dadL = d²ℓ_dαdμ*dα_da*dμ_dL
-					d²Qᵢₖ_dadLᵢₖ = γ[i,k][t]*d²ℓ_dadL
+					∑_dQ_da += γ[i,k][t]*D.dℓ_da[1]
+					∑_d²Q_da² += γ[i,k][t]*D.d²ℓ_da²[1]
+					d²Qᵢₖ_dadLᵢₖ = γ[i,k][t]*D.d²ℓ_dadL[1]
 					∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ[t] += d²Qᵢₖ_dadLᵢₖ
 					if (i==1) || (i==Ξ)
 						∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dadLᵢₖ*d𝛏_dB[i]
 					else
 						∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dadLᵢₖ*d𝛏_dB[i]
 					end
-				else
-					d²ℓ_dL², dℓ_dL, ℓ = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
 				end
-				Q[1] += γ[i,k][t]*ℓ
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
-				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
+				Q[1] += γ[i,k][t]*D.ℓ[1]
+				dQᵢₖ_dLᵢₖ = γ[i,k][t] * D.dℓ_dL[1]
+				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * D.d²ℓ_dL²[1]
 				∑ᵢₖ_dQᵢₖ_dLᵢₖ[t] += dQᵢₖ_dLᵢₖ
 				∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²[t] += d²Qᵢₖ_dLᵢₖ²
 				if (i==1) || (i==Ξ)
@@ -350,8 +323,10 @@ function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:t
 				∇∇Q[indices𝛃[k], indexa] .= 𝐕ᵀ*∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k]
 			end
 		else
-			∑ᵢ_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = ∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k] + ∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k]
-			∇∇Q[indices𝐯[k], indexa] .= 𝐕ᵀ*∑ᵢ_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB
+			@inbounds for k = 1:K
+				∑ᵢ_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = ∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k] + ∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k]
+				∇∇Q[indices𝐯[k], indexa] .= 𝐕ᵀ*∑ᵢ_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB
+			end
 		end
 		∇∇Q[indexa, indexa] = ∑_d²Q_da²
 	end

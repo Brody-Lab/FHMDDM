@@ -15,20 +15,16 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-function scaledlikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}},
-					 p𝑑_a::Vector{<:Vector{<:Vector{<:Real}}},
-					 s::Real,
-                     trialsets::Vector{<:Trialset},
-                     ψ::Real)
+function scaledlikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}}}, p𝑑_a::Vector{<:Vector{<:Vector{<:Real}}}, trialsets::Vector{<:Trialset}, ψ::Real)
 	Ξ = size(p𝐘𝑑[1][1][end],1)
 	K = size(p𝐘𝑑[1][1][end],2)
     @inbounds for i in eachindex(p𝐘𝑑)
 		N = length(trialsets[i].mpGLMs)
 	    for j = 1:Ξ
 	        for k = 1:K
-				𝐩 = scaledlikelihood(trialsets[i].mpGLMs[1], j, k, s)
+				𝐩 = scaledlikelihood(trialsets[i].mpGLMs[1], j, k)
 	            for n = 2:N
-				    scaledlikelihood!(𝐩, trialsets[i].mpGLMs[n], j, k, s)
+				    scaledlikelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
 	            end
 	            t = 0
 	            for m in eachindex(p𝐘𝑑[i])
@@ -358,34 +354,6 @@ function posteriors!(memory::Memoryforgradient, i::Integer, n::Integer, model::M
 end
 
 """
-	likelihood!(p𝐲, mpGLM)
-
-Conditional likelihood of the spiking of one neuron
-
-MODIFIED ARGUMENT
--`𝐩`: A nested array whose element `𝐩[m][t][j,k]` corresponds to the conditional likelihood of the spiking given the coupling in the k-th state and the accumulator in the j-th state, at the t-th time step of the m-th trial
-
-UNMODIFIED ARGUMENT
--`mpGLM`: structure containing the data and parameters of the mixture Poisson GLM of one neuron
-"""
-function likelihood!(𝐩::Vector{<:Vector{<:Matrix{<:Real}}}, mpGLM::MixturePoissonGLM)
-	(Ξ,K) = size(𝐩[1][end])
-	for j = 1:Ξ
-		for k = 1:K
-			p𝐲_jk = scaledlikelihood(mpGLM, j, k, 1.0)
-			τ = 0
-			for m in eachindex(𝐩)
-				for t in eachindex(𝐩[m])
-					τ += 1
-					𝐩[m][t][j,k] = p𝐲_jk[τ]
-				end
-			end
-		end
-	end
-	return nothing
-end
-
-"""
 	posterior_on_spikes!(memory, model)
 
 Posterior probability of the latent variables conditioned on only the spiking and not the choice
@@ -399,7 +367,7 @@ UNMODIFIED ARGUMENT
 function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
 	p𝐘 = memory.p𝐘𝑑
 	for i in eachindex(p𝐘)
-		scaledlikelihood!(p𝐘[i], model.options.sf_y, model.trialsets[i])
+		scaledlikelihood!(p𝐘[i], model.trialsets[i])
 	end
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	posteriors!(memory, P, model)
@@ -407,7 +375,7 @@ function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
 end
 
 """
-    scaledlikelihood!(p𝐘, s, trialset)
+    scaledlikelihood!(p𝐘, trialset)
 
 In-place computation the conditional likelihood of the simultaneous spike response
 
@@ -421,14 +389,14 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, s::Real, trialset::Trialset)
+function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, trialset::Trialset)
 	(Ξ,K) = size(p𝐘[1][end])
 	N = length(trialset.mpGLMs)
     for j = 1:Ξ
         for k = 1:K
-			𝐩 = scaledlikelihood(trialset.mpGLMs[1], j, k, s)
+			𝐩 = scaledlikelihood(trialset.mpGLMs[1], j, k)
             for n = 2:N
-			    scaledlikelihood!(𝐩, trialset.mpGLMs[n], j, k, s)
+			    scaledlikelihood!(𝐩, trialset.mpGLMs[n], j, k)
             end
             τ = 0
             for m in eachindex(p𝐘)

@@ -73,8 +73,8 @@ UNMODIFIED ARGUMENT
 """
 function twopasshessian!(memoryforhessian::Memoryforhessian, model::Model, sameacrosstrials::Sameacrosstrials, trial::Trial)
 	@unpack θnative = model
-	@unpack K, Ξ = model.options
-	@unpack clicks, trialindex = trial
+	@unpack K, Ξ, sf_y = model.options
+	@unpack clicks, trialsetindex = trial
 	@unpack mpGLMs = model.trialsets[trialsetindex]
 	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, D, ∇D, ∇b = memoryforhessian
 	@unpack P, ∇pa₁, ∇∇pa₁, Aᵃinput, ∇Aᵃinput, ∇∇Aᵃinput = memoryforhessian
@@ -92,7 +92,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian, model::Model, samea
 	indexθ_trialset = sameacrosstrials.indexθ_trialset[trialsetindex]
 	nθ_trialset = sameacrosstrials.nθ_trialset[trialsetindex]
 	adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	update_emissions!(memoryforhessian, mpGLMs, sameacrosstrials, trial)
+	spikcountderivatives!(memoryforhessian, mpGLMs, sameacrosstrials, trial)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
@@ -170,6 +170,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian, model::Model, samea
 		D[t] = sum(f[t])
 		forward!(∇D[t], f[t], ∇f[t], ℓ, D[t])
 	end
+	ℓ[1] -= length(mpGLMs)*trial.ntimesteps*log(sf_y)
 	bₜ = ones(Ξ,K)
 	@inbounds for t = trial.ntimesteps:-1:1
 		γ = f[t] # resuse memory
@@ -768,6 +769,8 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					∇b=∇b,
 					D = zeros(maxtimesteps),
 					∇D=∇D,
+					glmderivatives=GLMDerivatives(model.trialsets[1].mpGLMs[1]),
+					indexθglms = collect(collect(indexparameters(mpGLM.θ; includeunfit=true) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 					∇ℓ=zeros(S.nθ_alltrialsets),
 					∇∇ℓ=zeros(S.nθ_alltrialsets,S.nθ_alltrialsets),
 					∂pY𝑑_∂ψ=zeros(Ξ,K),
@@ -775,6 +778,7 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					𝐋=𝐋,
 					∇logpy=∇logpy,
 					∇∇logpy=∇∇logpy,
+					𝛂 = collect(collect(inverselink(mpGLM.θ.a[1]) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 					𝛚 = 𝛚,
 					d𝛚_db = d𝛚_db,
 					d²𝛚_db² = d²𝛚_db²,

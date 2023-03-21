@@ -123,6 +123,8 @@ for i = 1:nparameters
             parametertypes(i) = "premovement";
         elseif contains(S.parameternames{i}, 'postphotostimulus')
             parametertypes(i) = "postphotostimulus";
+        elseif contains(S.parameternames{i}, 'overdispersion')
+            parametertypes(i) = "overdispersion";
         elseif contains(S.parameternames{i}, 'transformation')
             parametertypes(i) = "transformation";
         elseif contains(S.parameternames{i}, 'commitment')

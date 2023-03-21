@@ -23,10 +23,11 @@ UNMODIFIED ARGUMENT
 EXAMPLE
 ```julia-repl
 julia> using FHMDDM, ForwardDiff, Distributions
-julia> α, Δt, μ, y = 0.1, 0.01, 300.0, 1
-julia> f(x) = logpdf(NegativeBinomial(1/x[1], 1/(1+x[1]*x[2]*Δt)), y)
-julia> gauto = ForwardDiff.gradient(f,[α, μ])
-julia> Hauto = ForwardDiff.hessian(f,[α, μ])
+julia> α, Δt, μ, y = 1.3, 0.01, 1.0, 2
+julia> x0 = [α, μ]
+julia> f(x) = FHMDDM.negbinloglikelihood(x[1], Δt, x[2], y)
+julia> gauto = ForwardDiff.gradient(f,x0)
+julia> Hauto = ForwardDiff.hessian(f,x0)
 julia> ghand = zeros(2)
 julia> Hhand = zeros(2,2)
 julia> FHMDDM.differentiate_loglikelihood_wrt_overdispersion_mean!(ghand, Hhand, α, Δt, μ, y)
@@ -110,7 +111,7 @@ RETURN
 function negbinloglikelihood(α::Real, Δt::Real, μ::Real, y::Integer)
     r = 1/α
     p = probabilitysuccess(α,Δt,μ)
-    pdf(NegativeBinomial(r,p),y)
+    logpdf(NegativeBinomial(r,p),y)
 end
 
 """

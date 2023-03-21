@@ -139,7 +139,7 @@ function loglikelihood_choice_given_spikes(model::Model)
 	P = update!(memory, model)
 	memory_𝐘 = Memoryforgradient(model)
 	for i in eachindex(memory_𝐘.p𝐘𝑑)
-		scaledlikelihood!(memory_𝐘.p𝐘𝑑[i], model.options.sf_y, model.trialsets[i])
+		scaledlikelihood!(memory_𝐘.p𝐘𝑑[i], model.trialsets[i])
 	end
 	P_𝐘 = update_for_latent_dynamics!(memory_𝐘, model.options, model.θnative)
 	log2e = log2(exp(1))

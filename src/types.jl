@@ -332,6 +332,8 @@ Mixture of Poisson generalized linear model
     Δt::F
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
+	"scale factor multiplied to the likelihood to avoid underflow when computing the likelihood of the population response"
+	likelihoodscalefactor::F
 	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
 	Φaccumulator::MF
 	"values of the basis functions parametrizing the slow drift in gain on each trial"
@@ -370,6 +372,41 @@ Mixture of Poisson generalized linear model
 	Ξ::TI=length(d𝛏_dB)
 	"Poisson observations"
     𝐲::VI
+end
+
+
+
+"""
+
+Quantities and memory used for computing the conditional partial derivatives of spike count response generalized linear model
+"""
+@with_kw struct GLMDerivatives{B<:Bool, F<:AbstractFloat, VF<:Vector{<:AbstractFloat}, MF<:Matrix{<:AbstractFloat}}
+	"overdispersion parameter"
+	α::VF=fill(NaN,1)
+	"time step duration, in seconds"
+	Δt::F
+	"log-likelihood"
+	ℓ::VF=fill(NaN,1)
+	"derivative of the overdispersion parameter with respect to its real-valued parameter"
+	dα_da::VF=fill(NaN,1)
+	"second derivative of the overdispersion parameter with respect to its real-valued parameter"
+	d²α_da²::VF=fill(NaN,1)
+	"first-order partial derivative of the log-likelihood with respect to the real-valued over-dispersion parameter"
+	dℓ_da::VF=fill(NaN,1)
+	"first-order partial derivative of the log-likelihood with respect to the linear predictor"
+	dℓ_dL::VF=fill(NaN,1)
+	"second-order partial derivative of the log-likelihood with respect to the real-valued over-dispersion parameter"
+	d²ℓ_da²::VF=fill(NaN,1)
+	"second-order partial derivative of the log-likelihood with respect to the real-valued over-dispersion parameter and the linear predictor"
+	d²ℓ_dadL::VF=fill(NaN,1)
+	"second-order partial derivative of the log-likelihood with respect to the linear predictor"
+	d²ℓ_dL²::VF=fill(NaN,1)
+	"whether the model is a gamma-poisson mixture or a poisson"
+	fit_overdispersion::B
+	"vector for in-place computation of first-order partial derivatives "
+	g::VF=fill(NaN,2)
+	"matrix for in-place computation of second-order partial derivatives"
+	H::MF=fill(NaN,2,2)
 end
 
 """
@@ -839,9 +876,11 @@ end
 
 Pre-allocated memory for computing the hessian as the jacobian of the expectation conjugate gradient
 """
-@with_kw struct Memoryforhessian{VR<:Vector{<:Real},
+@with_kw struct Memoryforhessian{GD<:GLMDerivatives, 
+								VR<:Vector{<:Real},
 								MR<:Matrix{<:Real},
 								VVR<:Vector{<:Vector{<:Real}},
+								VVT<:Vector{<:Vector{<:GLMθ}},
 								VMR<:Vector{<:Matrix{<:Real}},
 								MVR<:Matrix{<:Vector{<:Real}},
 								VVVR<:Vector{<:Vector{<:Vector{<:Real}}},
@@ -867,6 +906,10 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 	D::VR
 	"gradient of the past-conditioned likelihood. Element `∇D[t][q]` corresponds to the t-th time step of a trial and q-th parameter among all parameters in the model"
 	∇D::VVR
+	"an object for in-place computation of derivatives of the GLM"
+	glmderivatives::GD
+	"indices of the GLM parameters for each neuron in each trialset"
+	indexθglms::VVT
 	"derivative of the conditional likelihood of the emissions at the last time step of a trial with respect to the lapse parameter ψ. Element `∂pY𝑑_∂ψ[i,j]` corresponds to the i-th accumulator state and j-th coupling state."
 	∂pY𝑑_∂ψ::MR
 	"forward term. Element 'f[t][i,j]' corresponds to the t-th time step in a trial, i-th accumulator state, and j-th coupling state"
@@ -887,6 +930,8 @@ Pre-allocated memory for computing the hessian as the jacobian of the expectatio
 	∇pa₁::VVR
 	"second-order partial derivatives of the prior probability of the accumulator. Element `∇∇pa₁[q,r][i]` corresponds to the q-th and r-th parameter among the parameters that govern prior probability and i-th accumulator state"
 	∇∇pa₁::MVR
+	"overdispersion parameters of each neuron. Element 𝛂[i][n] corresponds to the n-th neuron in the i-th trialset."
+	𝛂::VVR
 	"transformed values of accumulated evidence. Element `𝛚[i][n][j]` corresponds to the transformation of the j-th discrete value of accumulated for the n-th neuron in the i-th trialset."
 	𝛚::VVVR
 	"first-order derivative of the transformed values of accumulated evidence"
@@ -907,6 +952,7 @@ end
 Container of variables used by both the log-likelihood and gradient computation
 """
 @with_kw struct Memoryforgradient{R<:Real,
+								GD<:GLMDerivatives,
 								TI<:Integer,
 								VI<:Vector{<:Integer},
 								VR<:Vector{<:Real},
@@ -947,6 +993,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	Δt::R
 	"forward terms"
 	f::VMR
+	"an object for in-place computation of derivatives of the GLM"
+	glmderivatives::GD
 	"a structure indicating the index of each model parameter in the vector of concatenated values"
 	indexθ::Tindex
 	"indices of the parameters that influence the prior probabilities of the accumulator"

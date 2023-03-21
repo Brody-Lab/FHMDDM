@@ -175,7 +175,7 @@ function loglikelihood(concatenatedθ::Vector{type}, indexθ::Indexθ, model::Mo
 				ones(type,Ξ)
 			end
 		end
-    scaledlikelihood!(p𝐘𝑑, p𝑑_a, sf_y, trialsets, θnative.ψ[1])
+    scaledlikelihood!(p𝐘𝑑, p𝑑_a, trialsets, θnative.ψ[1])
 	choiceLLscaling = scale_factor_choiceLL(model)
 	Aᵃinput = ones(type,Ξ,Ξ).*minpa
 	one_minus_Ξminpa = 1.0-Ξ*minpa
@@ -284,14 +284,14 @@ end
 """
 	∇loglikelihood!(memory, model, P)
 
+Compute the gradient of the log-likelihood within the fields of an object of composite type `Memoryforgradient`
+
 MODIFIED ARGUMENT
 -`memory`: memory allocated for computing the gradient. The log-likelihood is updated.
 -`model`: structure containing the data, parameters, and hyperparameters of the model
 -`P`: a structure containing allocated memory for computing the accumulator's initial and transition probabilities as well as the partial derivatives of these probabilities
 """
-function ∇loglikelihood!(memory::Memoryforgradient,
-						 model::Model,
-						 P::Probabilityvector)
+function ∇loglikelihood!(memory::Memoryforgradient, model::Model, P::Probabilityvector)
 	memory.ℓ .= 0.0
 	memory.∇ℓlatent .= 0.0
 	@inbounds for s in eachindex(model.trialsets)
@@ -301,7 +301,7 @@ function ∇loglikelihood!(memory::Memoryforgradient,
 	end
 	@inbounds for s in eachindex(model.trialsets)
 		for n = 1:length(model.trialsets[s].mpGLMs)
-			expectation_∇loglikelihood!(memory.∇ℓglm[s][n], memory.γ[s], model.trialsets[s].mpGLMs[n])
+			expectation_∇loglikelihood!(memory.∇ℓglm[s][n], memory.glmderivatives, memory.γ[s], model.trialsets[s].mpGLMs[n])
 		end
 	end
 	return nothing
@@ -531,6 +531,7 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 								concatenatedθ=similar(concatenatedθ),
 								Δt=options.Δt,
 								f=f,
+								glmderivatives = GLMDerivatives(model.trialsets[1].mpGLMs[1]),
 								indexθ=indexθ,
 								indexθ_pa₁=indexθ_pa₁,
 								indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,
@@ -616,12 +617,12 @@ RETURN
 """
 function update!(memory::Memoryforgradient, model::Model, concatenatedθ::Vector{<:Real})
 	@unpack options, θnative, θreal = model
-	@unpack Δt, K, minpa, sf_y, Ξ = options
+	@unpack Δt, K, minpa,  Ξ = options
 	memory.concatenatedθ .= concatenatedθ
 	sortparameters!(model, memory.concatenatedθ, memory.indexθ)
 	real2native!(θnative, options, θreal)
 	if !isempty(memory.p𝐘𝑑[1][1][1])
-	    scaledlikelihood!(memory.p𝐘𝑑, memory.p𝑑_a, sf_y, model.trialsets, θnative.ψ[1])
+	    scaledlikelihood!(memory.p𝐘𝑑, memory.p𝑑_a, model.trialsets, θnative.ψ[1])
 	end
 	P = update_for_∇latent_dynamics!(memory, options, θnative)
 	return P
