@@ -1222,6 +1222,7 @@ Features of the model useful for analysis
 							LT<:Latentθ,
 							MF<:Matrix{<:AbstractFloat},
 							VF<:Vector{<:AbstractFloat},
+							VVF<:Vector{<:Vector{<:AbstractFloat}},
 							VMF<:Vector{<:Matrix{<:AbstractFloat}},
 							VVMF<:Vector{<:Vector{<:Matrix{<:AbstractFloat}}},
 							VS<:Vector{<:String},
@@ -1229,6 +1230,8 @@ Features of the model useful for analysis
 							VVI<:Vector{<:Vector{<:Integer}}}
 	"the log of the likelihood of the data given the parameters"
 	loglikelihood::F
+	"the log of the likelihood of the data in each trial given the parameters. Element `loglikelihood_each_trial[i][m]` corresponds to the m-th trial of the i-th trialset"
+	loglikelihood_each_trial::VVF
 	"the log of the posterior probability of the parameters"
 	logposterior::F
 	"values of the parameters of the latent variable in their native space"
