@@ -57,6 +57,7 @@ function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ:
 	@unpack Δt, θ, 𝐗, 𝐕, 𝐲 = mpGLM
 	@unpack a, fit_overdispersion, 𝐮 = θ
 	α = inverselink(a[1])
+	overdispersed = α > 0
 	L = 0
 	for i in eachindex(𝐮)
 		L += 𝐗[τ,i]*𝐮[i]
@@ -69,7 +70,7 @@ function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ:
 			for q in eachindex(ωⱼ𝐯ₖ)
 				Lⱼₖ += 𝐕[τ,q]*ωⱼ𝐯ₖ[q]
 			end
-			p[j,k] = fit_overdispersion ? negbinlikelihood(α, Δt, inverselink(Lⱼₖ), 𝐲[τ]) : poissonlikelihood(Δt, Lⱼₖ, 𝐲[τ])
+			p[j,k] = overdispersed ? negbinlikelihood(α, Δt, inverselink(Lⱼₖ), 𝐲[τ]) : poissonlikelihood(Δt, Lⱼₖ, 𝐲[τ])
 		end
 	end
 	return nothing
@@ -92,11 +93,12 @@ function scaledlikelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
     @unpack Δt, likelihoodscalefactor, 𝐲 = mpGLM
 	@unpack a, fit_overdispersion = mpGLM.θ
 	α = inverselink(a[1])
+	overdispersed = α > 0
     𝐋 = linearpredictor(mpGLM, j, k)
     𝐩 = 𝐋
     @inbounds for i=1:length(𝐩)
 		μ = inverselink(𝐋[i])
-		p = fit_overdispersion ? negbinlikelihood(α, Δt, μ, 𝐲[i]) : poissonlikelihood(μ*Δt, 𝐲[i])
+		p = overdispersed ? negbinlikelihood(α, Δt, μ, 𝐲[i]) : poissonlikelihood(μ*Δt, 𝐲[i])
         𝐩[i] = p*likelihoodscalefactor
     end
     return 𝐩
@@ -122,10 +124,11 @@ function scaledlikelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::In
     @unpack Δt, likelihoodscalefactor, 𝐲 = mpGLM
 	@unpack a, fit_overdispersion = mpGLM.θ
 	α = inverselink(a[1])
+	overdispersed = α > 0
     𝐋 = linearpredictor(mpGLM, j, k)
     @inbounds for i=1:length(𝐩)
 		μ = inverselink(𝐋[i])
-		p = fit_overdispersion ? negbinlikelihood(α, Δt, μ, 𝐲[i]) : poissonlikelihood(μ*Δt, 𝐲[i])
+		p = overdispersed ? negbinlikelihood(α, Δt, μ, 𝐲[i]) : poissonlikelihood(μ*Δt, 𝐲[i])
 		𝐩[i] *= p*likelihoodscalefactor
     end
     return nothing
@@ -159,10 +162,8 @@ function expectation_∇loglikelihood!(∇Q::GLMθ, D::GLMDerivatives, γ::Matri
 	else
 		∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
 	end
-	if fit_overdispersion 
-		∇Q.a[1] = 0
-		differentiate_overdispersion!(D,a[1])
-	end
+	differentiate_overdispersion!(D,a[1])
+	∇Q.a[1] = 0
 	if ∇Q.fit_b
 		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
 	end
@@ -233,6 +234,7 @@ function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpG
     @unpack Δt, 𝐲 = mpGLM
 	@unpack a, fit_overdispersion = mpGLM.θ
 	α = inverselink(a[1])
+	overdispersed = α > 0
     T = length(𝐲)
     Ξ,K = size(γ)
     Q = 0.0
@@ -240,7 +242,7 @@ function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpG
 	    for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
             for t = 1:T
-				ℓ = fit_overdispersion ? negbinloglikelihood(α, Δt, inverselink(𝐋[t]), 𝐲[t]) : poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
+				ℓ = overdispersed ? negbinloglikelihood(α, Δt, inverselink(𝐋[t]), 𝐲[t]) : poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
 				Q += γ[i,k][t]*ℓ
             end
         end
@@ -421,6 +423,7 @@ function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::
 	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
 	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
 	α = inverselink(mpGLM.θ.a[1])
+	overdispersed = α > 0
 	max_spikehistory_lag = length(𝐡)
 	K = length(𝐯)
 	max_spikes_per_step = floor(1000Δt)
@@ -444,7 +447,7 @@ function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::
 			end
 		end
         𝛌[t] = softplus(L)
-		if fit_overdispersion
+		if overdispersed
 			μ = 𝛌[t]
 			p = probabilitysuccess(α,Δt,μ)
 			r = 1/α

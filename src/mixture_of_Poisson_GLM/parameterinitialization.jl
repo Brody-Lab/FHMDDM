@@ -245,8 +245,8 @@ function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type
 	∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
+	differentiate_twice_overdispersion!(D, a[1])
 	if fit_overdispersion
-		differentiate_twice_overdispersion!(D, a[1])
 		∑_d²Q_da² = 0.0
 		∑_dQ_da = 0.0
 		∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)

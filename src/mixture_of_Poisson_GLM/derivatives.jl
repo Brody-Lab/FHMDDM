@@ -43,7 +43,7 @@ julia> println("The maximum absolute difference between the automatically and ha
 ```
 """
 function differentiate_twice_loglikelihood!(D::GLMDerivatives, L::AbstractFloat, y::Integer)
-    if D.fit_overdispersion
+    if D.α[1] > 0.0
         μ = inverselink(L)
         D.ℓ[1] = negbinloglikelihood(D.α[1], D.Δt, μ, y)
         dμ_dL = differentiate_inverselink(L)
@@ -73,7 +73,7 @@ Compute in-place first-order partial derivatives by modifying fields of an objec
 See `differentiate_twice_loglikelihood!(D,L,y)`
 """
 function differentiate_loglikelihood!(D::GLMDerivatives, L::AbstractFloat, y::Integer)
-    if D.fit_overdispersion
+    if D.α[1] > 0.0
         μ = inverselink(L)
         D.ℓ[1] = negbinloglikelihood(D.α[1], D.Δt, μ, y)
         dμ_dL = differentiate_inverselink(L)

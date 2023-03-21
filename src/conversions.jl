@@ -91,7 +91,7 @@ end
 """
 	real2native(r,q,l,u)
 
-Convert a parameter from real space to latent space
+Convert a parameter from native space to real space
 
 ARGUMENT
 -`n`: value in native space

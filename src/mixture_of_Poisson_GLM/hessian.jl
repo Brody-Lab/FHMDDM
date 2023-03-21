@@ -102,7 +102,7 @@ UNMODIFIED ARGUMENT
 """
 function scaledlikelihood!(pY::Vector{<:Matrix{<:AbstractFloat}}, 𝛂::Vector{<:AbstractFloat}, 𝐋::Vector{<:Matrix{<:Vector{<:AbstractFloat}}}, mpGLMs::Vector{<:MixturePoissonGLM}, ntimesteps::Integer, τ₀::Integer)
 	Δt = mpGLMs[1].Δt
-	fit_overdispersion = mpGLMs[1].θ.fit_overdispersion
+	overdispersed = mpGLMs[1].θ.a[1] > -Inf
 	likelihoodscalefactor = mpGLMs[1].likelihoodscalefactor
 	@inbounds for t = 1:ntimesteps
 		τ = t+τ₀
@@ -112,7 +112,7 @@ function scaledlikelihood!(pY::Vector{<:Matrix{<:AbstractFloat}}, 𝛂::Vector{<
 				L = 𝐋[n][ij][τ]
 				y = mpGLMs[n].𝐲[τ]
 				μ = inverselink(L)
-				p = fit_overdispersion ? negbinlikelihood(𝛂[n], Δt, μ, y) : poissonlikelihood(μ*Δt, y)
+				p = overdispersed ? negbinlikelihood(𝛂[n], Δt, μ, y) : poissonlikelihood(μ*Δt, y)
 				pY[t][ij] *= p*likelihoodscalefactor
 			end
 		end
@@ -150,7 +150,7 @@ function ∇∇loglikelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 						d²𝛚_db²::Vector{<:Real},
 						τ::Integer)
 	@unpack Δt, 𝐗, Ξ, 𝐕, 𝐲 = mpGLM
-	@unpack b, 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
+	@unpack b, 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
 	y = mpGLM.𝐲[τ]
 	K = length(𝐯)
 	n𝐮 = length(𝐮)
