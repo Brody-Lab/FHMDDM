@@ -61,7 +61,7 @@ if ~isempty(P.observed_mean_linespec)
     plot(groupDeltaclicks, obsv, P.observed_mean_linespec);
 end
 if ~isempty(P.predicted_mean_linespec)
-    handles(2) = plot(groupDeltaclicks, pred, P.predicted_mean_linespec);
+    handles(2) = plot(groupDeltaclicks, pred, P.predicted_mean_linespec, 'linewidth', 1.5);
 end
 if P.legend && ~isempty(P.predicted_mean_linespec)
     legend(handles, {'observed 95%CI', 'predicted'}, 'location', 'best')

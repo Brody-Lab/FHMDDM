@@ -8,6 +8,7 @@ classdef FHMDDM
         C = colors
         fit_paths = find_fit_paths(analysisname)
         hasstereoclick(Trials, trialindices)
+        load_and_plot_psychometric(fitpath, varargin)
         log_posterior_curvature(S, varargin)
         trialset = maketrialset(Cells, Trials, configuration)
         plot_peth(pethset, condition, time_s, varargin)
