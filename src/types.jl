@@ -876,7 +876,7 @@ end
 
 Pre-allocated memory for computing the hessian as the jacobian of the expectation conjugate gradient
 """
-@with_kw struct Memoryforhessian{GD<:GLMDerivatives, 
+@with_kw struct Memoryforhessian{GD<:GLMDerivatives,
 								VR<:Vector{<:Real},
 								MR<:Matrix{<:Real},
 								VVR<:Vector{<:Vector{<:Real}},
@@ -1224,10 +1224,13 @@ Features of the model useful for analysis
 							VF<:Vector{<:AbstractFloat},
 							VVF<:Vector{<:Vector{<:AbstractFloat}},
 							VMF<:Vector{<:Matrix{<:AbstractFloat}},
+							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}},
 							VVMF<:Vector{<:Vector{<:Matrix{<:AbstractFloat}}},
 							VS<:Vector{<:String},
 							VVGT<:Vector{<:Vector{<:GLMθ}},
 							VVI<:Vector{<:Vector{<:Integer}}}
+	"Weighted inputs, except for those from the latent variables and the spike history, to each neuron on each time step in a trialset. The element `externalinputs[i][n][t]` corresponds to the input to the n-th neuron in the i-th trialset on the t-th time step in the trialset (time steps are across trials are concatenated)"
+	externalinputs::VVVF
 	"the log of the likelihood of the data given the parameters"
 	loglikelihood::F
 	"the log of the likelihood of the data in each trial given the parameters. Element `loglikelihood_each_trial[i][m]` corresponds to the m-th trial of the i-th trialset"

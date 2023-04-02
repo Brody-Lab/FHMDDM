@@ -262,9 +262,17 @@ postspikefilter(mpGLM::MixturePoissonGLM) = mpGLM.Φpostspike*mpGLM.θ.𝐮[mpGL
 """
 	externalinput(mpGLM)
 
-Sum the input from extern events for each time step in a trialset.
+Weighted inputs, except for those from the latent variables and the spike history, to a neuron on each time step in a trialset
 
-The external events typically consist of the stereoclick, departure from the center port, and the photostimulus.
+The inputs include gain, time after stereoclick (i.e., the start of each trial), time before movement (i.e., the rat removing its nose from the center port), and the photostimulus (if any).
+
+The conditional firing rate of a neuron at each time step `t`, given the accumulator `a` is given by
+
+	`λₜ ∣ aₜ ≡ softplus{𝐰_gain ⋅ 𝐱ₜ_gain + 𝐰_stereoclick ⋅ 𝐱ₜ_stereoclick + 𝐰_move ⋅ 𝐱ₜ_move + 𝐰_move ⋅ 𝐱ₜ_move + 𝐰_phostostimulus ⋅ 𝐱ₜ_photostimulus + 𝐰_hist ⋅ 𝐱ₜ_hist + (w ∣ aₜ)aₜ}`
+
+Each element of the vector returned by this function corresponds to following linear combination
+
+	`𝐰_gain ⋅ 𝐱ₜ_gain + 𝐰_stereoclick ⋅ 𝐱ₜ_stereoclick + 𝐰_move ⋅ 𝐱ₜ_move + 𝐰_move ⋅ 𝐱ₜ_move + 𝐰_phostostimulus ⋅ 𝐱ₜ_photostimulus`
 
 RETURN
 -a vector whose τ-th element corresponds to the τ-th time step in the trialset

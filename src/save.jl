@@ -11,7 +11,8 @@ OPTIONAL ARGUMENT
 """
 function ModelSummary(model::Model; computehessian::Bool=false)
 	modelsummary =
-	ModelSummary(loglikelihood=loglikelihood(model),
+	ModelSummary(externalinputs = collect(collect(externalinput(mpGLM) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
+			loglikelihood=loglikelihood(model),
 			loglikelihood_each_trial = loglikelihood_each_trial(model),
 		 	logposterior=logposterior(model),
 			thetanative=model.θnative,
