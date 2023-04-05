@@ -11,31 +11,19 @@ OPTIONAL ARGUMENT
 """
 function ModelSummary(model::Model; computehessian::Bool=false)
 	modelsummary =
-<<<<<<< Updated upstream
-	ModelSummary(loglikelihood=loglikelihood(model),
-=======
 	ModelSummary(externalinputs = collect(collect(externalinput(mpGLM) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 			loglikelihood=loglikelihood(model),
 			loglikelihood_each_trial = loglikelihood_each_trial(model),
->>>>>>> Stashed changes
 		 	logposterior=logposterior(model),
 			thetanative=model.θnative,
 			thetareal=model.θreal,
 			theta0native=model.θ₀native,
 			thetaglm=map(trialset->map(mpGLM->mpGLM.θ, trialset.mpGLMs), model.trialsets),
-<<<<<<< Updated upstream
-			temporal_basis_vectors_accumulator=collect(trialset.mpGLMs[1].Φₐ for trialset in model.trialsets),
-			temporal_basis_vectors_gain=collect(trialset.mpGLMs[1].𝐗[1,1] for trialset in model.trialsets),
-	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φₕ for trialset in model.trialsets),
-	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φₘ for trialset in model.trialsets),
-	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φₜ for trialset in model.trialsets),
-=======
 			temporal_basis_vectors_gain=collect(collect(mpGLM.Φgain for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 			temporal_basis_vectors_accumulator=collect(trialset.mpGLMs[1].Φaccumulator for trialset in model.trialsets),
 	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φpostspike for trialset in model.trialsets),
 	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φpremovement for trialset in model.trialsets),
 	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φpoststereoclick for trialset in model.trialsets),
->>>>>>> Stashed changes
 			parametervalues=concatenateparameters(model),
 			parameternames=nameparameters(model),
 	        penaltycoefficients=model.gaussianprior.𝛂,
@@ -108,13 +96,7 @@ function packagedata(trial::Trial, a_latency_s::AbstractFloat)
 	Dict("choice" => trial.choice,
          "clicktimes" => packagedata(trial.clicks, a_latency_s),
 		 "gamma"=>trial.γ,
-<<<<<<< Updated upstream
-		 "movementtimestep"=> trial.movementtimestep,
-		 "photostimulus_decline_on_s"=> trial.photostimulus_decline_on_s,
-		 "photostimulus_incline_on_s"=> trial.photostimulus_incline_on_s,
-=======
 		 "movementtime_s"=> trial.movementtime_s,
->>>>>>> Stashed changes
 		 "ntimesteps"=> trial.ntimesteps,
 		 "photostimulus_decline_on_s"=> trial.photostimulus_decline_on_s,
 		 "photostimulus_incline_on_s"=> trial.photostimulus_incline_on_s,
@@ -159,10 +141,6 @@ function analyzeandsave(computehessian::Bool, foldername::String, model::Model)
 	save(modelsummary, optimization_folder_path)
 	characterization = Characterization(model)
 	save(characterization, optimization_folder_path)
-<<<<<<< Updated upstream
-	psthsets = FHMDDM.poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
-=======
 	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
->>>>>>> Stashed changes
 	save(psthsets, optimization_folder_path)
 end

@@ -359,35 +359,15 @@ end
 Posterior probability of the latent variables conditioned on only the spiking and not the choice
 
 MODIFIED ARGUMENT
-<<<<<<< Updated upstream
--`𝐩`: A nested array whose element `𝐩[m][t][j,k]` corresponds to the conditional likelihood of the spiking given the coupling in the k-th state and the accumulator in the j-th state, at the t-th time step of the m-th trial
-=======
 -`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
->>>>>>> Stashed changes
 
 UNMODIFIED ARGUMENT
 -`model`: structure containing the data, parameters, and hyperparameters
 """
-<<<<<<< Updated upstream
-function likelihood!(𝐩::Vector{<:Vector{<:Matrix{<:Real}}}, mpGLM::MixturePoissonGLM)
-	(Ξ,K) = size(𝐩[1][end])
-	for j = 1:Ξ
-		for k = 1:K
-			p𝐲_jk = scaledlikelihood(mpGLM, j, k, 1.0)
-			τ = 0
-			for m in eachindex(𝐩)
-				for t in eachindex(𝐩[m])
-					τ += 1
-					𝐩[m][t][j,k] = p𝐲_jk[τ]
-				end
-			end
-		end
-=======
 function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
 	p𝐘 = memory.p𝐘𝑑
 	for i in eachindex(p𝐘)
 		scaledlikelihood!(p𝐘[i], model.trialsets[i])
->>>>>>> Stashed changes
 	end
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	posteriors!(memory, P, model)
@@ -395,32 +375,7 @@ function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
 end
 
 """
-<<<<<<< Updated upstream
-	posterior_on_spikes!(memory, model)
-
-Posterior probability of the latent variables conditioned on only the spiking and not the choice
-
-MODIFIED ARGUMENT
--`memory`: structure containing variables memory between computations of the model's log-likelihood and its gradient
-
-UNMODIFIED ARGUMENT
--`model`: structure containing the data, parameters, and hyperparameters
-"""
-function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
-	p𝐘 = memory.p𝐘𝑑
-	for i in eachindex(p𝐘)
-		scaledlikelihood!(p𝐘[i], model.options.sf_y, model.trialsets[i])
-	end
-	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
-	posteriors!(memory, P, model)
-	return nothing
-end
-
-"""
-    scaledlikelihood!(p𝐘, s, trialset)
-=======
     scaledlikelihood!(p𝐘, trialset)
->>>>>>> Stashed changes
 
 In-place computation the conditional likelihood of the simultaneous spike response
 
@@ -434,24 +389,14 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-<<<<<<< Updated upstream
-function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, s::Real, trialset::Trialset)
-=======
 function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, trialset::Trialset)
->>>>>>> Stashed changes
 	(Ξ,K) = size(p𝐘[1][end])
 	N = length(trialset.mpGLMs)
     for j = 1:Ξ
         for k = 1:K
-<<<<<<< Updated upstream
-			𝐩 = scaledlikelihood(trialset.mpGLMs[1], j, k, s)
-            for n = 2:N
-			    scaledlikelihood!(𝐩, trialset.mpGLMs[n], j, k, s)
-=======
 			𝐩 = scaledlikelihood(trialset.mpGLMs[1], j, k)
             for n = 2:N
 			    scaledlikelihood!(𝐩, trialset.mpGLMs[n], j, k)
->>>>>>> Stashed changes
             end
             τ = 0
             for m in eachindex(p𝐘)

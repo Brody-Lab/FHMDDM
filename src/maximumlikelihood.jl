@@ -156,8 +156,6 @@ function loglikelihood!(model::Model, memory::Memoryforgradient, concatenatedθ:
 end
 
 """
-<<<<<<< Updated upstream
-=======
 	loglikelihood_each_trial(model)
 
 ARGUMENT
@@ -188,7 +186,6 @@ function loglikelihood_each_trial(model::Model)
 end
 
 """
->>>>>>> Stashed changes
     loglikelihood(concatenatedθ, indexθ, model)
 
 ForwardDiff-compatible computation of the log-likelihood
@@ -573,10 +570,7 @@ function Memoryforgradient(model::Model; choicemodel::Bool=false)
 								concatenatedθ=similar(concatenatedθ),
 								Δt=options.Δt,
 								f=f,
-<<<<<<< Updated upstream
-=======
 								glmderivatives = GLMDerivatives(model.trialsets[1].mpGLMs[1]),
->>>>>>> Stashed changes
 								indexθ=indexθ,
 								indexθ_pa₁=indexθ_pa₁,
 								indexθ_paₜaₜ₋₁=indexθ_paₜaₜ₋₁,

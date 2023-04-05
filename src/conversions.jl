@@ -377,10 +377,7 @@ function dictionary(options::Options)
 			"tbf_accu_scalefactor"=>options.tbf_accu_scalefactor/s,
 			"tbf_accu_stretch"=>options.tbf_accu_stretch,
 			"tbf_gain_scalefactor"=>options.tbf_gain_scalefactor/s,
-<<<<<<< Updated upstream
-=======
 			"tbf_gain_maxfunctions"=>options.tbf_gain_maxfunctions,
->>>>>>> Stashed changes
 			"tbf_hist_begins0"=>options.tbf_hist_begins0,
 			"tbf_hist_dur_s"=>options.tbf_hist_dur_s,
 			"tbf_hist_ends0"=>options.tbf_hist_ends0,
@@ -418,12 +415,8 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(glmθ::GLMθ)
-<<<<<<< Updated upstream
-    Dict("b"=>glmθ.b,
-=======
     Dict("a"=>glmθ.a,
 		"b"=>glmθ.b,
->>>>>>> Stashed changes
 		"b_scalefactor"=>glmθ.b_scalefactor,
 		"u"=>glmθ.𝐮,
 		"v"=>glmθ.𝐯,
@@ -595,10 +588,7 @@ function Options(nunits::Integer, options::Dict)
 			tbf_accu_scalefactor = options["tbf_accu_scalefactor"]*s,
 			tbf_accu_stretch = options["tbf_accu_stretch"],
 			tbf_gain_scalefactor = options["tbf_gain_scalefactor"]*s,
-<<<<<<< Updated upstream
-=======
 			tbf_gain_maxfunctions = convert(Int,options["tbf_gain_maxfunctions"]),
->>>>>>> Stashed changes
 			tbf_hist_begins0 = options["tbf_hist_begins0"],
 			tbf_hist_dur_s = options["tbf_hist_dur_s"],
 			tbf_hist_ends0 = options["tbf_hist_ends0"],

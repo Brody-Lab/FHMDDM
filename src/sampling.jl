@@ -32,10 +32,7 @@ function drawsamples(model::Model, nsamples::Integer)
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	a = zeros(Int, memory.maxtimesteps)
 	c = zeros(Int, memory.maxtimesteps)
-<<<<<<< Updated upstream
-=======
 	𝛏 = model.trialsets[1].mpGLMs[1].d𝛏_dB.*model.θnative.B[1]
->>>>>>> Stashed changes
 	trialsamples =
 		map(model.trialsets) do trialset
 			𝐄𝐞 = map(mpGLM->externalinput(mpGLM), trialset.mpGLMs)
@@ -43,11 +40,7 @@ function drawsamples(model::Model, nsamples::Integer)
 			𝛚 = map(mpGLM->transformaccumulator(mpGLM), trialset.mpGLMs)
 			map(trialset.trials) do trial
 				accumulator_prior_transitions!(memory.Aᵃinput, P, memory.p𝐚₁, trial)
-<<<<<<< Updated upstream
-				collect(sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset) for s=1:nsamples)
-=======
 				collect(sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset, 𝛏) for s=1:nsamples)
->>>>>>> Stashed changes
 			end
 		end
 	map(1:nsamples) do s
@@ -62,11 +55,7 @@ function drawsamples(model::Model, nsamples::Integer)
 end
 
 """
-<<<<<<< Updated upstream
-	sampletrial!(a, c, 𝐄𝐞, 𝐡, memory 𝛚, trial, trialset)
-=======
 	sampletrial!(a, c, 𝐄𝐞, 𝐡, memory 𝛚, trial, trialset, 𝛏)
->>>>>>> Stashed changes
 
 Simulate the choice and spike trains on a trial.
 
@@ -84,10 +73,7 @@ UNMODIFIED ARGUMENT
 -`ψ`: behavioral lapse rate
 -`trial`: a composite containing the behavioral choice and click timing in a trial
 -`trialset`: a composite containing the behavioral, auditory, and neuronal data of a set of trials
-<<<<<<< Updated upstream
-=======
 -`𝛏`: a vector of floats representing the value of the accumulator in each state
->>>>>>> Stashed changes
 
 RETURN
 -simulation of the choice and the spike trains in a trial
@@ -100,22 +86,12 @@ function sampletrial!(a::Vector{<:Integer},
 					𝛚::Vector{<:Vector{<:AbstractFloat}},
 					ψ::AbstractFloat,
 					trial::Trial,
-<<<<<<< Updated upstream
-					trialset::Trialset)
-=======
 					trialset::Trialset,
 					𝛏::Vector{<:AbstractFloat})
->>>>>>> Stashed changes
 	sampleaccumulator!(a, memory.Aᵃinput, memory.Aᵃsilent, memory.p𝐚₁, trial)
 	samplecoupling!(c, memory.Aᶜ, trial.ntimesteps, memory.πᶜ)
 	choice = samplechoice(a[trial.ntimesteps], ψ, memory.Ξ)
 	timesteps = trial.τ₀ .+ (1:trial.ntimesteps)
-<<<<<<< Updated upstream
-	spiketrains=map(𝐄𝐞, 𝐡, trialset.mpGLMs, 𝛚) do 𝐄𝐞, 𝐡, mpGLM, 𝛚
-					samplespiketrain(a, c, 𝐄𝐞, 𝐡, mpGLM, 𝛚, timesteps)
-				end
-	TrialSample(choice=choice, spiketrains=spiketrains)
-=======
 	outputs = map(𝐄𝐞, 𝐡, trialset.mpGLMs, 𝛚) do 𝐄𝐞, 𝐡, mpGLM, 𝛚
 					samplespiketrain(a, c, 𝐄𝐞, 𝐡, mpGLM, 𝛚, timesteps)
 				end
@@ -126,7 +102,6 @@ function sampletrial!(a::Vector{<:Integer},
 				choice=choice,
 				λ=λ,
 				spiketrains=spiketrains)
->>>>>>> Stashed changes
 end
 
 """
@@ -170,8 +145,6 @@ function Model(model::Model, sample::Sample; folderpath::String = dirname(model.
 			θreal=FHMDDM.copy(model.θreal),
 			θ₀native=FHMDDM.copy(model.θ₀native),
 			trialsets=newtrialsets)
-<<<<<<< Updated upstream
-=======
 end
 
 """
@@ -196,7 +169,6 @@ function save_accumulator_λ(folderpath::String, sample::Sample)
 							end
 						end
 	matwrite(joinpath(folderpath, "lambda_spikes_per_s.mat"), Dict("lambda_spikes_per_s"=>lambda_spikes_per_s))
->>>>>>> Stashed changes
 end
 
 """
@@ -378,23 +350,6 @@ ARGUMENT
 -`model`: structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
 -`nsamples`: number of samples to make
 
-<<<<<<< Updated upstream
-RETURN
--`samplepaths`: a vector of String indicating the path to the data of each sample
-"""
-function simulateandsave(model::Model, nsamples::Integer)
-	@assert nsamples > 0
-	pad = ceil(Int, log10(nsamples))
-	open(joinpath(dirname(model.options.datapath), "samplepaths.txt"), "w") do io
-		samplepaths = Vector{String}(undef, nsamples)
-	    for i=1:nsamples
-	        folderpath = joinpath(dirname(model.options.datapath), "sample"*string(i;pad=pad))
-	        !isdir(folderpath) && mkdir(folderpath)
-	        samplepaths[i] = joinpath(folderpath, "data.mat")
-	        println(io, samplepaths[i])
-	        simulation = simulate(model; folderpath=folderpath)
-	        savedata(simulation)
-=======
 OPTIONAL ARGUMENT
 -`offset`: offset in the naming
 
@@ -415,13 +370,10 @@ function simulateandsave(model::Model, nsamples::Integer; offset::Integer=0)
 			simulation = Model(model, sample; folderpath=folderpath)
 	        savedata(simulation)
 			save_accumulator_λ(folderpath,sample)
->>>>>>> Stashed changes
 	    end
 		return samplepaths
 	end
 end
-<<<<<<< Updated upstream
-=======
 
 """
     savedata(model)
@@ -446,4 +398,3 @@ function savedata(model::Model; filename::String=basename(model.options.datapath
     path = joinpath(dirname(model.options.datapath), filename)
     matwrite(path, dict)
 end
->>>>>>> Stashed changes

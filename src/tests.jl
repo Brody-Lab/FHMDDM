@@ -8,26 +8,6 @@ ARGUMENT
 """
 function test(datapath::String; maxabsdiff::Real=1e-8)
 	println("testing `"*datapath*"`")
-<<<<<<< Updated upstream
-	model = Model(datapath)
-	optimization_folder_path = joinpath(dirname(model.options.datapath), "test")
-	printseparator()
-	println("saving model characterization")
-	characterization = Characterization(model)
-	save(characterization, optimization_folder_path)
-	printseparator()
-	println("post-stimulus time histograms")
-	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
-	save(psthsets, optimization_folder_path)
-	printseparator()
-	println("simulating model")
-	samplepaths = simulateandsave(Model(datapath), 2)
-	printseparator()
-	println("loading simulated observations")
-	simulation = Model(samplepaths[1])
-	printseparator()
-=======
->>>>>>> Stashed changes
     println("testing the hessian of the expectation of the log-likelihood of one neuron's spike train")
     println("	- `expectation_of_∇∇loglikelihood(γ, mpGLM, x)`")
     println("	- used for parameter initialization")
@@ -50,23 +30,13 @@ function test(datapath::String; maxabsdiff::Real=1e-8)
 	println("	- `∇∇loglikelihood(model)`")
 	test_∇∇loglikelihood(datapath; maxabsdiff=maxabsdiff)
 	printseparator()
-<<<<<<< Updated upstream
-    println("testing gradient of log evidence of all the data")
-	println("	- `∇logevidence(model)`")
-    test_∇logevidence(datapath; maxabsdiff=maxabsdiff, simulate=false)
-    printseparator()
-=======
->>>>>>> Stashed changes
     println("testing the hessian of the log-likelihood of only the behavioral choices")
 	println("	- `∇∇choiceLL(model)`")
     test_∇∇choiceLL(datapath; maxabsdiff=maxabsdiff)
 	printseparator()
 	println("saving model summary")
 	model = Model(datapath)
-<<<<<<< Updated upstream
-=======
 	optimization_folder_path = joinpath(dirname(model.options.datapath), "test")
->>>>>>> Stashed changes
 	save(ModelSummary(model), optimization_folder_path)
 	printseparator()
 	println("loading model parameters from a saved summary")
@@ -88,9 +58,6 @@ function test(datapath::String; maxabsdiff::Real=1e-8)
 	initializeparameters!(model)
 	maximizeevidence!(model)
     printseparator()
-<<<<<<< Updated upstream
-    println("testing cross-validation and saving results")
-=======
 	model = Model(datapath)
 	printseparator()
 	println("saving model characterization")
@@ -112,7 +79,6 @@ function test(datapath::String; maxabsdiff::Real=1e-8)
     test_∇logevidence(datapath; maxabsdiff=maxabsdiff, simulate=false)
     printseparator()
 	println("testing cross-validation and saving results")
->>>>>>> Stashed changes
 	model = Model(datapath)
 	cvfolderpath = joinpath(dirname(model.options.datapath), "cvtest")
 	cvresults = crossvalidate(2, model)
@@ -177,14 +143,6 @@ function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1
             mpGLM.θ.b[1] = 1 - 2rand()
         end
     end
-<<<<<<< Updated upstream
-    γ = randomposterior(mpGLM; rng=MersenneTwister(1234))
-    ∇Q = GLMθ(eltype(mpGLM.θ.𝐮), mpGLM.θ)
-    expectation_∇loglikelihood!(∇Q, γ, mpGLM)
-    ghand = concatenateparameters(∇Q)
-    concatenatedθ = concatenateparameters(mpGLM.θ)
-    f(x) = expectation_of_loglikelihood(γ, mpGLM, x)
-=======
     γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
     ∇Q = FHMDDM.GLMθ(eltype(mpGLM.θ.𝐮), mpGLM.θ)
 	glmderivatives = FHMDDM.GLMDerivatives(mpGLM)
@@ -192,7 +150,6 @@ function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1
     ghand = concatenateparameters(∇Q)
     concatenatedθ = concatenateparameters(mpGLM.θ)
     f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x)
->>>>>>> Stashed changes
     gauto = ForwardDiff.gradient(f, concatenatedθ)
 	maxabsΔ∇Q = maximum(abs.(gauto .- ghand))
     println("   max(|Δgradient|): ", maxabsΔ∇Q)

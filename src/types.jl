@@ -170,11 +170,8 @@ Model settings
 	tbf_accu_stretch::TF=0.1
 	"scale factor of the gain parameter"
 	tbf_gain_scalefactor::TF=1.0
-<<<<<<< Updated upstream
-=======
 	"maximum number of basis functions"
 	tbf_gain_maxfunctions::TI=6
->>>>>>> Stashed changes
 	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter. The setting `tbf_hist_linear` determines whether a linear function is included in the basis."
 	tbf_hist_begins0::TB=false
 	tbf_hist_dur_s::TF=0.25
@@ -257,11 +254,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	"index of the trial in the trialset"
 	index_in_trialset::TI
 	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
-<<<<<<< Updated upstream
-=======
 	movementtime_s::TF; @assert movementtime_s > 0
 	"time of leaving the center port, relative to the time of the stereoclick, in time steps"
->>>>>>> Stashed changes
 	movementtimestep::TI; @assert movementtimestep > 0
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
@@ -298,30 +292,20 @@ end
 Parameters of a mixture of Poisson generalized linear model
 """
 @with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
-<<<<<<< Updated upstream
-=======
 	"overdispersion parameter in real space. It is mapped into a nonnegative value using the softplus function."
 	a::VR=[-Inf]
->>>>>>> Stashed changes
     "nonlinearity in accumulator transformation"
 	b::VR=[NaN]
 	"scale factor for the nonlinearity of accumulator transformation"
 	b_scalefactor::R
 	"order by which parameters are concatenated"
-<<<<<<< Updated upstream
-	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :b]
-=======
 	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :a, :b]
->>>>>>> Stashed changes
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
 	fit_𝛃::B
-<<<<<<< Updated upstream
-=======
 	"whether to fit an overdispersion parameter. If so, the count response model is negative binomial rather than Poisson"
 	fit_overdispersion::B
->>>>>>> Stashed changes
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
 	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
@@ -371,11 +355,7 @@ Mixture of Poisson generalized linear model
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
     "columns corresponding to the gain"
-<<<<<<< Updated upstream
-	𝐗columns_gain::UI = 1:1
-=======
 	𝐗columns_gain::UI = θ.indices𝐮.gain
->>>>>>> Stashed changes
 	"columns corresponding to the spike history input"
 	𝐗columns_hist::UI = θ.indices𝐮.postspike
 	"columns corresponding to the input from time from the beginning of the trial"
@@ -383,19 +363,11 @@ Mixture of Poisson generalized linear model
 	"columns corresponding to the input from time before mvoement"
 	𝐗columns_move::UI = θ.indices𝐮.premovement
 	"columns corresponding to the input from time before mvoement"
-<<<<<<< Updated upstream
-	𝐗columns_phot::UI = (𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2)) .+ (1:size(Φₚ,2))
-	"columns corresponding to the state-independent inputs"
-	𝐗columns_𝐮::UI = 𝐗columns_gain[1]:(𝐗columns_gain[end] + size(Φₕ,2) + size(Φₜ,2) + size(Φₘ,2) + size(Φₚ,2))
-	"columns corresponding to the input from the accumulator"
-	𝐗columns_𝐯::UI = 𝐗columns_𝐮[end] .+ (1:size(𝐕,2))
-=======
 	𝐗columns_phot::UI = θ.indices𝐮.postphotostimulus
 	"columns corresponding to the state-independent inputs"
 	𝐗columns_𝐮::UI = 1:(size(𝐗,2)-size(𝐕,2))
 	"columns corresponding to the input from the accumulator"
 	𝐗columns_𝐯::UI = (size(𝐗,2)-size(𝐕,2)+1):size(𝐗,2)
->>>>>>> Stashed changes
 	"number of accumulator states"
 	Ξ::TI=length(d𝛏_dB)
 	"Poisson observations"
@@ -1021,11 +993,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	Δt::R
 	"forward terms"
 	f::VMR
-<<<<<<< Updated upstream
-=======
 	"an object for in-place computation of derivatives of the GLM"
 	glmderivatives::GD
->>>>>>> Stashed changes
 	"a structure indicating the index of each model parameter in the vector of concatenated values"
 	indexθ::Tindex
 	"indices of the parameters that influence the prior probabilities of the accumulator"
@@ -1167,10 +1136,6 @@ end
 
 Behavioral choice and neuronal spike trains simulated by running the model forward in time using the auditory click
 """
-<<<<<<< Updated upstream
-@with_kw struct TrialSample{B<:Bool, VVI<:Vector{<:Vector{<:Integer}}}
-	choice::B
-=======
 @with_kw struct TrialSample{B<:Bool, VF<:Vector{<:AbstractFloat}, VVF<:Vector{<:Vector{<:AbstractFloat}}, VVI<:Vector{<:Vector{<:Integer}}}
 	"a nested array whose element `accumulator[i][m][t]` is the value of the accumulated evidence on the t-th time step of the m-th trial on the i-th trialset"
 	accumulator::VF
@@ -1179,7 +1144,6 @@ Behavioral choice and neuronal spike trains simulated by running the model forwa
 	"a nested array whose element lambda_spikes_per_s[i][m][n][t] is the value of generative spikes per s of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
 	λ::VVF
 	"a nested array whose element spiketrains[i][m][n][t] is the spike train response of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
->>>>>>> Stashed changes
 	spiketrains::VVI
 end
 
@@ -1258,12 +1222,6 @@ Features of the model useful for analysis
 							LT<:Latentθ,
 							MF<:Matrix{<:AbstractFloat},
 							VF<:Vector{<:AbstractFloat},
-<<<<<<< Updated upstream
-							VMF<:Vector{<:Matrix{<:AbstractFloat}},
-							VS<:Vector{<:String},
-							VVGT<:Vector{<:Vector{<:GLMθ}},
-							VVI<:Vector{<:Vector{<:Integer}}}
-=======
 							VVF<:Vector{<:Vector{<:AbstractFloat}},
 							VMF<:Vector{<:Matrix{<:AbstractFloat}},
 							VVVF<:Vector{<:Vector{<:Vector{<:AbstractFloat}}},
@@ -1273,7 +1231,6 @@ Features of the model useful for analysis
 							VVI<:Vector{<:Vector{<:Integer}}}
 	"Weighted inputs, except for those from the latent variables and the spike history, to each neuron on each time step in a trialset. The element `externalinputs[i][n][t]` corresponds to the input to the n-th neuron in the i-th trialset on the t-th time step in the trialset (time steps are across trials are concatenated)"
 	externalinputs::VVVF
->>>>>>> Stashed changes
 	"the log of the likelihood of the data given the parameters"
 	loglikelihood::F
 	"the log of the likelihood of the data in each trial given the parameters. Element `loglikelihood_each_trial[i][m]` corresponds to the m-th trial of the i-th trialset"
@@ -1290,16 +1247,6 @@ Features of the model useful for analysis
 	thetaglm::VVGT
 	"temporal basis vectors for accumulator encoding"
 	temporal_basis_vectors_accumulator::VMF
-<<<<<<< Updated upstream
-	"temporal basis vectors for gain"
-	temporal_basis_vectors_gain::VF
-	"temporal basis vectors for the post-spike kernel"
-	temporal_basis_vectors_postspike::VMF
-	"temporal basis vectors for the pre-movement kernel"
-	temporal_basis_vectors_premovement::VMF
-	"temporal basis vectors for the post-stereoclick kernel"
-	temporal_basis_vectors_poststereoclick::VMF
-=======
 	"temporal basis vectors for the gain on each trial"
 	temporal_basis_vectors_gain::VVMF
 	"temporal basis vectors for the post-spike kernel"
@@ -1308,7 +1255,6 @@ Features of the model useful for analysis
 	temporal_basis_vectors_poststereoclick::VMF
 	"temporal basis vectors for the pre-movement kernel"
 	temporal_basis_vectors_premovement::VMF
->>>>>>> Stashed changes
 	"parameters concatenated into a vector"
 	parametervalues::VF
 	"name of each parameter"
@@ -1327,8 +1273,6 @@ Features of the model useful for analysis
 	hessian_loglikelihood::MF = fill(NaN, length(parametervalues), length(parametervalues))
 	"hessian of the log-posterior function evaluated at the current parameters and hyperparameters"
 	hessian_logposterior::MF = fill(NaN, length(parametervalues), length(parametervalues))
-<<<<<<< Updated upstream
-=======
 end
 
 """
@@ -1390,7 +1334,6 @@ A set of peri-event time histogram of one neuron.
 	rightchoice_weak_rightevidence::PETH
 	"average across all trials"
 	unconditioned::PETH
->>>>>>> Stashed changes
 end
 
 """
@@ -1398,81 +1341,13 @@ end
 
 Results of cross-validation
 """
-<<<<<<< Updated upstream
-@with_kw struct CVResults{C<:Characterization, VC<:Vector{<:CVIndices}, VS<:Vector{<:ModelSummary}}
-=======
 @with_kw struct CVResults{C<:Characterization, VC<:Vector{<:CVIndices}, VS<:Vector{<:ModelSummary}, VVP<:Vector{<:Vector{<:PETHSet}}}
->>>>>>> Stashed changes
 	"a composite containing quantities that are computed out-of-sample and used to characterize the model`"
 	characterization::C
 	"cvindices[k] indexes the trials and timesteps used for training and testing in the k-th resampling"
 	cvindices::VC
-<<<<<<< Updated upstream
-=======
 	"post-stereoclick time histogram sets"
 	psthsets::VVP
->>>>>>> Stashed changes
 	"summaries of the training models"
 	trainingsummaries::VS
-end
-
-"""
-	SpikeTrainLinearFilter
-
-Linear filter used to smooth the spike train
-"""
-@with_kw struct SpikeTrainLinearFilter{VF<:Vector{<:AbstractFloat}}
-	"the function with which the spike train is convolved"
-	impulseresponse::VF
-	"because of lack of spike train responses before the beginning of the trial, the initial response needs to reweighed"
-	weights::VF
-end
-
-"""
-	PerieventTimeHistogram
-
-The mean across trials of a single condition (e.g. trials that ended with a left choice) of the filtered spike train of one neuron, and the estimated 95% confidence interval of the trial mean
-"""
-@with_kw struct PerieventTimeHistogram{CIM<:Bootstrap.ConfIntMethod,
-									S<:String,
-									STLF<:SpikeTrainLinearFilter,
-									VF<:Vector{<:AbstractFloat}}
-	"method used to compute the confidence interval. The default is the bias-corrected and accelerated confidence interval (Efron & Tibshirani, 1993) for a confidence level of 0.95. The confidence level is the fraction of time when a random confidence interval constructed using the method below contains the true peri-stimulus time histogram."
-	confidence_interval_method::CIM = BCaConfInt(0.95)
-	"the inear filter used to smooth the spike train"
-	linearfilter::STLF
-	"estimate of the lower limit of the confidence interval of the peri-event time histogram based on observed spike trains"
-	lowerconfidencelimit::VF
-	"estimate of the peri-event time histogram based on observed spike trains"
-	observed::VF
-	"estimate of the peri-event time histogram based on simulated spike trains"
-	predicted::VF
-	"An event in the trial (e.g. steroclick) corresponding to which the peri-stimulus time histogram is aligned, i.e., when time=0 is defined."
-	referenceevent::S="stereoclick"
-	"time, in seconds, from the reference event"
-	time_s::VF
-	"estimate of the upper limit of the confidence interval of the peri-event time histogram based on observed spike trains"
-	upperconfidencelimit::VF
-end
-
-"""
-	PETHSet
-
-A set of peri-event time histogram of one neuron.
-"""
-@with_kw struct PETHSet{PETH<:PerieventTimeHistogram}
-	"average across trials that ended in a left choice, including both correct and incorrect trials"
-	leftchoice::PETH
-	"average across trials on which the aggregate evidence favored left and the reward is baited on the left"
-	leftevidence::PETH
-	"average across trials on which the animal made a left choice and the evidence was strongly leftward. Therefore, only correct trials are included. Evidence strength is defined by the generative log-ratio of click rates: `γ` ≡ log(right click rate) - log(left click rate). Strong left evidence evidence include trials for which γ < -2.25"
-	leftchoice_strong_leftevidence::PETH
-	"average across trials on which the animal made a left choice and the generatative `γ` < -2.25 && `γ` < 0"
-	leftchoice_weak_leftevidence::PETH
-	rightchoice::PETH
-	rightevidence::PETH
-	rightchoice_strong_rightevidence::PETH
-	rightchoice_weak_rightevidence::PETH
-	"average across all trials"
-	unconditioned::PETH
 end

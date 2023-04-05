@@ -12,44 +12,27 @@ The code for fitting the model and computing quantities to characterizing the mo
     * [parameters](#examining-the-parameters)
       * [drift-diffusion parameters](#drift-diffusion-parameters)
       * [accumulator encoding weights](#encoding-weight-of-accumulated-evidence)
-<<<<<<< Updated upstream
-      * [other GLM parameters](#other-glm-parameterss)
-=======
       * [other GLM parameters](#other-glm-parameters)
   * [developing the codebase](#developing-the-codebase)
->>>>>>> Stashed changes
 * [`Model` type](#model-composite-type)
   * [fixed options](#fixed-hyperparameters-model-options)
   * [data](#data-model-trialsets)
   * [parameters](#parameters)
 # tutorial
-<<<<<<< Updated upstream
-The following tutorial shows how to fit the model to a recording session on `spock`, the Princeton Neuroscience Institute's (PNI) computation cluster, and the visualizing the results on a Windows machine
-
-In a shell, log into `spock`:
-=======
 The following tutorial shows how to fit the model to a recording session on `spock`, the Princeton Neuroscience Institute's (PNI) computation cluster, and the visualizing the results on a Windows machine.
 
 Open a shell (e.g. Windows Terminal) to log into `spock`:
->>>>>>> Stashed changes
 ```
 > ssh <netID>@spock.princeton.edu
 ```
 After providing credentials, load a version of Julia and run it
 ```
-<<<<<<< Updated upstream
-[<netID>spock ~]$ module load julia/1.6.0
-=======
 [<netID>spock ~]$ module load julia\1.6.0
->>>>>>> Stashed changes
 [<netID>spock ~]$ julia
 julia>
 ```
 ## installing the FHMDDM repository
-<<<<<<< Updated upstream
-=======
 
->>>>>>> Stashed changes
 In the Julia read-eval-print loop (REPL), enter the Pkg REPL by pressing `]` from the Julia REPL. To get back to the Julia REPL, press `backspace` or `^C`.
 ```
 julia> ]
@@ -58,9 +41,6 @@ julia> ]
 Add the `FHMDDM` repository
 ```
 (v1.6) pkg> add https://github.com/Brody-Lab/FHMDDM.git
-<<<<<<< Updated upstream
-pkg> up
-=======
   Updating git-repo `https://github.com/Brody-Lab/FHMDDM.git`
   Username for 'https://github.com':
 ```
@@ -75,7 +55,6 @@ If you check the status of your environment, you should see `FHMDDM` as one of y
 ```
 Now, return to the Julia REPL by pressing `backspace`
 ```
->>>>>>> Stashed changes
 pkg> <backspace>
 julia>
 ```
@@ -304,11 +283,7 @@ EI_dorsomedial_frontal =
 ```
 
 
-<<<<<<< Updated upstream
-# other GLM parameters
-=======
 #### other GLM parameters
->>>>>>> Stashed changes
 
 The term $u_t$ is the component of the linear predictor independent of the accumulated evidence and is given by
 
@@ -356,8 +331,6 @@ Finally, let's also plot the pre-movement and post-spike filters.
 
 <img src="/assets/analysis_2023_02_08b_example_postspike_filter.svg" height="150">
  
-<<<<<<< Updated upstream
-=======
 ## developing the codebase
 First, install the package as [described](#installing-the-fhmddm-repository)
 
@@ -417,7 +390,6 @@ julia> exit()
 ```
 You should see your branch listed, and next to it a '*', indicating that is your current branch.
 
->>>>>>> Stashed changes
 #  `Model` composite type
 The data, parameters, and hyperparameters of an FHMDDM are organized within the fields of in a composite object of the composite type (similar to a MATLAB structure) `Model`:
 ```

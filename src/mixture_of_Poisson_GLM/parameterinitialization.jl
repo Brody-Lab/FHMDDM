@@ -1,6 +1,4 @@
 """
-<<<<<<< Updated upstream
-=======
 	GLMθ(indices𝐮, options, n𝐯)
 
 Randomly initiate the parameters for a mixture of Poisson generalized linear model
@@ -63,7 +61,6 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 end
 
 """
->>>>>>> Stashed changes
 	initialize_GLM_parameters!(model)
 
 Initialize the GLM parameters using expectation-maximization.
@@ -232,32 +229,13 @@ UNMODIFIED ARGUMENT
 """
 function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
     @unpack Δt, 𝐕, 𝐗, 𝐲, d𝛏_dB = mpGLM
-<<<<<<< Updated upstream
-	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
-=======
 	@unpack a, 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
->>>>>>> Stashed changes
 	d𝛏_dB² = d𝛏_dB.^2
 	Ξ, K = size(γ)
 	T = length(𝐲)
 	Q[1] = 0.0
 	∇Q .= 0.0
 	∇∇Q .= 0.0
-<<<<<<< Updated upstream
-	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(type,T) for k=1:K)
-	∑ᵢ_d²Qᵢₖ_dLᵢₖ² = collect(zeros(type,T) for k=1:K)
-	if fit_𝛃
-		∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-		∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-	else
-		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-=======
 	∑ᵢₖ_dQᵢₖ_dLᵢₖ = zeros(type,T)
 	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = zeros(type,T)
 	∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ = zeros(type,T)
@@ -273,30 +251,11 @@ function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type
 		∑_dQ_da = 0.0
 		∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
 		∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
->>>>>>> Stashed changes
 	end
 	@inbounds for i = 1:Ξ
 		for k = 1:K
 			𝐋 = linearpredictor(mpGLM,i,k)
 			for t=1:T
-<<<<<<< Updated upstream
-				d²ℓ_dL², dℓ_dL, ℓ = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋[t], 𝐲[t])
-				Q[1] += γ[i,k][t]*ℓ
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * dℓ_dL
-				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * d²ℓ_dL²
-				∑ᵢ_d²Qᵢₖ_dLᵢₖ²[k][t] += d²Qᵢₖ_dLᵢₖ²
-				if fit_𝛃
-					if (i==1) || (i==Ξ)
-						∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-						∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-						∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
-					else
-						∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-						∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-						∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
-					end
-=======
 				differentiate_twice_loglikelihood!(D,𝐋[t],mpGLM.𝐲[t])
 				if fit_overdispersion
 					∑_dQ_da += γ[i,k][t]*D.dℓ_da[1]
@@ -318,7 +277,6 @@ function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type
 					∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
 					∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
 					∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
->>>>>>> Stashed changes
 				else
 					∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
 					∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
@@ -331,14 +289,8 @@ function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type
 	n𝐯 = length(𝐯[1])
 	indices𝐮 = 1:n𝐮
 	indices𝐯 = collect(indices𝐮[end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
-<<<<<<< Updated upstream
-	if fit_𝛃
-		indices𝛃 = collect(indices𝐯[end][end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
-	end
-=======
 	indices𝛃 = collect(indices𝐯[end][end] .+ ((k-1)*n𝐯+1 : k*n𝐯) for k = 1:K)
 	indexa = 1 + (fit_𝛃 ? indices𝛃[end][end] : indices𝐯[end][end])
->>>>>>> Stashed changes
 	𝐔 = @view 𝐗[:, 1:n𝐮]
 	𝐔ᵀ, 𝐕ᵀ = transpose(𝐔), transpose(𝐕)
 	∇Q[indices𝐮] .= 𝐔ᵀ*∑ᵢₖ_dQᵢₖ_dLᵢₖ
@@ -354,18 +306,12 @@ function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type
 		end
 	else
 		@inbounds for k = 1:K
-<<<<<<< Updated upstream
-			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
-			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k].*𝐕)
-			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k].*𝐕)
-=======
 			∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = ∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k] + ∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k]
 			∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = ∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k] + ∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k]
 			∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = ∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k] + ∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k]
 			∇Q[indices𝐯[k]] .= 𝐕ᵀ*∑ᵢ_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB
 			∇∇Q[indices𝐮, indices𝐯[k]] .= 𝐔ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB.*𝐕)
 			∇∇Q[indices𝐯[k], indices𝐯[k]] .= 𝐕ᵀ*(∑ᵢ_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB².*𝐕)
->>>>>>> Stashed changes
 		end
 	end
 	if fit_overdispersion
