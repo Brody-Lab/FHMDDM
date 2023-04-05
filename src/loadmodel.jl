@@ -1,5 +1,47 @@
 """
-    Model(datapath; fit_to_choices)
+	contents
+
+Model(datapath)
+Model(options, trialsets)
+Trialset(options, trialset)
+Trial(a_latency_s, Δt, index_in_trialset, preceding_timesteps, trial, trialsetindex)
+Clicks(a_latency_s, L, R, Δt, ntimesteps)
+randomize_latent_parameters(options)
+randomize_latent_parameters!(model)
+randomizeparameters!(model)
+reindex(index_in_trialset, τ₀, trial)
+"""
+
+"""
+	Options(csvpath, rownumber)
+
+Returns a struct containing the fixed hyperparameters of the model
+
+ARGUMENT
+-`csvpath`: the absolute path to a comma-separated values (CSV) file
+-`rownumber`: the row of the CSV to be considered
+"""
+function Options(csvpath::String, rownumber::Integer)
+	options = DataFrames.DataFrame(CSV.File(csvpath))[rownumber,:]
+	defaults = Options();
+	columnnames = names(options)
+	entries = 	map(fieldnames(Options)) do fieldname
+					if fieldname == :datapath
+						joinpath(options["datafolder"], options["recording_id"]*".mat")
+					else
+						defaultvalue = getfield(defaults,fieldname)
+						if String(fieldname) ∈ columnnames
+							convert(typeof(defaultvalue), options[String(fieldname)])
+						else
+							defaultvalue
+						end
+					end
+				end
+	Options(entries...)
+end
+
+"""
+    Model(datapath)
 
 Load a factorial hidden Markov drift diffusion model from a MATLAB file.
 

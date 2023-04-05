@@ -39,123 +39,147 @@ end
 
 Model settings
 """
-@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}}
+@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
 	"scale factor for the accumulator transformation parameter"
-	b_scalefactor::TF=10.0
+	b_scalefactor::TF=1.0
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
 	"Exponent used to compute the scale factor of the log-likelihood of the choices. The scale factor is computed by raising the product of the number of neurons and the average number of time steps in each trial to the exponent. An exponent of 0 means no scaling"
-	choiceLL_scaling_exponent::TF=0.0
+	choiceLL_scaling_exponent::TF=0.6
 	"full path of the data"
     datapath::TS=""
 	"duration of each timestep in seconds"
-    Δt::TF=1e-2
+    Δt::TF=0.01
 	"whether the transition probability of remaining in the first state is fitted"
-	fit_Aᶜ₁₁::TB=true
+	fit_Aᶜ₁₁::TB=false
 	"whether the transition probability of remaining in the second state is fitted"
-	fit_Aᶜ₂₂::TB=true
+	fit_Aᶜ₂₂::TB=false
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
 	"whether to fit the parameter for transforming the accumulator"
-	fit_b::TB=true
+	fit_b::TB=false
 	"whether to fit separate encoding weights for when the accumulator is at the bound"
 	fit_𝛃::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
-	fit_k::TB=true
+	fit_k::TB=false
 	"whether to fit the parameter specifying leak or instability"
-	fit_λ::TB=true
+	fit_λ::TB=false
 	"whether to fit the constant added to the mean of the distribution of the accumulator variable at the first time step"
 	fit_μ₀::TB=true
 	"whether to fit an overdispersion parameter for the model of each neuron's spike count response. If true, the count response model is negative binomial rather than Poisson"
-	fit_overdispersion::TB=true
+	fit_overdispersion::TB=false
 	"whether to fit the strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
-	fit_ϕ::TB=true
+	fit_ϕ::TB=false
 	"whether the prior probability of the first state is fitted"
-	fit_πᶜ₁::TB=true
+	fit_πᶜ₁::TB=false
 	"whether to fit the behavioral lapse rate"
-	fit_ψ::TB=true
+	fit_ψ::TB=false
 	"whether to fit the variance of the Gaussian noise added at each time step"
-	fit_σ²ₐ::TB=true
+	fit_σ²ₐ::TB=false
 	"whether to fit the variance of the prior probability of the accumulator variable"
-	fit_σ²ᵢ::TB=true
+	fit_σ²ᵢ::TB=false
 	"whether to fit the variance of Gaussian noise added as a result of the clicks"
 	fit_σ²ₛ::TB=true
 	"whether to fit the weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
-	fit_wₕ::TB=true
+	fit_wₕ::TB=false
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-2
 	"number of states of the coupling variable"
 	K::TI = 1
 	"whether the L2 shrinkage penalty for the accumulator transformation parameter is learned, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum. "
 	L2_b_fit::TB=true
-	L2_b_max::TF=1e2
-	L2_b_min::TF=1e-2
+	L2_b_max::TF=1e-2
+	L2_b_min::TF=1e-4
 	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
-	L2_choices_max::TF=1e2
-	L2_choices_min::TF=1e-2
+	L2_choices_max::TF=1e0
+	L2_choices_min::TF=1e-4
 	"whether the L2 shrinkage penalty of the gain is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_gain_fit::TB=true
-	L2_gain_max::TF=1e-7
-	L2_gain_min::TF=1e-9
+	L2_gain_max::TF=1e-5
+	L2_gain_min::TF=1e-7
 	"whether the L2 shrinkage penalty of the weight of the post-spike filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_hist_fit::TB=true
-	L2_hist_max::TF=1e1
-	L2_hist_min::TF=1e-3
+	L2_hist_max::TF=1e-2
+	L2_hist_min::TF=1e-4
 	"whether the L2 shrinkage penalty of the weight of the pre-movement filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_move_fit::TB=true
-	L2_move_max::TF=1e1
-	L2_move_min::TF=1e-3
+	L2_move_max::TF=1e-2
+	L2_move_min::TF=1e-4
 	"whether the L2 shrinkage penalty of the weight of the post-photostimulus filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_phot_fit::TB=true
-	L2_phot_max::TF=1e1
-	L2_phot_min::TF=1e-3
+	L2_phot_max::TF=1e-2
+	L2_phot_min::TF=1e-4
 	"whether the L2 shrinkage penalty of the weight of the post-stereoclick filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_time_fit::TB=true
-	L2_time_max::TF=1e1
-	L2_time_min::TF=1e-3
+	L2_time_max::TF=1e-2
+	L2_time_min::TF=1e-4
 	"whether the L2 shrinkage penalty for a latent variable parameter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_latent_fit::TB=true
-	L2_latent_max::TF=1e2
-	L2_latent_min::TF=1e-2
+	L2_latent_max::TF=10.0
+	L2_latent_min::TF=0.1
 	"whether the L2 shrinkage penalty for the weight of the pre-commitment encoding of accumulated evidence is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	L2_v_fit::TB=true
-	L2_v_max::TF=1e2
-	L2_v_min::TF=1e-2
-	"`lqu`: value in native space corresponding to the lower bound, zero-value in real space, and upper bound"
+	L2_v_max::TF=1e-4
+	L2_v_min::TF=1e-6
+	"Value in native space corresponding to the lower bound ('l'), zero-value in real space ('q'), and upper bound ('u')"
 	"transition probability of the coupling variable to remain in the coupled state"
-	lqu_Aᶜ₁₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₁₁[1]) && (lqu_Aᶜ₁₁[1] <= lqu_Aᶜ₁₁[2]) && (lqu_Aᶜ₁₁[2] < lqu_Aᶜ₁₁[3]) && (lqu_Aᶜ₁₁[3] <= 1.0)
+	Aᶜ₁₁_l::TF=1e-4
+	Aᶜ₁₁_q::TF=0.5
+	Aᶜ₁₁_u::TF= 1.0-1e-4
 	"transition probability of the coupling variable to remain in the decoupled state"
-	lqu_Aᶜ₂₂::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_Aᶜ₂₂[1]) && (lqu_Aᶜ₂₂[1] <= lqu_Aᶜ₂₂[2]) && (lqu_Aᶜ₂₂[2] < lqu_Aᶜ₂₂[3]) && (lqu_Aᶜ₂₂[3] <= 1.0)
+	Aᶜ₂₂_l::TF=1e-4
+	Aᶜ₂₂_q::TF=0.5
+	Aᶜ₂₂_u::TF= 1.0-1e-4
 	"bound height"
-	lqu_B::TVF=[1.0, 30.5, 60.0];	@assert (eps() <= lqu_B[1]) && (lqu_B[1] <= lqu_B[2]) && (lqu_B[2] < lqu_B[3]) && (lqu_B[3] < Inf)
+	B_l::TF=5.0
+	B_q::TF=15.0
+	B_u::TF=25.0
 	"adaptation change rate"
-	lqu_k::TVF=[1e-4, 1e-3, 1e3];	@assert (0.0 <= lqu_k[1]) && (lqu_k[1] <= lqu_k[2]) && (lqu_k[2] < lqu_k[3]) && (lqu_k[3] < Inf)
+	k_l::TF=1e-4
+	k_q::TF=1e-3
+	k_u::TF=1e3
 	"feedback"
-	lqu_λ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_λ[1]) && (lqu_λ[1] <= lqu_λ[2]) && (lqu_λ[2] < lqu_λ[3]) && (lqu_λ[3] < Inf)
+	λ_l::TF = -5.0
+	λ_q::TF = 0.0
+	λ_u::TF = 5.0
 	"bias"
-	lqu_μ₀::TVF = [-10.0, 0.0, 10.0]; 	@assert (-Inf < lqu_μ₀[1]) && (lqu_μ₀[1] <= lqu_μ₀[2]) && (lqu_μ₀[2] < lqu_μ₀[3]) && (lqu_μ₀[3] < Inf)
+	μ₀_l::TF=-5.0
+	μ₀_q::TF= 0.0
+	μ₀_u::TF= 5.0
 	"adaptation strength"
-	lqu_ϕ::TVF=[1e-4, 1-1e-3, 1.0-1e-4]; 	@assert (0.0 <= lqu_ϕ[1]) && (lqu_ϕ[1] <= lqu_ϕ[2]) && (lqu_ϕ[2] < lqu_ϕ[3]) && (lqu_ϕ[3] <= 1.0)
+	ϕ_l::TF=1e-4
+	ϕ_q::TF=1-1e-3
+	ϕ_u::TF=1.0-1e-4
 	"prior probability of the coupled state"
-	lqu_πᶜ₁::TVF=[1e-4, 0.5, 1.0-1e-4]; 	@assert (0.0 <= lqu_πᶜ₁[1]) && (lqu_πᶜ₁[1] <= lqu_πᶜ₁[2]) && (lqu_πᶜ₁[2] < lqu_πᶜ₁[3]) && (lqu_πᶜ₁[3] <= 1.0)
-	"behavioral lapse rate"
-	lqu_ψ::TVF=[1e-6, 1e-3, 0.5-1e-6]; 		@assert (eps() <= lqu_ψ[1]) && (lqu_ψ[1] <= lqu_ψ[2]) && (lqu_ψ[2] < lqu_ψ[3]) && (lqu_ψ[3] <= 0.5) # lapse rate of 0 will result in underflow
-	"variance of per-timestep nois"
-	lqu_σ²ₐ::TVF=[1e-6, 1e-3, 20.0]; 		@assert (eps() < lqu_σ²ₐ[1]) && (lqu_σ²ₐ[1] <= lqu_σ²ₐ[2]) && (lqu_σ²ₐ[2] < lqu_σ²ₐ[3]) && (lqu_σ²ₐ[3] < Inf)
+	πᶜ₁_l::TF=1e-4
+	πᶜ₁_q::TF=0.5
+	πᶜ₁_u::TF=1-1e-4
+	"behavioral lapse rate. A value of 0 will result in underflow"
+	ψ_l::TF=1e-4
+	ψ_q::TF=1e-2
+	ψ_u::TF=1-1e-4
+	"variance of the diffusion noise (i.e., zero-meaned, independent and identically distributed gaussian noise added at each time step)"
+	σ²ₐ_l::TF=1e-4
+	σ²ₐ_q::TF=1e-3
+	σ²ₐ_u::TF=1e-2
 	"variance of the initial probability of the accumulator variable"
-	lqu_σ²ᵢ::TVF=[1e-6, 1e-3, 20.0];	@assert (eps() < lqu_σ²ᵢ[1]) && (lqu_σ²ᵢ[1] <= lqu_σ²ᵢ[2]) && (lqu_σ²ᵢ[2] < lqu_σ²ᵢ[3]) && (lqu_σ²ᵢ[3] < Inf)
+	σ²ᵢ_l::TF=1e-1
+	σ²ᵢ_q::TF=1e0
+	σ²ᵢ_u::TF=1e1
 	"variance of the variance of per-click noise"
-	lqu_σ²ₛ::TVF=[1e-6, 1e-4, 10.0];	@assert (eps() < lqu_σ²ₛ[1]) && (lqu_σ²ₛ[1] <= lqu_σ²ₛ[2]) && (lqu_σ²ₛ[2] < lqu_σ²ₛ[3]) && (lqu_σ²ₛ[3] < Inf)
+	σ²ₛ_l::TF = 0.1
+	σ²ₛ_q::TF = 5.0
+	σ²ₛ_u::TF = 20.0
 	"weight of previous answer"
-	lqu_wₕ::TVF = [-5.0, 0.0, 5.0]; 	@assert (-Inf < lqu_wₕ[1]) && (lqu_wₕ[1] <= lqu_wₕ[2]) && (lqu_wₕ[2] < lqu_wₕ[3]) && (lqu_wₕ[3] < Inf)
+	wₕ_l::TF = -5.0
+	wₕ_q::TF = 0.0
+	wₕ_u::TF = 5.0
 	"minimum value of the prior and transition probabilities of the accumulator"
 	minpa::TF=1e-8
-	"total number of units across all trialsets"
-	nunits::TI
 	"value to maximized to learn the parameters"
-	objective::TS; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
+	objective::TS="posterior"; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
@@ -163,48 +187,42 @@ Model settings
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
 	tbf_accu_ends0::TB=false
 	"number of temporal basis functions parametrizing the weight of the accumulator per second"
-	tbf_accu_hz::TF=4
+	tbf_accu_hz::TF=0.0
 	"scale factor of the temporal basis functions"
-	tbf_accu_scalefactor::TF=75.0
+	tbf_accu_scalefactor::TF=5.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
-	tbf_accu_stretch::TF=0.1
+	tbf_accu_stretch::TF=0.2
 	"scale factor of the gain parameter"
-	tbf_gain_scalefactor::TF=1.0
+	tbf_gain_scalefactor::TF=5.0
 	"maximum number of basis functions"
-	tbf_gain_maxfunctions::TI=6
+	tbf_gain_maxfunctions::TI=8
 	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter. The setting `tbf_hist_linear` determines whether a linear function is included in the basis."
 	tbf_hist_begins0::TB=false
 	tbf_hist_dur_s::TF=0.25
 	tbf_hist_ends0::TB=false
-	tbf_hist_hz::TF=12
-	tbf_hist_linear::TB=false
-	tbf_hist_scalefactor::TF=10.0
+	tbf_hist_hz::TF=12.0
+	tbf_hist_scalefactor::TF=1.0
 	tbf_hist_stretch::TF=1.0
 	"Options for the temporal basis associated with the pre-movement filter"
 	tbf_move_begins0::TB=true
 	tbf_move_dur_s::TF=0.6
 	tbf_move_ends0::TB=false
-	tbf_move_hz::TF=2
-	tbf_move_linear::TB=true
-	tbf_move_scalefactor::TF=20.0
-	tbf_move_stretch::TF=0.001
+	tbf_move_hz::TF=3.0
+	tbf_move_scalefactor::TF=5.0
+	tbf_move_stretch::TF=0.1
 	"Options for the temporal basis associated with the post-photostimulus filter"
 	tbf_phot_begins0::TB=false
 	tbf_phot_ends0::TB=false
-	tbf_phot_hz::TF=4
-	tbf_phot_linear::TB=true
-	tbf_phot_scalefactor::TF=20.0
+	tbf_phot_hz::TF=NaN
+	tbf_phot_scalefactor::TF=5.0
 	tbf_phot_stretch::TF=1.0
-	"period of each temporal basis functions, in units of the temporal distance between the centers of adjacent raised cosines. The temporal distance is in compressed time"
-	tbf_period::TF=4
 	"Options for the temporal basis associated with the post-stereoclick filter"
 	tbf_time_begins0::TB=false
 	tbf_time_dur_s::TF=1.0
-	tbf_time_ends0::TB=false
-	tbf_time_hz::TF=4
-	tbf_time_linear::TB=true
-	tbf_time_scalefactor::TF=20.0
-	tbf_time_stretch::TF=1.0
+	tbf_time_ends0::TB=true
+	tbf_time_hz::TF=5.0
+	tbf_time_scalefactor::TF=5.0
+	tbf_time_stretch::TF=0.2
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end

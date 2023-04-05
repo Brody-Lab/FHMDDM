@@ -22,7 +22,6 @@ function accumulatorbasis(maxtimesteps::Integer, options::Options)
 								false,
 								convert(Int, nfunctions),
 								maxtimesteps,
-								options.tbf_period,
 								options.tbf_accu_scalefactor,
 								options.tbf_accu_stretch;
 								orthogonal_to_ones=false)
@@ -48,8 +47,6 @@ function timebasis(options::Options)
 							options.tbf_time_dur_s,
                             options.tbf_time_ends0,
                             options.tbf_time_hz,
-							options.tbf_time_linear,
-                            options.tbf_period,
                             options.tbf_time_scalefactor,
                             options.tbf_time_stretch;
 							orthogonal_to_ones = true)
@@ -72,8 +69,6 @@ function premovementbasis(options::Options)
 							options.tbf_move_dur_s,
                             options.tbf_move_ends0,
                             options.tbf_move_hz,
-							options.tbf_move_linear,
-                            options.tbf_period,
                             options.tbf_move_scalefactor,
                             options.tbf_move_stretch;
 							orthogonal_to_ones = true)
@@ -96,15 +91,13 @@ function spikehistorybasis(options::Options)
 							options.tbf_hist_dur_s,
                             options.tbf_hist_ends0,
                             options.tbf_hist_hz,
-							options.tbf_hist_linear,
-                            options.tbf_period,
                             options.tbf_hist_scalefactor,
                             options.tbf_hist_stretch;
 							orthogonal_to_ones = true)
 end
 
 """
-	temporal_basis_functions(begins0, Δt, duration_s, ends0, hz, linear, period, scalefactor, stretch)
+	temporal_basis_functions(begins0, Δt, duration_s, ends0, hz, scalefactor, stretch)
 
 Value of each temporal basis at each time bin in a trialset
 
@@ -114,27 +107,25 @@ INPUT
 -`duration_s`: duration in seconds
 -`ends0`: whether the basis end at zero
 -`hz`: number of temporal basis functions per second
--`linear`: whether a linear function is included
--`period`: width of each temporal basis function, in terms of the inter-center distance
 -`scalefactor`: scaling
 -`stretch`: nonlinear stretching of time
 
 RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
 """
-function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, duration_s::Real, ends0::Bool, hz::Real, linear::Bool, period::Real, scalefactor::Real, stretch::Real; orthogonal_to_ones::Bool=false)
+function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, duration_s::Real, ends0::Bool, hz::Real, scalefactor::Real, stretch::Real; orthogonal_to_ones::Bool=false)
 	nfunctions = ceil(hz*duration_s)
 	if isnan(nfunctions) || (nfunctions < 1)
 		return fill(1.0, 0, 0)
 	else
 		nfunctions = convert(Int, nfunctions)
 		ntimesteps = ceil(Int, duration_s/Δt)
-		temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, period, scalefactor, stretch; orthogonal_to_ones=orthogonal_to_ones)
+		temporal_basis_functions(begins0, ends0, nfunctions, ntimesteps, scalefactor, stretch; orthogonal_to_ones=orthogonal_to_ones)
 	end
 end
 
 """
-	temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, period, scalefactor, stretch)
+	temporal_basis_functions(begins0, ends0, nfunctions, ntimesteps, scalefactor, stretch)
 
 Value of each temporal basis at each time bin in a trialset
 
@@ -142,34 +133,18 @@ INPUT
 -`begins0`: whether the basis begins at zero
 -`Δt`: time bin, in seconds
 -`ends0`: whether the basis end at zero
--`linear`: whether a linear function is included
 -`nfunctions`: number of temporal basis functions
 -`ntimesteps`: number of time steps
--`period`: width of each temporal basis function, in terms of the inter-center distance
 -`scalefactor`: scaling
 -`stretch`: nonlinear stretching of time
 
 RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
 """
-function temporal_basis_functions(begins0::Bool, ends0::Bool, linear::Bool, nfunctions::Integer, ntimesteps::Integer, period::Real, scalefactor::Real, stretch::Real; orthogonal_to_ones::Bool=false)
-	if linear
-		linearfunction = collect(-0.5:1/(ntimesteps-1):0.5)
-		linearfunction = reshape(linearfunction, ntimesteps, 1)
-		if nfunctions > 1
-			Φ = raisedcosines(begins0, ends0, nfunctions-1, ntimesteps, period, stretch)
-			if orthogonal_to_ones
-				Φ = orthogonalize_to_ones(Φ)
-			end
-			Φ = cat(linearfunction, Φ, dims=2)
-		else
-			Φ = linearfunction
-		end
-	else
-		Φ = raisedcosines(begins0, ends0, nfunctions, ntimesteps, period, stretch)
-		if orthogonal_to_ones
-			Φ = orthogonalize_to_ones(Φ)
-		end
+function temporal_basis_functions(begins0::Bool, ends0::Bool, nfunctions::Integer, ntimesteps::Integer, scalefactor::Real, stretch::Real; orthogonal_to_ones::Bool=false)
+	Φ = raisedcosines(begins0, ends0, nfunctions, ntimesteps, stretch)
+	if orthogonal_to_ones
+		Φ = orthogonalize_to_ones(Φ)
 	end
 	Φ = orthonormalbasis(Φ)
 	Φ .*= scalefactor
@@ -265,10 +240,8 @@ function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:
 	nfunctions = ceil(Int, options.tbf_phot_hz*duration*options.Δt)
 	Φon = temporal_basis_functions(options.tbf_phot_begins0,
 									options.tbf_phot_ends0,
-									options.tbf_phot_linear,
 									nfunctions,
 									ntimesteps,
-									options.tbf_period,
 									1.0,
 									options.tbf_phot_stretch;
 									orthogonal_to_ones=true)
@@ -286,10 +259,8 @@ function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:
 		nfunctions = ceil(Int, options.tbf_phot_hz*nsteps_offset*options.Δt)
 		Φoff = temporal_basis_functions(options.tbf_phot_begins0,
 			                           options.tbf_phot_ends0,
-									   options.tbf_phot_linear,
 									   nfunctions,
 			                           nsteps_offset,
-			                           options.tbf_period,
 			                           options.tbf_phot_scalefactor,
 			                           options.tbf_phot_stretch;
    									   orthogonal_to_ones=true)
@@ -491,7 +462,7 @@ function orthonormalbasis(Φ::Matrix{<:AbstractFloat}; min_relative_singular_val
 end
 
 """
-    raisedcosines(begins0, ends0, D, nbins, period, stretch)
+    raisedcosines(begins0, ends0, D, nbins, stretch)
 
 Values of raised cosine temporal basis functions (tbf's)
 
@@ -500,13 +471,15 @@ ARGUMENT
 -`ends0`: whether the last temporal basis function begins at the trough or at the peak
 -`D`: number of bases
 -`nbins`: number of bins in the time window tiled by the bases
--`period`: period of the raised cosine, in units of the inter-center distance
 -`stretch`: an index of the stretching of the cosines
+
+OPTIONAL ARGUMENT
+-`period`: period of the raised cosine, in units of the inter-center distance
 
 RETURN
 -`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
 """
-function raisedcosines(begins0::Bool, ends0::Bool, D::Integer, nbins::Integer, period::Real, stretch::Real)
+function raisedcosines(begins0::Bool, ends0::Bool, D::Integer, nbins::Integer, stretch::Real; period::Real=4)
     if isnan(stretch) || stretch < eps()
         a = 1
         b = nbins
