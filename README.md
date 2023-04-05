@@ -12,25 +12,44 @@ The code for fitting the model and computing quantities to characterizing the mo
     * [parameters](#examining-the-parameters)
       * [drift-diffusion parameters](#drift-diffusion-parameters)
       * [accumulator encoding weights](#encoding-weight-of-accumulated-evidence)
+<<<<<<< Updated upstream
       * [other GLM parameters](#other-glm-parameterss)
+=======
+      * [other GLM parameters](#other-glm-parameters)
+  * [developing the codebase](#developing-the-codebase)
+>>>>>>> Stashed changes
 * [`Model` type](#model-composite-type)
   * [fixed options](#fixed-hyperparameters-model-options)
   * [data](#data-model-trialsets)
   * [parameters](#parameters)
 # tutorial
+<<<<<<< Updated upstream
 The following tutorial shows how to fit the model to a recording session on `spock`, the Princeton Neuroscience Institute's (PNI) computation cluster, and the visualizing the results on a Windows machine
 
 In a shell, log into `spock`:
+=======
+The following tutorial shows how to fit the model to a recording session on `spock`, the Princeton Neuroscience Institute's (PNI) computation cluster, and the visualizing the results on a Windows machine.
+
+Open a shell (e.g. Windows Terminal) to log into `spock`:
+>>>>>>> Stashed changes
 ```
 > ssh <netID>@spock.princeton.edu
 ```
 After providing credentials, load a version of Julia and run it
 ```
+<<<<<<< Updated upstream
 [<netID>spock ~]$ module load julia/1.6.0
+=======
+[<netID>spock ~]$ module load julia\1.6.0
+>>>>>>> Stashed changes
 [<netID>spock ~]$ julia
 julia>
 ```
 ## installing the FHMDDM repository
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 In the Julia read-eval-print loop (REPL), enter the Pkg REPL by pressing `]` from the Julia REPL. To get back to the Julia REPL, press `backspace` or `^C`.
 ```
 julia> ]
@@ -39,7 +58,24 @@ julia> ]
 Add the `FHMDDM` repository
 ```
 (v1.6) pkg> add https://github.com/Brody-Lab/FHMDDM.git
+<<<<<<< Updated upstream
 pkg> up
+=======
+  Updating git-repo `https://github.com/Brody-Lab/FHMDDM.git`
+  Username for 'https://github.com':
+```
+Provide your github credentials. Having added a package, update your environment:
+```
+(v1.6) pkg> up
+```
+If you check the status of your environment, you should see `FHMDDM` as one of your packages:
+```
+(v1.6) pkg> st
+[<########>] FHMDDM v0.1.0 `https://github.com/Brody-Lab/FHMDDM.git#master`
+```
+Now, return to the Julia REPL by pressing `backspace`
+```
+>>>>>>> Stashed changes
 pkg> <backspace>
 julia>
 ```
@@ -268,7 +304,11 @@ EI_dorsomedial_frontal =
 ```
 
 
+<<<<<<< Updated upstream
 # other GLM parameters
+=======
+#### other GLM parameters
+>>>>>>> Stashed changes
 
 The term $u_t$ is the component of the linear predictor independent of the accumulated evidence and is given by
 
@@ -316,6 +356,68 @@ Finally, let's also plot the pre-movement and post-spike filters.
 
 <img src="/assets/analysis_2023_02_08b_example_postspike_filter.svg" height="150">
  
+<<<<<<< Updated upstream
+=======
+## developing the codebase
+First, install the package as [described](#installing-the-fhmddm-repository)
+
+```
+julia>
+julia> ]
+(v1.6) pkg>
+(v1.6) pkg> dev FHMDDM
+(v1.6) pkg> up
+(v1.6) pkg> st
+```
+You should see the following in your list of packages:
+
+```
+[<########>] FHMDDM v0.1.0 `~/.julia/dev/FHMDDM`
+```
+Now, make sure you can load FHMDDM as expected:
+```
+(v1.6) pkg> <backspace>
+julia>
+julia> using FHMDDM
+```
+Let's really make sure that you are able to use the code before you start modifying it. Let's check out a specific branch, `2023_02_12`:
+```
+julia>
+julia> exit()
+[<netID>@spock-login ~]$
+[<netID>@spock-login ~]$ cd ~/.julia/dev/FHMDDM
+[<netID>@spock-login FHMDDM]$ git fetch
+[<netID>@spock-login FHMDDM]$ git checkout 2023_02_12
+Branch 2023_02_12 set up to track remote branch 2023_02_12 from origin.
+Switched to a new branch '2023_02_12'
+```
+Returning to the Julia REPL
+```
+[<netID>@spock-login FHMDDM]$ julia
+julia>
+julia> using FHMDDM
+julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2023_02_09a_stereoclickonly/stereoclick_only_1s/data.mat"
+julia> model = Model(datapath)
+Model{FHMDDM.Options{Bool, String, Float64, Int64, Vector{Float64}}, FHMDDM.GaussianPrior{Vector{Int64}, Vector{Float64}, Vector{Float64}, Vector{String}, Matrix{Float64}, Vector{Vector{Int64}}, Vector{Matrix{Float64}}}, FHMDDM.Latentθ{Vector{Float64}}, FHMDDM.Latentθ{Vector{Float64}}, FHMDDM.Latentθ{Vector{Float64}}, Vector{FHMDDM.Trialset{Vector{FHMDDM.MixturePoissonGLM{Int64, Float64, UnitRange{Int64}, Vector{Float64}, Vector{UInt8}, FHMDDM.GLMθ{Bool, FHMDDM.Indices𝐮{ UnitRange{Int64}}, Float64, Vector{Float64}, Vector{Symbol}, Vector{Vector{Float64}}}, Matrix{Float64}}}, Int64, Vector{FHMDDM.Trial{Bool, FHMDDM.Clicks{Vector{Float64}, BitVector, Vector{Int64}, Vector{Vector{Int64}}}, Float64, Int64}}}}}
+  options: FHMDDM.Options{Bool, String, Float64, Int64, Vector{Float64}}
+  gaussianprior: FHMDDM.GaussianPrior{Vector{Int64}, Vector{Float64}, Vector{Float64}, Vector{String}, Matrix{Float64}, Vector{Vector{Int64}}, Vector{Matrix{Float64}}}
+  θnative: FHMDDM.Latentθ{Vector{Float64}}
+  θreal: FHMDDM.Latentθ{Vector{Float64}}
+  θ₀native: FHMDDM.Latentθ{Vector{Float64}}
+  trialsets: Array{FHMDDM.Trialset{Vector{FHMDDM.MixturePoissonGLM{Int64, Float64, UnitRange{Int64}, Vector{Float64}, Vector{UInt8}, FHMDDM.GLMθ{Bool, FHMDDM.Indices𝐮{ UnitRange{Int64}}, Float64, Vector{Float64}, Vector{Symbol}, Vector{Vector{Float64}}}, Matrix{Float64}}}, Int64, Vector{FHMDDM.Trial{Bool, FHMDDM.Clicks{Vector{Float64}, BitVector, Vector{Int64}, Vector{Vector{Int64}}}, Float64, Int64}}}}((1,))
+
+```
+If you can load the model, great! You can now switch back to the `master` branch and make a new branch for yourself based on the code in the `master` branch:
+```
+julia> exit()
+[<netID>@spock-login FHMDDM]$ git checkout master
+[<netID>@spock-login FHMDDM]$ git checkout -b <name of your new branch>
+[<netID>@spock-login FHMDDM]$ git branch
+
+```
+You should see your branch listed, and next to it a '*', indicating that is your current branch.
+
+>>>>>>> Stashed changes
 #  `Model` composite type
 The data, parameters, and hyperparameters of an FHMDDM are organized within the fields of in a composite object of the composite type (similar to a MATLAB structure) `Model`:
 ```

@@ -12,7 +12,7 @@ OUTPUT
 -the likelihood
 """
 function poissonlikelihood(Δt::Real, L::Real, y::Integer)
-	λΔt = softplus(L)*Δt
+	λΔt = inverselink(L)*Δt
 	poissonlikelihood(λΔt, y)
 end
 
@@ -54,7 +54,7 @@ function poissonloglikelihood(λΔt::Real, y::Integer)
 end
 
 """
-    poissonloglikelihood
+    poissonloglikelihood(Δt, L, y)
 
 Log-likelihood of an observation under a Poisson GLM with a softplus nonlinearity
 
@@ -66,7 +66,7 @@ ARGUMENT
 RETURN
 -log-likelihood
 """
-poissonloglikelihood(Δt::AbstractFloat, L::Real, y::Integer) = poissonloglikelihood(softplus(L)*Δt, y)
+poissonloglikelihood(Δt::AbstractFloat, L::Real, y::Integer) = poissonloglikelihood(inverselink(L)*Δt, y)
 
 
 """
@@ -108,6 +108,7 @@ function differentiate_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::
     else
         dℓ_dL = -dλ_dL*Δt
     end
+	return dℓ_dL
 end
 
 """
@@ -151,7 +152,7 @@ julia> abs(d2hand - d2auto[1])
 ```
 """
 function differentiate_twice_loglikelihood_wrt_linearpredictor(Δt::AbstractFloat, L::Real, λ::Real, y::Integer)
-	dλ_dL = logistic(L)
+	dλ_dL = differentiate_inverselink(L)
 	d²λ_dLdL = dλ_dL*(1-dλ_dL)
     if y > 0
         if L > -100.0
@@ -192,29 +193,4 @@ function differentiate_twice_loglikelihood_wrt_linearpredictor(Δt::AbstractFloa
 	ℓ = poissonloglikelihood(λΔt, y)
 	d²ℓ_dL², dℓ_dL = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, L, λ, y)
 	return d²ℓ_dL², dℓ_dL, ℓ
-end
-
-"""
-	scaledpoissonlikelihood(Δt, L, s, y)
-
-Probability of a Poisson observation multiplied by a scale factor
-
-ARGUMENT
--`Δt`: time step size
--`L`: linear predictor
--`s`: scale factor
--`y`: observation
-
-OUTPUT
--the likelihood
-"""
-function scaledpoissonlikelihood(Δt::Real, L::Real, s::Real, y::Integer)
-	λΔt = softplus(L)*Δt
-	if y==0
-		s*exp(-λΔt)
-	elseif y==1
-		s*λΔt*exp(-λΔt)
-	else
-		s*λΔt^y*exp(-λΔt)/factorial(y)
-	end
 end

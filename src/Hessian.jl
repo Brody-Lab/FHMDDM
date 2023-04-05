@@ -42,15 +42,11 @@ RETURN
 ```
 """
 function twopasshessian(model::Model)
-	@unpack trialsets = model
-	sameacrosstrials = FHMDDM.Sameacrosstrials(model)
-	memoryforhessian = FHMDDM.Memoryforhessian(model, sameacrosstrials)
-	@inbounds for trialsetindex in eachindex(trialsets)
-		𝐋 = FHMDDM.linearpredictor(trialsets[trialsetindex].mpGLMs)
-		offset = 0
-		for trialindex in eachindex(trialsets[trialsetindex].trials)
-			FHMDDM.twopasshessian!(memoryforhessian, 𝐋, model, sameacrosstrials, offset, trialindex, trialsetindex)
-			offset+=model.trialsets[trialsetindex].trials[trialindex].ntimesteps
+	sameacrosstrials = Sameacrosstrials(model)
+	memoryforhessian = Memoryforhessian(model, sameacrosstrials)
+	@inbounds for trialset in model.trialsets
+		for trial in trialset.trials
+			twopasshessian!(memoryforhessian, model, sameacrosstrials, trial)
 		end
 	end
 	@unpack ℓ, ∇ℓ, ∇∇ℓ = memoryforhessian
@@ -63,34 +59,26 @@ function twopasshessian(model::Model)
 end
 
 """
-	twopasshessian!
+	twopasshessian!(memoryforhessian, model, sameacrosstrials, trial)
 
 Compute the hessian for one trial as the Jacobian of the expectation conjugate gradient
 
 MODIFIED ARGUMENT
--`memoryforhessian`: a structure containing quantities used in each trial
+-`memoryforhessian`: structure containing intermediate quantities that are modified for each trial
 
 UNMODIFIED ARGUMENT
--`𝐋`: a nested array whose element 𝐋[n][j,k][t] corresponds to n-th neuron, j-th accumualtor state, k-th coupling state, and the t-th time bin in the trialset
+-`model`: structure containing the data, parameters, and hyperparameters
+-`sameacrosstrials`: structure containing intermediate quantities that are fixed across trials
+-`trial`: structure containing the data of the trial being used for computation
 """
-function twopasshessian!(memoryforhessian::Memoryforhessian,
-						 𝐋::Vector{<:Matrix{<:Vector{<:Real}}},
-						 model::Model,
-						 sameacrosstrials::Sameacrosstrials,
-						 offset::Integer,
-						 trialindex::Integer,
-						 trialsetindex::Integer)
-	trial = model.trialsets[trialsetindex].trials[trialindex]
-	@unpack mpGLMs = model.trialsets[trialsetindex]
-	@unpack clicks = trial
+function twopasshessian!(memoryforhessian::Memoryforhessian, model::Model, sameacrosstrials::Sameacrosstrials, trial::Trial)
 	@unpack θnative = model
+	@unpack K, Ξ, sf_y = model.options
+	@unpack clicks, trialsetindex = trial
+	@unpack mpGLMs = model.trialsets[trialsetindex]
 	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, D, ∇D, ∇b = memoryforhessian
 	@unpack P, ∇pa₁, ∇∇pa₁, Aᵃinput, ∇Aᵃinput, ∇∇Aᵃinput = memoryforhessian
-	@unpack λ, ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
-	𝛚 = memoryforhessian.𝛚[trialsetindex]
-	d𝛚_db = memoryforhessian.d𝛚_db[trialsetindex]
-	d²𝛚_db² = memoryforhessian.d²𝛚_db²[trialsetindex]
-	@unpack Δt, K, Ξ = sameacrosstrials
+	@unpack ∇logpy, ∇∇logpy, pY, ∇pY, ∂pY𝑑_∂ψ = memoryforhessian
 	@unpack Aᵃsilent, ∇Aᵃsilent, ∇∇Aᵃsilent = sameacrosstrials
 	@unpack Aᶜ, Aᶜᵀ, ∇Aᶜ, ∇Aᶜᵀ, πᶜ, πᶜᵀ, ∇πᶜ, ∇πᶜᵀ = sameacrosstrials
 	@unpack indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_paₜaₜ₋₁only, indexθ_pc₁, indexθ_pcₜcₜ₋₁, indexθ_ψ = sameacrosstrials
@@ -103,10 +91,8 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 	index_pY_in_θ = sameacrosstrials.index_pY_in_θ[trialsetindex]
 	indexθ_trialset = sameacrosstrials.indexθ_trialset[trialsetindex]
 	nθ_trialset = sameacrosstrials.nθ_trialset[trialsetindex]
-	if length(clicks.time) > 0
-		adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
-	end
-	FHMDDM.update_emissions!(λ, ∇logpy, ∇∇logpy, pY, ∇pY, Δt, 𝐋, mpGLMs, trial.ntimesteps, offset, 𝛚, d𝛚_db, d²𝛚_db²)
+	adaptedclicks = FHMDDM.∇∇adapt(clicks, θnative.k[1], θnative.ϕ[1])
+	spikcountderivatives!(memoryforhessian, mpGLMs, sameacrosstrials, trial)
 	update_emissions!(∂pY𝑑_∂ψ, pY[trial.ntimesteps], ∇pY[trial.ntimesteps], trial.choice, θnative.ψ[1])
 	@inbounds for q in eachindex(∇f[1])
 		∇f[1][q] .= 0
@@ -184,6 +170,7 @@ function twopasshessian!(memoryforhessian::Memoryforhessian,
 		D[t] = sum(f[t])
 		forward!(∇D[t], f[t], ∇f[t], ℓ, D[t])
 	end
+	ℓ[1] -= length(mpGLMs)*trial.ntimesteps*log(sf_y)
 	bₜ = ones(Ξ,K)
 	@inbounds for t = trial.ntimesteps:-1:1
 		γ = f[t] # resuse memory
@@ -417,6 +404,7 @@ function forward!(∇D::Vector{<:Real},
 end
 
 """
+<<<<<<< Updated upstream
     linearpredictor(mpGLMs)
 
 Linear combination of the weights in the j-th accumulator state and k-th coupling state
@@ -506,6 +494,8 @@ function update_emissions!(λ::Vector{<:Vector{<:Matrix{<:Real}}},
 end
 
 """
+=======
+>>>>>>> Stashed changes
 	update_emissions!(∂pY𝑑_∂ψ, pY, ∇pY, choice, ψ)
 
 Update the conditional likelihood of the emissions as well as its gradient
@@ -529,6 +519,7 @@ function update_emissions!(∂pY𝑑_∂ψ::Matrix{<:Real}, pY::Matrix{<:Real}, 
 end
 
 """
+<<<<<<< Updated upstream
 	conditionalrate!(λ, 𝐋, offset)
 
 MODIFIED ARGUMENT
@@ -635,6 +626,8 @@ function ∇∇conditional_log_likelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 end
 
 """
+=======
+>>>>>>> Stashed changes
 	conditionallikelihood!(pY, 𝑑, ψ)
 
 Multiply the conditional likelihood of the choice to the conditional likelihood of spiking
@@ -926,6 +919,7 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 	∇f = collect(collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets) for t=1:maxtimesteps)
 	∇b = collect(zeros(Ξ,K) for q=1:S.nθ_alltrialsets)
 	λ = collect(collect(zeros(Ξ,K) for t=1:maxtimesteps) for n = 1:maxneurons)
+	𝐋 = linearpredictor(model.trialsets)
 	∇logpy = collect(collect(collect(zeros(Ξ,K) for q=1:max_nθ_py) for n=1:maxneurons) for t=1:maxtimesteps)
 	∇∇logpy=map(1:maxtimesteps) do t
 				map(1:maxneurons) do n
@@ -976,12 +970,16 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					∇b=∇b,
 					D = zeros(maxtimesteps),
 					∇D=∇D,
+					glmderivatives=GLMDerivatives(model.trialsets[1].mpGLMs[1]),
+					indexθglms = collect(collect(indexparameters(mpGLM.θ; includeunfit=true) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 					∇ℓ=zeros(S.nθ_alltrialsets),
 					∇∇ℓ=zeros(S.nθ_alltrialsets,S.nθ_alltrialsets),
 					∂pY𝑑_∂ψ=zeros(Ξ,K),
 					λ=λ,
+					𝐋=𝐋,
 					∇logpy=∇logpy,
 					∇∇logpy=∇∇logpy,
+					𝛂 = collect(collect(inverselink(mpGLM.θ.a[1]) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 					𝛚 = 𝛚,
 					d𝛚_db = d𝛚_db,
 					d²𝛚_db² = d²𝛚_db²,

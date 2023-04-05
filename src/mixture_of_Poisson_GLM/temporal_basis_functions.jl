@@ -104,7 +104,7 @@ function spikehistorybasis(options::Options)
 end
 
 """
-	temporal_basis_functions(begins0, ends0, hz, period, scalefactor, stretch, 𝐓)
+	temporal_basis_functions(begins0, Δt, duration_s, ends0, hz, linear, period, scalefactor, stretch)
 
 Value of each temporal basis at each time bin in a trialset
 
@@ -131,6 +131,66 @@ function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, duration_s:
 		ntimesteps = ceil(Int, duration_s/Δt)
 		temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, period, scalefactor, stretch; orthogonal_to_ones=orthogonal_to_ones)
 	end
+end
+
+"""
+	temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, period, scalefactor, stretch)
+
+Value of each temporal basis at each time bin in a trialset
+
+INPUT
+-`begins0`: whether the basis begins at zero
+-`Δt`: time bin, in seconds
+-`duration_s`: duration in seconds
+-`ends0`: whether the basis end at zero
+<<<<<<< Updated upstream
+-`hz`: number of temporal basis functions per second
+-`linear`: whether a linear function is included
+=======
+-`linear`: whether a linear function is included
+-`nfunctions`: number of temporal basis functions
+-`ntimesteps`: number of time steps
+>>>>>>> Stashed changes
+-`period`: width of each temporal basis function, in terms of the inter-center distance
+-`scalefactor`: scaling
+-`stretch`: nonlinear stretching of time
+
+RETURN
+-`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time step in each trial
+"""
+<<<<<<< Updated upstream
+function temporal_basis_functions(begins0::Bool, Δt::AbstractFloat, duration_s::Real, ends0::Bool, hz::Real, linear::Bool, period::Real, scalefactor::Real, stretch::Real; orthogonal_to_ones::Bool=false)
+	nfunctions = ceil(hz*duration_s)
+	if isnan(nfunctions) || (nfunctions < 1)
+		return fill(1.0, 0, 0)
+	else
+		nfunctions = convert(Int, nfunctions)
+		ntimesteps = ceil(Int, duration_s/Δt)
+		temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, period, scalefactor, stretch; orthogonal_to_ones=orthogonal_to_ones)
+=======
+function temporal_basis_functions(begins0::Bool, ends0::Bool, linear::Bool, nfunctions::Integer, ntimesteps::Integer, period::Real, scalefactor::Real, stretch::Real; orthogonal_to_ones::Bool=false)
+	if linear
+		linearfunction = collect(-0.5:1/(ntimesteps-1):0.5)
+		linearfunction = reshape(linearfunction, ntimesteps, 1)
+		if nfunctions > 1
+			Φ = raisedcosines(begins0, ends0, nfunctions-1, ntimesteps, period, stretch)
+			if orthogonal_to_ones
+				Φ = orthogonalize_to_ones(Φ)
+			end
+			Φ = cat(linearfunction, Φ, dims=2)
+		else
+			Φ = linearfunction
+		end
+	else
+		Φ = raisedcosines(begins0, ends0, nfunctions, ntimesteps, period, stretch)
+		if orthogonal_to_ones
+			Φ = orthogonalize_to_ones(Φ)
+		end
+>>>>>>> Stashed changes
+	end
+	Φ = orthonormalbasis(Φ)
+	Φ .*= scalefactor
+	return Φ
 end
 
 """

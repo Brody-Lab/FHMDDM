@@ -68,7 +68,12 @@ function Trialset(options::Options, trialset::Dict)
 	photostimulus_incline_on_s = collect(trial["photostimulus_incline_on_s"] for trial in trials)
 	trials = collect(Trial(options.a_latency_s, options.Δt, m, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
 	movementtimesteps = collect(trial.movementtimestep for trial in trials)
+<<<<<<< Updated upstream
 	mpGLMs = MixturePoissonGLM(movementtimesteps, options, photostimulus_decline_on_s, photostimulus_incline_on_s, 𝐓, 𝐘)
+=======
+	stereoclick_times_s = collect(trial.stereoclick_time_s for trial in trials)
+	mpGLMs = MixturePoissonGLM(movementtimesteps, options, photostimulus_decline_on_s, photostimulus_incline_on_s, stereoclick_times_s, 𝐓, 𝐘)
+>>>>>>> Stashed changes
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end
 
@@ -100,6 +105,7 @@ function Trial(a_latency_s::AbstractFloat,
 	rightclicks = typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
 	ntimesteps = convert(Int, trial["ntimesteps"])
 	clicks = Clicks(a_latency_s, Δt, leftclicks, ntimesteps, rightclicks)
+<<<<<<< Updated upstream
 	if haskey(trial, "movementtimestep")
 		movementtimestep = convert(Int, trial["movementtimestep"])
 	else
@@ -109,11 +115,23 @@ function Trial(a_latency_s::AbstractFloat,
 		  choice=trial["choice"],
 		  γ=trial["gamma"],
 		  movementtimestep=movementtimestep,
+=======
+	Trial(clicks=clicks,
+		  choice=trial["choice"],
+		  γ=trial["gamma"],
+		  index_in_trialset = index_in_trialset,
+		  movementtime_s=trial["movementtime_s"],
+		  movementtimestep=ceil(Int, trial["movementtime_s"]/Δt),
+>>>>>>> Stashed changes
 		  ntimesteps=ntimesteps,
 		  photostimulus_incline_on_s=trial["photostimulus_incline_on_s"],
 		  photostimulus_decline_on_s=trial["photostimulus_decline_on_s"],
 		  previousanswer=convert(Int, trial["previousanswer"]),
+<<<<<<< Updated upstream
 		  index_in_trialset = index_in_trialset,
+=======
+		  stereoclick_time_s=trial["stereoclick_time_s"],
+>>>>>>> Stashed changes
 		  τ₀ = preceding_timesteps,
 		  trialsetindex = trialsetindex)
 end

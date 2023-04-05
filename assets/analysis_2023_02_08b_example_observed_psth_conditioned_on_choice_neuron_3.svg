@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Generator: Adobe Illustrator 24.0.2, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
@@ -171,3 +172,178 @@
 <rect x="272.9" y="81.8" class="st16" width="39.4" height="14.1"/>
 <rect x="263.7" y="45.6" class="st17" width="212.9" height="138.4"/>
 </svg>
+=======
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 24.0.2, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
+	<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">
+	<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">
+	<!ENTITY ns_graphs "http://ns.adobe.com/Graphs/1.0/">
+	<!ENTITY ns_vars "http://ns.adobe.com/Variables/1.0/">
+	<!ENTITY ns_imrep "http://ns.adobe.com/ImageReplacement/1.0/">
+	<!ENTITY ns_sfw "http://ns.adobe.com/SaveForWeb/1.0/">
+	<!ENTITY ns_custom "http://ns.adobe.com/GenericCustomNamespace/1.0/">
+	<!ENTITY ns_adobe_xpath "http://ns.adobe.com/XPath/1.0/">
+]>
+<svg version="1.1" id="Layer_1" xmlns:x="&ns_extend;" xmlns:i="&ns_ai;" xmlns:graph="&ns_graphs;"
+	 xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 489.1 250"
+	 style="enable-background:new 0 0 489.1 250;" xml:space="preserve">
+<style type="text/css">
+	.st0{clip-path:url(#SVGID_2_);fill:#FFFFFF;}
+	.st1{fill:none;stroke:#000000;stroke-width:1.3333;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st2{font-family:'SansSerif';}
+	.st3{font-size:18.6667px;}
+	.st4{fill:none;stroke:#000000;stroke-width:0.6667;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st5{fill:#3B4CC0;fill-opacity:0.2;}
+	.st6{fill:none;stroke:#3B4CC0;stroke-width:2;stroke-linejoin:bevel;stroke-miterlimit:1;stroke-dasharray:8,8;}
+	.st7{fill:none;stroke:#3B4CC0;stroke-width:2;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st8{fill:#B40426;fill-opacity:0.2;}
+	.st9{fill:none;stroke:#B40426;stroke-width:2;stroke-linejoin:bevel;stroke-miterlimit:1;stroke-dasharray:8,8;}
+	.st10{fill:none;stroke:#B40426;stroke-width:2;stroke-linejoin:round;stroke-miterlimit:10;}
+	.st11{enable-background:new    ;}
+	.st12{fill:#3B4CC0;}
+	.st13{fill:#B40426;}
+	.st14{fill:none;stroke:#000000;stroke-width:2;stroke-miterlimit:10;}
+	.st15{fill:none;stroke:#000000;stroke-width:2;stroke-miterlimit:10;stroke-dasharray:6,6;}
+	.st16{opacity:0.2;}
+	.st17{fill:none;stroke:#000000;stroke-miterlimit:10;}
+</style>
+<metadata>
+	<sfw  xmlns="&ns_sfw;">
+		<slices></slices>
+		<sliceSourceBounds  bottomLeftOrigin="true" height="250" width="477.1" x="0" y="0"></sliceSourceBounds>
+	</sfw>
+</metadata>
+<g>
+	<g>
+		<defs>
+			<rect id="SVGID_1_" width="275" height="250"/>
+		</defs>
+		<clipPath id="SVGID_2_">
+			<use xlink:href="#SVGID_1_"  style="overflow:visible;"/>
+		</clipPath>
+		<rect class="st0" width="275" height="250"/>
+	</g>
+</g>
+<g>
+	<line class="st1" x1="57" y1="193" x2="249" y2="193"/>
+	<line class="st1" x1="57" y1="193" x2="57" y2="194.9"/>
+	<line class="st1" x1="153" y1="193" x2="153" y2="194.9"/>
+	<line class="st1" x1="249" y1="193" x2="249" y2="194.9"/>
+</g>
+<g transform="translate(57,201.31)">
+	<text transform="matrix(1 0 0 1 -5.5 19)" class="st2 st3">0</text>
+</g>
+<g transform="translate(153,201.31)">
+	<text transform="matrix(1 0 0 1 -13 19)" class="st2 st3">0.5</text>
+</g>
+<g transform="translate(249,201.31)">
+	<text transform="matrix(1 0 0 1 -5.5 19)" class="st2 st3">1</text>
+</g>
+<g transform="translate(153.0001,225.6433)">
+	<text transform="matrix(1 0 0 1 -99 19)" class="st2 st3">time from stereoclick (s)</text>
+</g>
+<g>
+	<line class="st1" x1="57" y1="193" x2="57" y2="19"/>
+	<line class="st1" x1="57" y1="193" x2="55.1" y2="193"/>
+	<line class="st1" x1="57" y1="135" x2="55.1" y2="135"/>
+	<line class="st1" x1="57" y1="77" x2="55.1" y2="77"/>
+	<line class="st1" x1="57" y1="19" x2="55.1" y2="19"/>
+</g>
+<g transform="translate(48.69,193)">
+	<text transform="matrix(1 0 0 1 -11 7)" class="st2 st3">0</text>
+</g>
+<g transform="translate(48.69,135)">
+	<text transform="matrix(1 0 0 1 -11 7)" class="st2 st3">5</text>
+</g>
+<g transform="translate(48.69,77)">
+	<text transform="matrix(1 0 0 1 -21 7)" class="st2 st3">10</text>
+</g>
+<g transform="translate(48.69,19)">
+	<text transform="matrix(1 0 0 1 -21 7)" class="st2 st3">15</text>
+</g>
+<g transform="translate(24.69,105.9999) rotate(-90)">
+	<text transform="matrix(1 0 0 1 -34.0001 -5.0001)" class="st2 st3">spikes/s</text>
+</g>
+<g>
+	<line class="st4" x1="57" y1="193" x2="249" y2="193"/>
+</g>
+<g>
+	<path class="st5" d="M58.9,39.8v76.6l1.9-31.1l1.9-1.8l1.9-1.9l1.9-4.7l1.9-6.8l1.9,4.1l1.9,2.6l1.9,3.4l1.9,3.5l1.9,1.8l1.9,3.4
+		l1.9-0.1l1.9,1.3l1.9,2.3l1.9-1.5l1.9,0.5l1.9,1.4l1.9,1l1.9,0.3l1.9-1.6l1.9-0.3l1.9-2.2l1.9-0.2l1.9-0.6l1.9,1.3l1.9,1.1l1.9-0.4
+		l1.9,0.8l1.9,1.3l1.9-1.4l1.9,0l1.9,1.4l1.9,0.2l1.9-1.3l1.9,1.1L128,92l1.9-0.7l1.9,0l1.9-1.5l1.9-2.6l1.9-1.7l1.9,2.7l1.9,0.2
+		l1.9,0.1l1.9-1.3l1.9-1.9l1.9,1.9l1.9-0.7l1.9,2.2l1.9,2.5l1.9,0.8l1.9,0.8l1.9-2.5l1.9-0.5l1.9-2.6l1.9,3.5l1.9-0.8l1.9,0.8
+		l1.9,1.9l1.9,2.1l1.9,1.9l1.9-4.4l1.9,1.7l1.9,0.9l1.9,0.3l1.9,1.6l1.9-0.4l1.9,0.2l1.9-1.4l1.9,0.7l1.9-1.4l1.9-0.7l1.9-2L201,87
+		l1.9-1.4l1.9,1.6l1.9,1.6l1.9-3.9l1.9,4.2l1.9-0.8l1.9-4.6l1.9,3.1l1.9,0.3l1.9-2.7l1.9-0.7l1.9-0.4l1.9-0.5l1.9,5.9l1.9-6.9
+		l1.9,6.8l1.9-0.1l1.9,6.1l1.9-5.4l1.9-6.9l1.9,4.7l1.9-2.1l1.9-4.1l1.9-0.7l1.9,0.4V25.2l-1.9,3.2l-1.9,2.3l-1.9,2.5l-1.9,4.6
+		l-1.9,2.6l-1.9,10.7l-1.9,2.2l-1.9-2.3l-1.9,1.9l-1.9-4.4l-1.9,3.1L226,41.3l-1.9,1l-1.9,4.7l-1.9-3l-1.9,4.3l-1.9,2.1l-1.9-2.1
+		l-1.9,4.8l-1.9,3.3l-1.9-2.7l-1.9,2.4l-1.9,1.5l-1.9-1.8L201,58l-1.9,7.5l-1.9,1.6l-1.9-0.4l-1.9,1.8l-1.9,1.6l-1.9-0.6l-1.9,1.6
+		l-1.9-1.5l-1.9,1.9l-1.9,1.4l-1.9-2l-1.9-1.7l-1.9,5.6l-1.9-1.1l-1.9-1.4l-1.9-1.3l-1.9-1.3l-1.9,2.1l-1.9-3.3l-1.9,2.7l-1.9-0.4
+		l-1.9,3.8l-1.9-1l-1.9-0.9l-1.9-2l-1.9-2.8l-1.9,0.4l-1.9-3l-1.9,3.5l-1.9,1.5l-1.9,0.5l-1.9,0.1l-1.9-2.9l-1.9,0.6l-1.9,2
+		l-1.9,0.8l-1.9,2.7L128,74l-1.9,0.5l-1.9,0.2l-1.9,1.7l-1.9-0.2l-1.9-1l-1.9,0.2l-1.9,0.1l-1.9-0.9l-1.9-1.2l-1.9,0.2l-1.9-1.3
+		l-1.9-2.1l-1.9,0.4l-1.9-0.1L99.2,73l-1.9-0.3l-1.9,3.9l-1.9-1.6l-1.9-2.2l-1.9-1.4l-1.9,0.1l-1.9,1.1l-1.9-3.8L82,69L80,66.6
+		l-1.9-3.7l-1.9-3.6l-1.9-6.7L72.4,47l-1.9-4l-1.9-6.6l-1.9,3.2l-1.9,2.1L62.8,35l-1.9-13.5L58.9,39.8z"/>
+</g>
+<g>
+	<path class="st6" d="M58.9,79.9l1.9-23.8l1.9,6.7l1.9-1.2l1.9-2.3l1.9-4.7l1.9,4.8l1.9,3.8l1.9,4l1.9,4.6l1.9,3.6l1.9,2.8l1.9,1
+		l1.9,0.2l1.9,3.1l1.9-0.7l1.9-0.4l1.9,2.3l1.9,1.8l1.9-0.6l1.9-1.9l1.9,0.4l1.9-2.2l1.9,0.4l1.9-0.5l1.9,0.6l1.9,0.9l1.9,0.1
+		l1.9,1.2l1.9,0.5l1.9-0.3l1.9-0.8l1.9,1.5l1.9,0.4l1.9-1.2l1.9,0l1.9,0l1.9-0.8l1.9-1.3l1.9-1.5l1.9-2.2l1.9-0.8l1.9,2.6l1.9-0.6
+		l1.9-0.1l1.9-1.1l1.9-2.1l1.9,2l1.9,0l1.9,1.3l1.9,2.9l1.9,0.6l1.9,0.6l1.9-2.5l1.9-0.6l1.9-1.6l1.9,2.5l1.9-0.9l1.9,1.3l1.9,1
+		l1.9,1.8l1.9,2l1.9-5l1.9,1.6l1.9,0.7l1.9,0.8l1.9,0.3l1.9-0.1l1.9-0.9l1.9-1.1l1.9,0.1l1.9-1.5l1.9-0.3l1.9-2.6l1.9-4.3l1.9-2.9
+		l1.9,2.2l1.9-0.1l1.9-2.9l1.9,4.2l1.9-3.6l1.9-2.5l1.9,2.5l1.9-1.6l1.9-2.2l1.9-0.5l1.9-0.4L226,66l1.9,5.1l1.9-4l1.9,4.3l1.9,0.8
+		l1.9,2.4l1.9-2.8l1.9-9l1.9,3.3l1.9-2l1.9-2l1.9-2.4l1.9,1"/>
+	<path class="st7" d="M58.9,75.4l1.9-4.1l1.9-2.5l1.9-2.4l1.9-1l1.9-0.2l1.9,0.3l1.9,0.9l1.9,1.1l1.9,1.2l1.9,1.8L80,72l1.9,1.5
+		l1.9,1.7l1.9,1.6l1.9,1.6l1.9,1.2l1.9,1.5l1.9,0.6l1.9,0.9l1.9,1l1.9,0.8l1.9,0.8l1.9,0.4l1.9,0.2l1.9,0.5l1.9,0.1l1.9,0.3l1.9,0
+		l1.9-0.4l1.9-0.3l1.9-0.3l1.9-0.2l1.9-0.2l1.9,0.1l1.9-0.1l1.9,0l1.9,0l1.9,0l1.9-0.1l1.9,0.1l1.9,0l1.9-0.2l1.9,0.3l1.9-0.3
+		l1.9-0.4l1.9,0.1l1.9-0.3l1.9-0.4l1.9-0.2l1.9-0.1l1.9-0.2l1.9-0.4l1.9-0.5l1.9-0.2l1.9-0.4l1.9-0.7l1.9-0.6l1.9-0.5l1.9-0.2
+		l1.9-0.4L176,79l1.9-0.6l1.9-0.4l1.9-0.4l1.9-0.5l1.9,0l1.9-0.4l1.9-0.5l1.9-0.2l1.9-0.4l1.9-0.3l1.9-0.4l1.9-0.3l1.9-0.3l1.9,0.3
+		l1.9-0.1l1.9-0.5l1.9,0l1.9-0.6l1.9,0l1.9,0l1.9,0.1l1.9,0.4l1.9-0.6l1.9,0l1.9,0.3l1.9,0.5l1.9-0.1l1.9-0.3l1.9,0.4l1.9,0.1
+		l1.9-0.5l1.9-0.1l1.9-0.1l1.9,0.1l1.9,0.6l1.9,0.4l1.9-0.6l1.9-0.5"/>
+</g>
+<g>
+	<path class="st8" d="M58.9,48.8v73.8l1.9-20.2l1.9-13.9l1.9,6.3l1.9-2.1l1.9-4.1l1.9-1.9l1.9-1.6l1.9,0.6l1.9,1.7l1.9,1.6l1.9-0.8
+		l1.9,1.4l1.9,1.2l1.9,4l1.9,1.2l1.9,4l1.9,2.4l1.9,1.1l1.9,3.5l1.9,1.2l1.9,2.1l1.9-0.5l1.9-0.4l1.9,0.9l1.9,2.3l1.9,2.1l1.9,1.2
+		l1.9,0.4l1.9-1.3l1.9-2.6l1.9,1.7l1.9,2.8l1.9,1.1l1.9,1.9l1.9-0.1l1.9,1.3l1.9-0.3l1.9-0.5l1.9,0.8l1.9,0.6l1.9-0.2l1.9-1.1
+		l1.9-0.5l1.9-1.8l1.9-1.1l1.9-0.7l1.9-0.9l1.9-2.8l1.9-0.7l1.9-2.8l1.9,0.7l1.9-0.4l1.9-1.1l1.9-1.4l1.9-3.8l1.9-2.2l1.9,1l1.9,1.6
+		l1.9-1.4l1.9,0.5l1.9-1.3l1.9,1.4l1.9-2.8l1.9,0.3l1.9,0.3l1.9,3.1l1.9-3.1l1.9,1.5l1.9,2.3l1.9,0.6l1.9-0.4l1.9,3.3l1.9,1.1
+		l1.9-2.4l1.9,1.4l1.9,0.8l1.9-1.2l1.9-0.2l1.9,1.7l1.9-4.2l1.9-0.8l1.9-3.3l1.9-0.2l1.9,3.4l1.9-8.3L224,94l1.9,0.7l1.9-1.9
+		l1.9,2.8l1.9-0.4l1.9,7.3l1.9-1l1.9,4.6l1.9,8.5l1.9,2l1.9-3.1l1.9,7.6l1.9-3.2l1.9-9.8V68l-1.9,16.3l-1.9,3.8l-1.9-8.2l-1.9,5.8
+		l-1.9-3.8l-1.9-8.9l-1.9-6.3l-1.9,2.2l-1.9-8l-1.9,2.4l-1.9-4.2l-1.9,2.1L224,61l-1.9-0.7L220.2,75l-1.9-6.3l-1.9,0.9l-1.9,1.7
+		l-1.9,4.2l-1.9,8.4l-1.9,0.8l-1.9-0.1l-1.9,2.8l-1.9-0.1l-1.9,0.9l-1.9,1.2l-1.9,0.9l-1.9-3.7l-1.9-0.6l-1.9,1.3l-1.9-2.9l-1.9-1
+		l-1.9,2.6l-1.9-3.3l-1.9,0.2l-1.9-2.4l-1.9,3.2l-1.9-1.1l-1.9,2.7l-1.9-1.2l-1.9,2.5l-1.9-1.4l-1.9-0.9l-1.9,2l-1.9,3.5l-1.9,1.4
+		l-1.9,1.3l-1.9,0.3l-1.9-0.1l-1.9,3.2l-1.9,0.4l-1.9,1.3l-1.9,3.2l-1.9,0.5l-1.9,0.5l-1.9,2l-1.9,1.7l-1.9,1.5l-1.9,0.8l-1.9-0.9
+		l-1.9,0.2l-1.9-0.7l-1.9,0.9l-1.9-1.3l-1.9-0.7l-1.9-1.6l-1.9-1.5l-1.9-3.5l-1.9-1.5l-1.9,1.3l-1.9,1.1l-1.9-0.1l-1.9-0.8l-1.9-0.9
+		l-1.9-3.1l-1.9,0.3l-1.9-0.1l-1.9,1.6l-1.9-3l-1.9-1.4l-1.9-4.3l-1.9-0.7l-1.9-3.4l-1.9-4.9l-1.9-2.3l-1.9-4L82,70.4L80,66.3
+		l-1.9,2l-1.9-3.8l-1.9-2.5l-1.9-3.5l-1.9,0l-1.9,0.3l-1.9,0.3l-1.9-3.4l-1.9-12.7l-1.9,9L58.9,48.8z"/>
+</g>
+<g>
+	<path class="st9" d="M58.9,89.1l1.9-11.8l1.9-10.7l1.9,10.7l1.9-1l1.9-1.8l1.9-0.4l1.9-1.2l1.9,1.9l1.9,1.6l1.9,2.5l1.9-0.5
+		l1.9,2.4l1.9,0.4l1.9,4.8l1.9,2.1l1.9,3.4l1.9,3.5l1.9,1.3l1.9,3.6l1.9,1l1.9,2.2l1.9-0.7l1.9-0.3l1.9,0.9l1.9,2.6l1.9,0.9l1.9,1.6
+		l1.9-0.1l1.9-1l1.9-1.9l1.9,1.5l1.9,2.6l1.9,1.4l1.9,1.9l1.9,0.8l1.9,0.5l1.9-0.5l1.9,0l1.9,1l1.9,0.3l1.9-0.4l1.9-0.8l1.9-1.5
+		l1.9-1.4l1.9-1.8l1.9-0.4l1.9-1.7l1.9-2l1.9-1.2l1.9-2.7l1.9-0.3l1.9,0.4l1.9-1.5l1.9-0.9l1.9-3.4l1.9-2.6l1.9,1.6l1.9,0.1l1.9-1.1
+		l1.9,0.2l1.9-1.5l1.9,1.5l1.9-3.5l1.9,1.2l1.9,0.4l1.9,3l1.9-2.1l1.9,0.7l1.9,2.9l1.9,0l1.9-0.5l1.9,2.7l1.9,1.2l1.9-1.5l1.9,0.9
+		l1.9-0.5l1.9-2l1.9,0.3l1.9-0.1l1.9-4.1l1.9-3.7l1.9-2.5l1.9-0.9l1.9,4.3l1.9-10.3l1.9-1.2l1.9-0.8l1.9-0.2l1.9,3.5l1.9-1.4
+		l1.9,7.7l1.9-1.4l1.9,5.2l1.9,8.2l1.9,4.4l1.9-5.5l1.9,7.2l1.9-4.9l1.9-8.4"/>
+	<path class="st10" d="M58.9,70.5l1.9,0.4l1.9-3.8l1.9-0.9l1.9-0.9l1.9,1.1l1.9,1.6l1.9,1.8l1.9,2.4l1.9,2.8l1.9,2.6l1.9,2.7
+		l1.9,2.9l1.9,2.8l1.9,2.8l1.9,2l1.9,2.5l1.9,2.2l1.9,2.4l1.9,1.8l1.9,1.6l1.9,1.5l1.9,1.4l1.9,1.4l1.9,1.2l1.9,0.8l1.9,0.8l1.9,0.9
+		l1.9,0.4l1.9,0.4l1.9,0.6l1.9,0.1l1.9,0.2l1.9,0.2l1.9,0.1l1.9,0.1l1.9,0l1.9,0l1.9,0.1l1.9-0.1l1.9-0.2l1.9-0.1l1.9-0.4l1.9-0.2
+		l1.9-0.2l1.9-0.5l1.9-0.3l1.9-0.4l1.9-0.4l1.9-0.6l1.9-0.5l1.9-0.3l1.9-0.7l1.9-0.4l1.9-0.8l1.9-1l1.9-1l1.9-0.8l1.9-0.8l1.9-0.9
+		l1.9-0.5l1.9-0.8l1.9-0.8l1.9-0.7l1.9-0.8l1.9-0.9l1.9-0.8l1.9-0.8l1.9-0.7l1.9-0.4l1.9-0.1l1.9-0.6l1.9-0.8l1.9-1.1l1.9-0.9
+		l1.9,0.1l1.9-0.2l1.9-0.8l1.9-0.5l1.9-0.5l1.9-0.8l1.9-0.8l1.9-0.3l1.9-0.7l1.9-0.2l1.9-0.4l1.9-1.1l1.9-0.3l1.9,0.1l1.9-0.3
+		l1.9-0.2l1.9,0.1l1.9-0.2l1.9-0.1l1.9,0.2l1.9-1l1.9-0.3l1.9,0.5l1.9,0.1l1.9-0.7"/>
+</g>
+<g transform="translate(153.0001,225.6433)">
+	<text transform="matrix(1 0 0 1 169.3031 -151.8012)" class="st11"><tspan x="0" y="0" class="st2 st3">observed mean</tspan><tspan x="0" y="22.4" class="st2 st3">observed 95%CI</tspan><tspan x="0" y="44.8" class="st2 st3">predicted mean</tspan><tspan x="0" y="67.2" class="st12 st2 st3">left choice</tspan><tspan x="0" y="89.6" class="st13 st2 st3">right choice</tspan></text>
+</g>
+<line class="st14" x1="276.3" y1="114" x2="312.3" y2="114"/>
+<g>
+	<g>
+		<line class="st14" x1="274.6" y1="68" x2="277.6" y2="68"/>
+		<line class="st15" x1="283.6" y1="68" x2="304.6" y2="68"/>
+		<line class="st14" x1="307.6" y1="68" x2="310.6" y2="68"/>
+	</g>
+</g>
+<rect x="272.9" y="81.8" class="st16" width="39.4" height="14.1"/>
+<rect x="263.7" y="45.6" class="st17" width="212.9" height="138.4"/>
+</svg>
+>>>>>>> Stashed changes

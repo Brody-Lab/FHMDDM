@@ -15,11 +15,20 @@ OUTPUT
 """
 function crossvalidate(kfold::Integer, model::Model; choicesonly::Bool=false)
     cvindices = CVIndices(model, kfold)
+<<<<<<< Updated upstream
 	trainingmodels = map(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
 	trainingsummaries = collect(ModelSummary(trainingmodel) for trainingmodel in trainingmodels)
 	testmodels = collect(test(cvindex, model, trainingmodel) for (cvindex, trainingmodel) in zip(cvindices, trainingmodels))
 	characterization = Characterization(cvindices, testmodels, trainingmodels)
     CVResults(cvindices=cvindices, characterization=characterization, trainingsummaries=trainingsummaries)
+=======
+	trainingmodels = pmap(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
+	trainingsummaries = collect(ModelSummary(trainingmodel) for trainingmodel in trainingmodels)
+	testmodels = collect(test(cvindex, model, trainingmodel) for (cvindex, trainingmodel) in zip(cvindices, trainingmodels))
+	characterization = Characterization(cvindices, testmodels, trainingmodels)
+	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
+    CVResults(cvindices=cvindices, characterization=characterization, psthsets=psthsets, trainingsummaries=trainingsummaries)
+>>>>>>> Stashed changes
 end
 
 """
@@ -186,6 +195,7 @@ function subsample(trialset::Trialset, trialindices::Vector{<:Integer}, timestep
 	trials = trialset.trials[trialindices]
 	𝛕₀ = cumsum(vcat(0, collect(trials[m].ntimesteps for m=1:length(trials)-1)))
 	trials = collect(FHMDDM.reindex(index_in_trialset, τ₀, trial) for (index_in_trialset, τ₀, trial) in zip(1:length(trials), 𝛕₀, trials))
+<<<<<<< Updated upstream
     Trialset(trials = trials, mpGLMs = map(mpGLM->subsample(mpGLM, timesteps), trialset.mpGLMs))
 end
 
@@ -198,6 +208,9 @@ function dictionary(cvresults::CVResults)
 	Dict("cvindices" => map(dictionary, cvresults.cvindices),
 		"characterization" => dictionary(cvresults.characterization),
 		"trainingsummaries"=>map(dictionary, cvresults.trainingsummaries))
+=======
+    Trialset(trials = trials, mpGLMs = map(mpGLM->subsample(mpGLM, timesteps, trialindices), trialset.mpGLMs))
+>>>>>>> Stashed changes
 end
 
 """
@@ -230,5 +243,9 @@ function save(cvresults::CVResults, folderpath::String)
 	    matwrite(filepath, dict)
 	end
 	save(cvresults.characterization, folderpath)
+<<<<<<< Updated upstream
+=======
+	save(cvresults.psthsets, folderpath)
+>>>>>>> Stashed changes
     return nothing
 end

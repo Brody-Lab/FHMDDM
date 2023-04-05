@@ -91,7 +91,7 @@ end
 """
 	real2native(r,q,l,u)
 
-Convert a parameter from real space to latent space
+Convert a parameter from native space to real space
 
 ARGUMENT
 -`n`: value in native space
@@ -319,6 +319,7 @@ function dictionary(options::Options)
 			"fit_k"=>options.fit_k,
 			"fit_lambda"=>options.fit_λ,
 			"fit_mu0"=>options.fit_μ₀,
+			"fit_overdispersion"=>options.fit_overdispersion,
 			"fit_phi"=>options.fit_ϕ,
 			"fit_pic1"=>options.fit_πᶜ₁,
 			"fit_psi"=>options.fit_ψ,
@@ -376,6 +377,10 @@ function dictionary(options::Options)
 			"tbf_accu_scalefactor"=>options.tbf_accu_scalefactor/s,
 			"tbf_accu_stretch"=>options.tbf_accu_stretch,
 			"tbf_gain_scalefactor"=>options.tbf_gain_scalefactor/s,
+<<<<<<< Updated upstream
+=======
+			"tbf_gain_maxfunctions"=>options.tbf_gain_maxfunctions,
+>>>>>>> Stashed changes
 			"tbf_hist_begins0"=>options.tbf_hist_begins0,
 			"tbf_hist_dur_s"=>options.tbf_hist_dur_s,
 			"tbf_hist_ends0"=>options.tbf_hist_ends0,
@@ -413,7 +418,12 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(glmθ::GLMθ)
+<<<<<<< Updated upstream
     Dict("b"=>glmθ.b,
+=======
+    Dict("a"=>glmθ.a,
+		"b"=>glmθ.b,
+>>>>>>> Stashed changes
 		"b_scalefactor"=>glmθ.b_scalefactor,
 		"u"=>glmθ.𝐮,
 		"v"=>glmθ.𝐯,
@@ -526,6 +536,7 @@ function Options(nunits::Integer, options::Dict)
 			fit_k = options["fit_k"],
 			fit_λ = options["fit_lambda"],
 			fit_μ₀ = options["fit_mu0"],
+			fit_overdispersion = options["fit_overdispersion"],
 			fit_ϕ = options["fit_phi"],
 			fit_πᶜ₁	= options["fit_pic1"],
 			fit_ψ = options["fit_psi"],
@@ -584,6 +595,10 @@ function Options(nunits::Integer, options::Dict)
 			tbf_accu_scalefactor = options["tbf_accu_scalefactor"]*s,
 			tbf_accu_stretch = options["tbf_accu_stretch"],
 			tbf_gain_scalefactor = options["tbf_gain_scalefactor"]*s,
+<<<<<<< Updated upstream
+=======
+			tbf_gain_maxfunctions = convert(Int,options["tbf_gain_maxfunctions"]),
+>>>>>>> Stashed changes
 			tbf_hist_begins0 = options["tbf_hist_begins0"],
 			tbf_hist_dur_s = options["tbf_hist_dur_s"],
 			tbf_hist_ends0 = options["tbf_hist_ends0"],
