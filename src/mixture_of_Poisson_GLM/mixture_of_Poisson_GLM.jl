@@ -1,3 +1,99 @@
+
+"""
+	MixturePoissonGLM(movementtimes_s, options, photostimulus_decline_on_s, photostimulus_incline_on_s, stereoclick_times_s, trialdurations, 𝐘)
+
+Initialize the Poisson mixture generalized linear model for each neuron in a trialset
+
+ARGUMENT
+-`movementtimes_s`: a vector of floats indicating the time, in seconds, when the animal left the center port, relative to the time of the stereoclick
+-`options`: a composite containing the fixed hyperparameters of the model
+-`photostimulus_decline_on_s`: a vector of floats indicating the time, in seconds, when the photostimulus, if any, began to taper off (i.e., the time of the onset of the offset ramp), relative to the timing of the stereoclick
+-`photostimulus_incline_on_s`: the time in each trial when the photostimulus began to ramp up in intensity
+-`𝐓`: a vector of integers indicating the number of time steps in each trial
+-`𝐘`: a nested vector whose each element corresponds to a neuron in the trialset and represents the spike train response of that neuron.
+
+RETURN
+-a vector whose each element is a composite containing the data and parameters of the Poisson mixture generalized linear model of a neuron
+"""
+function MixturePoissonGLM(options::Options, trials::Vector{<:Trial})
+	Φpostspike = spikehistorybasis(options)
+	Φpremovement = premovementbasis(options)
+	movementtimesteps = collect(trial.movementtimestep for trial in trials)
+	trialdurations = collect(trial.ntimesteps for trial in trials)
+	𝐔premovement = premovementbasis(movementtimesteps, Φpremovement, trialdurations)
+	Φpoststereoclick = timebasis(options)
+	𝐔poststereoclick = timebasis(Φpoststereoclick, trialdurations)
+	photostimulus_incline_on_s = collect(trial.photostimulus_incline_on_s for trial in trials)
+	photostimulus_decline_on_s = collect(trial.photostimulus_decline_on_s for trial in trials)
+	Φpostphotostimulus, Φpostphotostimulus_timesteps, 𝐔postphotostimulus = photostimulusbasis(options, photostimulus_incline_on_s, photostimulus_decline_on_s, trialdurations)
+	Φaccumulator = accumulatorbasis(maximum(trialdurations), options)
+	𝐕 = temporal_basis_functions(Φaccumulator, trialdurations)
+	d𝛏_dB=(2collect(1:options.Ξ) .- options.Ξ .- 1)./(options.Ξ-1)
+	stereoclick_times_s = collect(trial.stereoclick_time_s for trial in trials)
+	nneurons = length(trials[1].spiketrains)
+	map(1:nneurons) do n
+		𝐲 = vcat((trial.spiketrains[n] for trial in trials)...)
+		MixturePoissonGLM(d𝛏_dB,
+						options,
+						Φaccumulator,
+						Φpostphotostimulus,
+						Φpostphotostimulus_timesteps,
+						Φpostspike,
+						Φpoststereoclick,
+						Φpremovement,
+						stereoclick_times_s,
+						trialdurations,
+						𝐔postphotostimulus,
+						𝐔poststereoclick,
+						𝐔premovement,
+						𝐕,
+						𝐲)
+	end
+end
+
+"""
+	MixturePoissonGLM()
+
+Initiate a Poisson mixture GLM of a single neuron
+
+"""
+function MixturePoissonGLM(d𝛏_dB::Vector{<:AbstractFloat},
+						options::Options,
+						Φaccumulator::Matrix{<:AbstractFloat},
+						Φpostphotostimulus::Matrix{<:AbstractFloat},
+						Φpostphotostimulus_timesteps::UnitRange{<:Integer},
+						Φpostspike::Matrix{<:AbstractFloat},
+						Φpoststereoclick::Matrix{<:AbstractFloat},
+						Φpremovement::Matrix{<:AbstractFloat},
+						stereoclick_times_s::Vector{<:AbstractFloat},
+						trialdurations::Vector{<:Integer},
+						𝐔postphotostimulus::Matrix{<:AbstractFloat},
+						𝐔poststereoclick::Matrix{<:AbstractFloat},
+						𝐔premovement::Matrix{<:AbstractFloat},
+						𝐕::Matrix{<:AbstractFloat},
+						𝐲::Vector{<:UInt8})
+	@assert length(𝐲)==sum(trialdurations)
+	Φgain, 𝐔gain = drift_design_matrix(options, stereoclick_times_s, trialdurations, 𝐲)
+	𝐔postspike = spikehistorybasis(Φpostspike, trialdurations, 𝐲)
+	𝐗=hcat(𝐔gain, 𝐔postspike, 𝐔poststereoclick, 𝐔premovement, 𝐔postphotostimulus, 𝐕)
+	indices𝐮 = Indices𝐮(size(𝐔gain,2), size(Φpostspike,2), size(Φpoststereoclick,2), size(Φpremovement,2), size(Φpostphotostimulus,2))
+	glmθ = GLMθ(indices𝐮, size(𝐕,2), options)
+	MixturePoissonGLM(Δt=options.Δt,
+					d𝛏_dB=d𝛏_dB,
+					likelihoodscalefactor=options.sf_y,
+					Φaccumulator=Φaccumulator,
+					Φgain=Φgain,
+					Φpostphotostimulus=Φpostphotostimulus,
+					Φpostphotostimulus_timesteps=Φpostphotostimulus_timesteps,
+					Φpostspike=Φpostspike,
+					Φpoststereoclick=Φpoststereoclick,
+					Φpremovement=Φpremovement,
+					θ=glmθ,
+					𝐕=𝐕,
+					𝐗=𝐗,
+					𝐲=𝐲)
+end
+
 """
     linearpredictor(mpGLM, j, k)
 
@@ -313,100 +409,6 @@ function subsample(mpGLM::MixturePoissonGLM, timesteps::Vector{<:Integer}, trial
                         𝐕 = mpGLM.𝐕[timesteps, :],
                         𝐗 = mpGLM.𝐗[timesteps, :],
                         𝐲 =mpGLM.𝐲[timesteps])
-end
-
-"""
-	MixturePoissonGLM(movementtimes_s, options, photostimulus_decline_on_s, photostimulus_incline_on_s, stereoclick_times_s, trialdurations, 𝐘)
-
-Initialize the Poisson mixture generalized linear model for each neuron in a trialset
-
-ARGUMENT
--`movementtimes_s`: a vector of floats indicating the time, in seconds, when the animal left the center port, relative to the time of the stereoclick
--`options`: a composite containing the fixed hyperparameters of the model
--`photostimulus_decline_on_s`: a vector of floats indicating the time, in seconds, when the photostimulus, if any, began to taper off (i.e., the time of the onset of the offset ramp), relative to the timing of the stereoclick
--`photostimulus_incline_on_s`: the time in each trial when the photostimulus began to ramp up in intensity
--`𝐓`: a vector of integers indicating the number of time steps in each trial
--`𝐘`: a nested vector whose each element corresponds to a neuron in the trialset and represents the spike train response of that neuron.
-
-RETURN
--a vector whose each element is a composite containing the data and parameters of the Poisson mixture generalized linear model of a neuron
-"""
-function MixturePoissonGLM(movementtimesteps::Vector{<:Integer},
-							options::Options,
-							photostimulus_decline_on_s::Vector{<:AbstractFloat},
- 							photostimulus_incline_on_s::Vector{<:AbstractFloat},
-							stereoclick_times_s::Vector{<:AbstractFloat},
-							trialdurations::Vector{<:Integer},
-							𝐘::Vector{<:Vector{<:UInt8}})
-	Φpostspike = spikehistorybasis(options)
-	Φpremovement = premovementbasis(options)
-	𝐔premovement = premovementbasis(movementtimesteps, Φpremovement, trialdurations)
-	Φpoststereoclick = timebasis(options)
-	𝐔poststereoclick = timebasis(Φpoststereoclick, trialdurations)
-	Φpostphotostimulus, Φpostphotostimulus_timesteps, 𝐔postphotostimulus = photostimulusbasis(options, photostimulus_incline_on_s, photostimulus_decline_on_s, trialdurations)
-	Φaccumulator = accumulatorbasis(maximum(trialdurations), options)
-	𝐕 = temporal_basis_functions(Φaccumulator, trialdurations)
-	d𝛏_dB=(2collect(1:options.Ξ) .- options.Ξ .- 1)./(options.Ξ-1)
-	map(𝐘) do 𝐲
-		MixturePoissonGLM(d𝛏_dB,
-						options,
-						Φaccumulator,
-						Φpostphotostimulus,
-						Φpostphotostimulus_timesteps,
-						Φpostspike,
-						Φpoststereoclick,
-						Φpremovement,
-						stereoclick_times_s,
-						trialdurations,
-						𝐔postphotostimulus,
-						𝐔poststereoclick,
-						𝐔premovement,
-						𝐕,
-						𝐲)
-	end
-end
-
-"""
-	MixturePoissonGLM()
-
-Initiate a Poisson mixture GLM of a single neuron
-
-"""
-function MixturePoissonGLM(d𝛏_dB::Vector{<:AbstractFloat},
-						options::Options,
-						Φaccumulator::Matrix{<:AbstractFloat},
-						Φpostphotostimulus::Matrix{<:AbstractFloat},
-						Φpostphotostimulus_timesteps::UnitRange{<:Integer},
-						Φpostspike::Matrix{<:AbstractFloat},
-						Φpoststereoclick::Matrix{<:AbstractFloat},
-						Φpremovement::Matrix{<:AbstractFloat},
-						stereoclick_times_s::Vector{<:AbstractFloat},
-						trialdurations::Vector{<:Integer},
-						𝐔postphotostimulus::Matrix{<:AbstractFloat},
-						𝐔poststereoclick::Matrix{<:AbstractFloat},
-						𝐔premovement::Matrix{<:AbstractFloat},
-						𝐕::Matrix{<:AbstractFloat},
-						𝐲::Vector{<:UInt8})
-	@assert length(𝐲)==sum(trialdurations)
-	Φgain, 𝐔gain = drift_design_matrix(options, stereoclick_times_s, trialdurations, 𝐲)
-	𝐔postspike = spikehistorybasis(Φpostspike, trialdurations, 𝐲)
-	𝐗=hcat(𝐔gain, 𝐔postspike, 𝐔poststereoclick, 𝐔premovement, 𝐔postphotostimulus, 𝐕)
-	indices𝐮 = Indices𝐮(size(𝐔gain,2), size(Φpostspike,2), size(Φpoststereoclick,2), size(Φpremovement,2), size(Φpostphotostimulus,2))
-	glmθ = GLMθ(indices𝐮, size(𝐕,2), options)
-	MixturePoissonGLM(Δt=options.Δt,
-					d𝛏_dB=d𝛏_dB,
-					likelihoodscalefactor=options.sf_y,
-					Φaccumulator=Φaccumulator,
-					Φgain=Φgain,
-					Φpostphotostimulus=Φpostphotostimulus,
-					Φpostphotostimulus_timesteps=Φpostphotostimulus_timesteps,
-					Φpostspike=Φpostspike,
-					Φpoststereoclick=Φpoststereoclick,
-					Φpremovement=Φpremovement,
-					θ=glmθ,
-					𝐕=𝐕,
-					𝐗=𝐗,
-					𝐲=𝐲)
 end
 
 """

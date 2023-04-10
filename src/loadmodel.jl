@@ -13,6 +13,17 @@ reindex(index_in_trialset, τ₀, trial)
 """
 
 """
+	Model(csvpath, rownumber)
+
+RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
+
+ARGUMENT
+-`csvpath`: the absolute path to a comma-separated values (CSV) file
+-`rownumber`: the row of the CSV to be considered
+"""
+Model(csvpath::String, rownumber::Integer) = Model(Options(csvpath, rownumber))
+
+"""
 	Options(csvpath, rownumber)
 
 Returns a struct containing the fixed hyperparameters of the model
@@ -41,17 +52,51 @@ function Options(csvpath::String, rownumber::Integer)
 end
 
 """
-    Model(datapath)
+	Model(options)
 
-Load a factorial hidden Markov drift diffusion model from a MATLAB file.
-
-If the model has already been optimized, a results file is expected.
+RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
 
 ARGUMENT
-- `datapath`: full path of the data file
+-`options`: a struct containing the fixed hyperparameters of the model
+"""
+function Model(options::Options)
+	data = read(matopen(options.datapath))
+	singletrialset = haskey(data, "neurons") && haskey(data, "trials")
+	if singletrialset
+		trialsets = [Trialset(options, data["trials"], 1)]
+	else
+		trialsets = map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
+	end
+	Model(options, trialsets)
+end
 
-RETURN
-- a structure containing information for a factorial hidden Markov drift-diffusion model
+"""
+	Model(datapath, options)
+
+RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
+
+ARGUMENT
+- `datapath`: a string indicating the absolute path of the data file
+-`options`: a struct containing the fixed hyperparameters of the model
+"""
+function Model(datapath::String, options::Options)
+	dataMAT = read(matopen(datapath))
+	nunits = 0
+	for rawtrialset in dataMAT["data"]
+		nunits += length(rawtrialset["units"])
+	end
+    options = Options(nunits, dataMAT["options"])
+	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
+	Model(options, trialsets)
+end
+
+"""
+    Model(datapath)
+
+RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
+
+ARGUMENT
+- `datapath`: absolute path of the data file
 """
 function Model(datapath::String)
     dataMAT = read(matopen(datapath))
@@ -67,14 +112,11 @@ end
 """
     Model(options, trialsets)
 
-Create a factorial hidden Markov drift-diffusion model
+RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
 
 ARGUMENT
--`options`: model settings
+-`options`: a struct containing the fixed hyperparameters of the model
 -`trialsets`: data used to constrain the model
-
-RETURN
-- a structure containing information for a factorial hidden Markov drift-diffusion model
 """
 function Model(options::Options, trialsets::Vector{<:Trialset})
 	gaussianprior=GaussianPrior(options, trialsets)
@@ -100,59 +142,46 @@ INPUT
 OUTPUT
 -a composite containing the stimulus timing, behavioral choice and timing, spike times recorded during the trials of a trialset
 """
-function Trialset(options::Options, trialset::Dict)
-	trialsetindex = convert(Int,trialset["index"])
-    trials = vec(trialset["trials"])
-	𝐓 = map(x->convert(Int, x["ntimesteps"]), trials)
-	preceding_timesteps = vcat(0, cumsum(𝐓[1:end-1]))
-	𝐘 = map(x->convert.(UInt8, vec(x["y"])), vec(trialset["units"]))
-	photostimulus_decline_on_s = collect(trial["photostimulus_decline_on_s"] for trial in trials)
-	photostimulus_incline_on_s = collect(trial["photostimulus_incline_on_s"] for trial in trials)
-	trials = collect(Trial(options.a_latency_s, options.Δt, m, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
-	movementtimesteps = collect(trial.movementtimestep for trial in trials)
-	stereoclick_times_s = collect(trial.stereoclick_time_s for trial in trials)
-	mpGLMs = MixturePoissonGLM(movementtimesteps, options, photostimulus_decline_on_s, photostimulus_incline_on_s, stereoclick_times_s, 𝐓, 𝐘)
+function Trialset(options::Options, trials, trialsetindex::Integer)
+    trials = vec(trials)
+	ntimesteps_each_trial = collect(convert(Int, trial["ntimesteps"]) for trial in trials)
+	preceding_timesteps = vcat(0, cumsum(ntimesteps_each_trial[1:end-1]))
+	trials = collect(Trial(m, options, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
+	mpGLMs = MixturePoissonGLM(options, trials)
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end
 
 """
-	Trial(a_latency_s, Δt, index_in_trialset, preceding_timesteps, trial, trialsetindex)
+	Trial(index_in_trialset, options preceding_timesteps, trial, trialsetindex)
 
-Create a composite containing the data of one trial
+RETURN a composite containing the stimulus timing, behavioral choice, and metadata of one trial
 
 ARGUMENT
--`a_latency_s`: latency, in seconds, with which the latent variable responds to the auditory clicks
--`Δt`: duration, in seconds, of each time step in the model
 -`index_in_trialset`: index of this trial among all trials in this trialset
+-`options`: fixed hyperparameters of the model
 -`preceding_timesteps`: sum of the number of time steps in all trials from the same trialset preceding this trial
 -`trial`: a `Dict` containing the data of the trial
 -`trialsetindex`: index of the trialset among all trialsets
-
-RETURN
--a composite containing the stimulus timing, behavioral choice, and relevant metadata for of one trial
 """
-function Trial(a_latency_s::AbstractFloat,
-				Δt::AbstractFloat,
-				index_in_trialset::Integer,
-				preceding_timesteps::Integer,
-				trial::Dict,
-				trialsetindex::Integer)
+function Trial(index_in_trialset::Integer, options::Options, preceding_timesteps::Integer, trial::Dict, trialsetindex::Integer)
 	leftclicks = trial["clicktimes"]["L"]
 	leftclicks = typeof(leftclicks)<:AbstractFloat ? [leftclicks] : vec(leftclicks)
 	rightclicks = trial["clicktimes"]["R"]
 	rightclicks = typeof(rightclicks)<:AbstractFloat ? [rightclicks] : vec(rightclicks)
 	ntimesteps = convert(Int, trial["ntimesteps"])
-	clicks = Clicks(a_latency_s, Δt, leftclicks, ntimesteps, rightclicks)
+	clicks = Clicks(options.a_latency_s, options.Δt, leftclicks, ntimesteps, rightclicks)
+	spiketrains = collect(convert.(UInt8, vec(spiketrain)) for spiketrain in vec(trial["spiketrains"]))
 	Trial(clicks=clicks,
 		  choice=trial["choice"],
 		  γ=trial["gamma"],
 		  index_in_trialset = index_in_trialset,
 		  movementtime_s=trial["movementtime_s"],
-		  movementtimestep=ceil(Int, trial["movementtime_s"]/Δt),
+		  movementtimestep=ceil(Int, trial["movementtime_s"]/options.Δt),
 		  ntimesteps=ntimesteps,
 		  photostimulus_incline_on_s=trial["photostimulus_incline_on_s"],
 		  photostimulus_decline_on_s=trial["photostimulus_decline_on_s"],
 		  previousanswer=convert(Int, trial["previousanswer"]),
+		  spiketrains=spiketrains,
 		  stereoclick_time_s=trial["stereoclick_time_s"],
 		  τ₀ = preceding_timesteps,
 		  trialsetindex = trialsetindex)

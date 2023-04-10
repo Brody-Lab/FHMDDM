@@ -176,6 +176,8 @@ Model settings
 	wₕ_l::TF = -5.0
 	wₕ_q::TF = 0.0
 	wₕ_u::TF = 5.0
+	"maximum duration of each trial"
+	maxduration_s::TF=1.0
 	"minimum value of the prior and transition probabilities of the accumulator"
 	minpa::TF=1e-8
 	"value to maximized to learn the parameters"
@@ -259,10 +261,7 @@ Information on the sensory stimulus and behavior each trial
 
 Spike trains are not included. In sampled data, the generatives values of the latent variables are stored.
 """
-@with_kw struct Trial{TB<:Bool,
-                      TC<:Clicks,
-					  TF<:AbstractFloat,
-                      TI<:Integer}
+@with_kw struct Trial{TB<:Bool, TC<:Clicks, TF<:AbstractFloat, TI<:Integer, TVVI<:Vector{<:Vector{<:Integer}}}
     "information on the auditory clicks"
     clicks::TC
     "behavioral choice"
@@ -283,6 +282,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	photostimulus_incline_on_s::TF
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
+	"a nested array whose element `spiketrains[n][t]` is the spike train response of the n-th neuron on the t-th time step of the trial"
+	spiketrains::TVVI
 	"time of the stereoclick, in seconds, in the sessions"
 	stereoclick_time_s::TF
 	"number of timesteps in the trialset preceding this trial"
@@ -1159,9 +1160,9 @@ Behavioral choice and neuronal spike trains simulated by running the model forwa
 	accumulator::VF
 	"`true` mean a right choice and `false` a left choice"
 	choice::B
-	"a nested array whose element lambda_spikes_per_s[i][m][n][t] is the value of generative spikes per s of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
+	"a nested array whose element `λ[n][t]` is the value of generative spikes per s of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
 	λ::VVF
-	"a nested array whose element spiketrains[i][m][n][t] is the spike train response of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
+	"a nested array whose element `spiketrains[n][t]` is the spike train response of the n-th neuron on the t-th time step of the m-th trial on the i-th trialset"
 	spiketrains::VVI
 end
 
