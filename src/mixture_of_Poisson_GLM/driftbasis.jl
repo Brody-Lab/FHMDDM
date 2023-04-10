@@ -71,6 +71,7 @@ The scaling of the temporal basis vectors is adjusted to be based on the maximum
 ARGUMENT
 -`nfunctions`: number of basis functions
 -`options`: fixed hyperparameters
+-`s`: scale factor coefficient
 -`stereoclick_timesteps`: the time of the stereoclick on each trial
 -`trialdurations`: the number of time steps on each trial
 
@@ -78,18 +79,18 @@ RETURN
 -`𝐗`: a  matrix with a number of rows equal to the number of trials (i.e., `length(stereoclick_timesteps)` or `length(trialdurations)`) and a number of columns equal to `nfunctions`
 """
 function drift_design_matrix(nfunctions::Integer, options::Options, stereoclick_timesteps::Vector{<:Integer}, trialdurations::Vector{<:Integer})
+	scalefactor = options.sf_tbf[1]*options.tbf_gain_scalefactor
 	if nfunctions == 0
 		error("nfunctions must be > 0")
 	elseif nfunctions == 1
-		scalingadjustment = options.tbf_gain_scalefactor/sqrt(maximum(trialdurations))
+		scalingadjustment = scalefactor/sqrt(maximum(trialdurations))
 		return fill(scalingadjustment, length(trialdurations), 1)
 	else
 	    begins0=false
 		ends0=false
-		linear=false
 	    ntimesteps = maximum(stereoclick_timesteps)
 		stretch=1e-6
-	    Φ = temporal_basis_functions(begins0, ends0, linear, nfunctions, ntimesteps, options.tbf_period, options.tbf_gain_scalefactor, stretch; orthogonal_to_ones=false)
+	    Φ = temporal_basis_functions(begins0, ends0, nfunctions, ntimesteps, scalefactor, stretch; orthogonal_to_ones=false)
 		scalingadjustment = sqrt(maximum(stereoclick_timesteps)/maximum(trialdurations))
 	    return Φ[stereoclick_timesteps,:].*scalingadjustment
 	end

@@ -41,19 +41,20 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 	for i in eachindex(θ.𝐮)
 		θ.𝐮[i] = 1.0 .- 2rand()
 	end
-	θ.𝐮[θ.indices𝐮.gain] ./= options.tbf_gain_scalefactor
-	θ.𝐮[θ.indices𝐮.postspike] ./= options.tbf_hist_scalefactor
-	θ.𝐮[θ.indices𝐮.poststereoclick] ./= options.tbf_time_scalefactor
-	θ.𝐮[θ.indices𝐮.premovement] ./= options.tbf_move_scalefactor
-	θ.𝐮[θ.indices𝐮.postphotostimulus] ./= options.tbf_phot_scalefactor
+	for fieldname in fieldnames(typeof(θ.indices𝐮))
+		indices = getfield(θ.indices𝐮, fieldname)
+		scalefactor = getfield(options, Symbol("tbf_"*String(fieldname)*"_scalefactor"))*options.sf_tbf[1]
+		θ.𝐮[indices] ./= scalefactor
+	end
+	scalefactor = options.tbf_accumulator_scalefactor*options.sf_tbf[1]
 	K = length(θ.𝐯)
 	if K > 1
-		𝐯₀ = (-1.0:2.0/(K-1):1.0)./options.tbf_accu_scalefactor
+		𝐯₀ = (-1.0:2.0/(K-1):1.0)./scalefactor
 		for k = 1:K
 			θ.𝐯[k] .= 𝐯₀[k]
 		end
 	else
-		θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./options.tbf_accu_scalefactor
+		θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./scalefactor
 	end
 	for k = 1:K
 		θ.𝛃[k] .= θ.fit_𝛃 ? -θ.𝐯[k] : 0.0

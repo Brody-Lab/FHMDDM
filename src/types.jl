@@ -39,7 +39,7 @@ end
 
 Model settings
 """
-@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer}
+@with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
 	"scale factor for the accumulator transformation parameter"
@@ -88,41 +88,34 @@ Model settings
 	g_tol::TF=1e-2
 	"number of states of the coupling variable"
 	K::TI = 1
-	"whether the L2 shrinkage penalty for the accumulator transformation parameter is learned, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum. "
-	L2_b_fit::TB=true
+	"maximum and minimum of the L2 shrinkage penalty for each class of parameters. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
+	"accumulator transformation"
 	L2_b_max::TF=1e-2
 	L2_b_min::TF=1e-4
-	"maximum and minimum L2 shrinkage penalty for each latent variable parameter, when fitting to only choices"
+	"latent variable parameter when fitting to only choices"
 	L2_choices_max::TF=1e0
 	L2_choices_min::TF=1e-4
-	"whether the L2 shrinkage penalty of the gain is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_gain_fit::TB=true
+	"gain"
 	L2_gain_max::TF=1e-5
 	L2_gain_min::TF=1e-7
-	"whether the L2 shrinkage penalty of the weight of the post-spike filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_hist_fit::TB=true
-	L2_hist_max::TF=1e-2
-	L2_hist_min::TF=1e-4
-	"whether the L2 shrinkage penalty of the weight of the pre-movement filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_move_fit::TB=true
-	L2_move_max::TF=1e-2
-	L2_move_min::TF=1e-4
-	"whether the L2 shrinkage penalty of the weight of the post-photostimulus filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_phot_fit::TB=true
-	L2_phot_max::TF=1e-2
-	L2_phot_min::TF=1e-4
-	"whether the L2 shrinkage penalty of the weight of the post-stereoclick filter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_time_fit::TB=true
-	L2_time_max::TF=1e-2
-	L2_time_min::TF=1e-4
-	"whether the L2 shrinkage penalty for a latent variable parameter is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_latent_fit::TB=true
+	"spike history"
+	L2_postspike_max::TF=1e-2
+	L2_postspike_min::TF=1e-4
+	"pre-movement"
+	L2_premovement_max::TF=1e-2
+	L2_premovement_min::TF=1e-4
+	"post-photostimulus filter"
+	L2_postphotostimulus_max::TF=1e-2
+	L2_postphotostimulus_min::TF=1e-4
+	"post-stereoclick filter"
+	L2_poststereoclick_max::TF=1e-2
+	L2_poststereoclick_min::TF=1e-4
+	"latent variable parameter"
 	L2_latent_max::TF=10.0
 	L2_latent_min::TF=0.1
-	"whether the L2 shrinkage penalty for the weight of the pre-commitment encoding of accumulated evidence is fit, and if so, its maximum and minimum. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	L2_v_fit::TB=true
-	L2_v_max::TF=1e-4
-	L2_v_min::TF=1e-6
+	"encoding of accumulated evidence"
+	L2_accumulator_max::TF=1e-4
+	L2_accumulator_min::TF=1e-6
 	"Value in native space corresponding to the lower bound ('l'), zero-value in real space ('q'), and upper bound ('u')"
 	"transition probability of the coupling variable to remain in the coupled state"
 	Aᶜ₁₁_l::TF=1e-4
@@ -182,49 +175,51 @@ Model settings
 	minpa::TF=1e-8
 	"value to maximized to learn the parameters"
 	objective::TS="posterior"; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
+	"coefficient multiplied to any scale factor of the temporal basis functions of a Poisson mixture GLM"
+	sf_tbf::TVF=[NaN]
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
-	tbf_accu_begins0::TB=false
+	tbf_accumulator_begins0::TB=false
 	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
-	tbf_accu_ends0::TB=false
+	tbf_accumulator_ends0::TB=false
 	"number of temporal basis functions parametrizing the weight of the accumulator per second"
-	tbf_accu_hz::TF=0.0
+	tbf_accumulator_hz::TF=0.0
 	"scale factor of the temporal basis functions"
-	tbf_accu_scalefactor::TF=5.0
+	tbf_accumulator_scalefactor::TF=5.0
 	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
-	tbf_accu_stretch::TF=0.2
+	tbf_accumulator_stretch::TF=0.2
 	"scale factor of the gain parameter"
 	tbf_gain_scalefactor::TF=5.0
 	"maximum number of basis functions"
 	tbf_gain_maxfunctions::TI=8
-	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_hist_dur_s` is the duration, in seconds, of the filter. The setting `tbf_hist_linear` determines whether a linear function is included in the basis."
-	tbf_hist_begins0::TB=false
-	tbf_hist_dur_s::TF=0.25
-	tbf_hist_ends0::TB=false
-	tbf_hist_hz::TF=12.0
-	tbf_hist_scalefactor::TF=1.0
-	tbf_hist_stretch::TF=1.0
+	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_postspike_dur_s` is the duration, in seconds, of the filter. The setting `tbf_postspike_linear` determines whether a linear function is included in the basis."
+	tbf_postspike_begins0::TB=false
+	tbf_postspike_dur_s::TF=0.25
+	tbf_postspike_ends0::TB=false
+	tbf_postspike_hz::TF=12.0
+	tbf_postspike_scalefactor::TF=1.0
+	tbf_postspike_stretch::TF=1.0
 	"Options for the temporal basis associated with the pre-movement filter"
-	tbf_move_begins0::TB=true
-	tbf_move_dur_s::TF=0.6
-	tbf_move_ends0::TB=false
-	tbf_move_hz::TF=3.0
-	tbf_move_scalefactor::TF=5.0
-	tbf_move_stretch::TF=0.1
+	tbf_premovement_begins0::TB=true
+	tbf_premovement_dur_s::TF=0.6
+	tbf_premovement_ends0::TB=false
+	tbf_premovement_hz::TF=3.0
+	tbf_premovement_scalefactor::TF=5.0
+	tbf_premovement_stretch::TF=0.1
 	"Options for the temporal basis associated with the post-photostimulus filter"
-	tbf_phot_begins0::TB=false
-	tbf_phot_ends0::TB=false
-	tbf_phot_hz::TF=NaN
-	tbf_phot_scalefactor::TF=5.0
-	tbf_phot_stretch::TF=1.0
+	tbf_postphotostimulus_begins0::TB=false
+	tbf_postphotostimulus_ends0::TB=false
+	tbf_postphotostimulus_hz::TF=NaN
+	tbf_postphotostimulus_scalefactor::TF=5.0
+	tbf_postphotostimulus_stretch::TF=1.0
 	"Options for the temporal basis associated with the post-stereoclick filter"
-	tbf_time_begins0::TB=false
-	tbf_time_dur_s::TF=1.0
-	tbf_time_ends0::TB=true
-	tbf_time_hz::TF=5.0
-	tbf_time_scalefactor::TF=5.0
-	tbf_time_stretch::TF=0.2
+	tbf_poststereoclick_begins0::TB=false
+	tbf_poststereoclick_dur_s::TF=1.0
+	tbf_poststereoclick_ends0::TB=true
+	tbf_poststereoclick_hz::TF=5.0
+	tbf_poststereoclick_scalefactor::TF=5.0
+	tbf_poststereoclick_stretch::TF=0.2
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end
@@ -373,16 +368,6 @@ Mixture of Poisson generalized linear model
     𝐕::MF
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
-    "columns corresponding to the gain"
-	𝐗columns_gain::UI = θ.indices𝐮.gain
-	"columns corresponding to the spike history input"
-	𝐗columns_hist::UI = θ.indices𝐮.postspike
-	"columns corresponding to the input from time from the beginning of the trial"
-	𝐗columns_time::UI = θ.indices𝐮.poststereoclick
-	"columns corresponding to the input from time before mvoement"
-	𝐗columns_move::UI = θ.indices𝐮.premovement
-	"columns corresponding to the input from time before mvoement"
-	𝐗columns_phot::UI = θ.indices𝐮.postphotostimulus
 	"columns corresponding to the state-independent inputs"
 	𝐗columns_𝐮::UI = 1:(size(𝐗,2)-size(𝐕,2))
 	"columns corresponding to the input from the accumulator"
@@ -433,9 +418,7 @@ end
 
 A group of trials in which a population of neurons were recorded simultaneously
 """
-@with_kw struct Trialset{VM<:Vector{<:MixturePoissonGLM},
-						 TI<:Integer,
-                         VT<:Vector{<:Trial}}
+@with_kw struct Trialset{VM<:Vector{<:MixturePoissonGLM}, TI<:Integer, VT<:Vector{<:Trial}}
 	"Mixture of Poisson GLM of each neuron in this trialset"
     mpGLMs::VM=MixturePoissonGLM[]
 	"number of time steps summed across trials"

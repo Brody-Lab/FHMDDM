@@ -63,6 +63,15 @@ function Model(options::Options)
 	data = read(matopen(options.datapath))
 	singletrialset = haskey(data, "neurons") && haskey(data, "trials")
 	if singletrialset
+		nneurons = length(data["trials"][1]["spiketrains"][1])
+	else
+		nneurons = 0
+		for trialset in data["trialsets"]
+			nneurons += length(trialset["trials"][1]["spiketrains"][1])
+		end
+	end
+	options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
+	if singletrialset
 		trialsets = [Trialset(options, data["trials"], 1)]
 	else
 		trialsets = map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
@@ -136,6 +145,7 @@ end
 Create a composite containing the data from one trialset
 
 INPUT
+-`nneurons_across_trialsets`: total number of neurons across trialsets
 -`options`: user-specified hyperparameters of the model
 -`trialset`: a dictionary contain MATLAB-exported data corresponding to a single trial-set
 
@@ -176,7 +186,7 @@ function Trial(index_in_trialset::Integer, options::Options, preceding_timesteps
 		  γ=trial["gamma"],
 		  index_in_trialset = index_in_trialset,
 		  movementtime_s=trial["movementtime_s"],
-		  movementtimestep=ceil(Int, trial["movementtime_s"]/options.Δt),
+		  movementtimestep=ceil(Int, (trial["movementtime_s"]-trial["stereoclick_time_s"])/options.Δt),
 		  ntimesteps=ntimesteps,
 		  photostimulus_incline_on_s=trial["photostimulus_incline_on_s"],
 		  photostimulus_decline_on_s=trial["photostimulus_decline_on_s"],
@@ -240,61 +250,6 @@ function Clicks(a_latency_s::AbstractFloat,
            source=isright,
            left=left,
            right=right)
-end
-
-"""
-	randomize_latent_parameters(options)
-
-Initialize the value of each model parameters in native space by sampling from a Uniform random variable""
-
-RETURN
--values of model parameter in native space
-"""
-function randomize_latent_parameters(options::Options)
-	θnative = Latentθ()
-	randomize_latent_parameters!(θnative, options)
-	return θnative
-end
-
-"""
-	randomize_latent_parameters!(model)
-
-Set the value of each latent-variable parameter as a sample from a Uniform distribution.
-
-Only parameters being fit are randomized
-
-MODIFIED ARGUMENT
--`model`: a structure containing the parameters, hyperparameters, and data of the factorial hidden-Markov drift-diffusion model. Its fields `θnative` and `θreal` are modified.
-"""
-function randomize_latent_parameters!(model::Model)
-	@unpack options, θnative, θreal = model
-	randomize_latent_parameters!(θnative, options)
-	native2real!(θreal, options, θnative)
-end
-
-"""
-	randomize_latent_parameters!(θnative, options)
-
-Set the value of each latent-variable parameter as a sample from a Uniform distribution.
-
-Only parameters being fit are randomized
-
-MODIFIED ARGUMENT
--`θnative`: latent variables' parameters in native space
-
-UNMODIFIED ARGUMENT
--`options`: settings of the model
-"""
-function randomize_latent_parameters!(θnative::Latentθ, options::Options)
-	for field in fieldnames(typeof(θnative))
-		fit = is_parameter_fit(options, field)
-		lqu = getfield(options, Symbol("lqu_"*string(field)))
-		l = lqu[1]
-		q = lqu[2]
-		u = lqu[3]
-		getfield(θnative, field)[1] = fit ? l + (u-l)*rand() : q
-	end
-	return nothing
 end
 
 """

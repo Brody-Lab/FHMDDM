@@ -1,5 +1,5 @@
 """
-	accumulatorbasis(options, 𝐓)
+	accumulatorbasis(maxtimesteps, options)
 
 Temporal basis functions for the accumulator kernel
 
@@ -11,88 +11,44 @@ RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
 function accumulatorbasis(maxtimesteps::Integer, options::Options)
-	nfunctions = ceil(options.tbf_accu_hz*(maxtimesteps*options.Δt))
+	nfunctions = ceil(options.tbf_accumulator_hz*(maxtimesteps*options.Δt))
+	scalefactor = options.sf_tbf[1]*options.tbf_accumulator_scalefactor
 	if isnan(nfunctions)
 		return ones(0,0)
 	elseif nfunctions < 1
-		return ones(maxtimesteps,1) .* (options.tbf_accu_scalefactor/√maxtimesteps)
+		return ones(maxtimesteps,1) .* (scalefactor/√maxtimesteps)
 	else
-		temporal_basis_functions(options.tbf_accu_begins0,
-								options.tbf_accu_ends0,
+		temporal_basis_functions(options.tbf_accumulator_begins0,
+								options.tbf_accumulator_ends0,
 								false,
 								convert(Int, nfunctions),
 								maxtimesteps,
-								options.tbf_accu_scalefactor,
-								options.tbf_accu_stretch;
+								options.scalefactor,
+								options.tbf_accumulator_stretch;
 								orthogonal_to_ones=false)
 	end
 end
 
 """
-	timebasis(options, 𝐓)
+	temporal_basis_functions(filtername, options)
 
-Temporal basis functions for the time kernel
-
-ARGUMENT
--`maxtimesteps`: maximum number of time steps across all trials in a trialset
--`options`: settings of the model
-
-RETURN
--`𝐔`: A matrix whose element 𝐔[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
--`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
-"""
-function timebasis(options::Options)
-    temporal_basis_functions(options.tbf_time_begins0,
-                            options.Δt,
-							options.tbf_time_dur_s,
-                            options.tbf_time_ends0,
-                            options.tbf_time_hz,
-                            options.tbf_time_scalefactor,
-                            options.tbf_time_stretch;
-							orthogonal_to_ones = true)
-end
-
-"""
-	premovementbasis(options)
-
-Temporal basis functions for the premovement kernel
+Temporal basis functions used to fit a filter
 
 ARGUMENT
+-`filtername`: name of the filter
 -`options`: settings of the model
 
 RETURN
 -`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
 """
-function premovementbasis(options::Options)
-    temporal_basis_functions(options.tbf_move_begins0,
+function temporal_basis_functions(filtername::String, options::Options)
+	temporal_basis_functions(getfield(options, Symbol("tbf_"*filtername*"_begins0")),
                             options.Δt,
-							options.tbf_move_dur_s,
-                            options.tbf_move_ends0,
-                            options.tbf_move_hz,
-                            options.tbf_move_scalefactor,
-                            options.tbf_move_stretch;
-							orthogonal_to_ones = true)
-end
-
-"""
-	spikehistorybasis(options)
-
-Values of temporal basis functions parametrizing a postspike filter
-
-ARGUMENT
--`options`: settings of the model
-
-OUTPUT
--`Φ`: a matrix whose element Φ[τ,i] corresponds to the value of i-th temporal basis function in the τ-th time bin after the spike
-"""
-function spikehistorybasis(options::Options)
-	temporal_basis_functions(options.tbf_hist_begins0,
-                            options.Δt,
-							options.tbf_hist_dur_s,
-                            options.tbf_hist_ends0,
-                            options.tbf_hist_hz,
-                            options.tbf_hist_scalefactor,
-                            options.tbf_hist_stretch;
+							getfield(options, Symbol("tbf_"*filtername*"_dur_s")),
+                            getfield(options, Symbol("tbf_"*filtername*"_ends0")),
+                            getfield(options, Symbol("tbf_"*filtername*"_hz")),
+                            getfield(options, Symbol("tbf_"*filtername*"_scalefactor"))*options.sf_tbf[1],
+                            getfield(options, Symbol("tbf_"*filtername*"_stretch")),
 							orthogonal_to_ones = true)
 end
 
@@ -199,7 +155,7 @@ function photostimulusbasis(options::Options, 𝐭_onset_s::Vector{<:AbstractFlo
 	indices = map(𝐭_onset_s, 𝐭_offset_s) do t_on, t_off
 					!isnan(t_on) && !isnan(t_off)
 			  end
-	if (sum(indices)==0) || isnan(options.tbf_phot_hz)
+	if (sum(indices)==0) || isnan(options.tbf_postphotostimulus_hz)
 		Φ = zeros(0, 0)
 		Φtimesteps = 1:0
 		𝐔 = zeros(sum(𝐓), size(Φ,2))
@@ -237,13 +193,14 @@ RETURN
 function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:Integer}, 𝐭ₒₙ::Vector{<:Integer})
 	nsteps_onset_to_trialend = map((T, tₒₙ)-> tₒₙ < 0 ? T-tₒₙ : T-tₒₙ+1, 𝐓, 𝐭ₒₙ)
 	ntimesteps = maximum(nsteps_onset_to_trialend)
-	nfunctions = ceil(Int, options.tbf_phot_hz*duration*options.Δt)
-	Φon = temporal_basis_functions(options.tbf_phot_begins0,
-									options.tbf_phot_ends0,
+	nfunctions = ceil(Int, options.tbf_postphotostimulus_hz*duration*options.Δt)
+	scalefactor = options.tbf_postphotostimulus_scalefactor*options.sf_tbf[1]
+	Φon = temporal_basis_functions(options.tbf_postphotostimulus_begins0,
+									options.tbf_postphotostimulus_ends0,
 									nfunctions,
 									ntimesteps,
 									1.0,
-									options.tbf_phot_stretch;
+									options.tbf_postphotostimulus_stretch;
 									orthogonal_to_ones=true)
 	latest_onset = maximum(𝐭ₒₙ)
 	if latest_onset < 0
@@ -256,13 +213,13 @@ function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:
 	indexoff = findfirst(Φtimesteps.==(duration+1))
 	if indexoff != nothing
 		nsteps_offset = length(Φtimesteps) - indexoff + 1
-		nfunctions = ceil(Int, options.tbf_phot_hz*nsteps_offset*options.Δt)
-		Φoff = temporal_basis_functions(options.tbf_phot_begins0,
-			                           options.tbf_phot_ends0,
+		nfunctions = ceil(Int, options.tbf_postphotostimulus_hz*nsteps_offset*options.Δt)
+		Φoff = temporal_basis_functions(options.tbf_postphotostimulus_begins0,
+			                           options.tbf_postphotostimulus_ends0,
 									   nfunctions,
 			                           nsteps_offset,
-			                           options.tbf_phot_scalefactor,
-			                           options.tbf_phot_stretch;
+			                           scalefactor,
+			                           options.tbf_postphotostimulus_stretch;
    									   orthogonal_to_ones=true)
 		Φoff = vcat(zeros(indexoff-1, size(Φoff,2)), Φoff)
 		if !isempty(Φoff)
@@ -273,7 +230,7 @@ function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:
 	else
 		Φ = Φon
 	end
-	Φ .*= options.tbf_phot_scalefactor
+	Φ .*= scalefactor
 	return Φ, Φtimesteps
 end
 
@@ -404,7 +361,7 @@ function spikehistorybasis(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer},
 end
 
 """
-	timebasis(Φ, 𝐓)
+	poststereoclickbasis(Φ, 𝐓)
 
 Value of each temporal basis vector of the post-stereoclick filter at each time bin in a trialset
 
@@ -415,7 +372,7 @@ INPUT
 RETURN
 -`𝐔`: A matrix whose element 𝐔[t,i] indicates the value of the i-th temporal basis function in the t-th time bin in the trialset
 """
-function timebasis(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
+function poststereoclickbasis(Φ::Matrix{<:AbstractFloat}, 𝐓::Vector{<:Integer})
     ntimesteps, nfunctions = size(Φ)
     𝐔 = zeros(sum(𝐓), nfunctions)
     τ = 0
