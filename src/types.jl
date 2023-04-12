@@ -1203,6 +1203,8 @@ end
 	paccumulator_choicespikes::VVVVF
 	"posterior probability of the accumulator variable conditioned on the clicks and spike trains. The format is identical to that of `paccumulator`."
 	paccumulator_spikes::VVVVF
+	"log(base 2)-likelihood of the emissions on each trial. The element `LL[i][m]` is the log-likelihood of the choice in the m-th trial in the i-th trialset."
+	LL::VVF
 	"log(base 2)-likelihood of the observed behavioral choice. The element `LLchoice[i][m]` is the log-likelihood of the choice in the m-th trial in the i-th trialset."
 	LLchoice::VVF
 	"log(base 2)-likelihood of the observed choice under a Bernoulli model. The format is identical to that of the field `LLchoice`."

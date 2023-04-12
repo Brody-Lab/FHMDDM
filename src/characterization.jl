@@ -22,6 +22,7 @@ function Characterization(testmodel::Model, trainingmodel::Model; nsamples::Inte
 					paccumulator_choice = posterior_accumulator_distribution(testmodel; conditionedon="choices"),
 					paccumulator_choicespikes = posterior_accumulator_distribution(testmodel; conditionedon="choices_spikes"),
 					paccumulator_spikes = posterior_accumulator_distribution(testmodel; conditionedon="spikes"),
+					LL = loglikelihood_each_trial(testmodel),
 					LLchoice = loglikelihood_choice(testmodel),
 					LLchoice_bernoulli = map((testset, trainingset)->loglikelihood_choice_bernoulli(testset, trainingset), testmodel.trialsets, trainingmodel.trialsets),
 					LLchoice_spikes = loglikelihood_choice_given_spikes(testmodel),
@@ -92,6 +93,40 @@ function posterior_accumulator_distribution(model::Model; conditionedon::String=
 			end
 		end
 	end
+end
+
+
+"""
+	loglikelihood_each_trial(model)
+
+Log(base-2)-likelihood of the emissions on each trial
+
+ARGUMENT
+-`model`: a struct containing the data, parameters, and hyperparameters
+
+RETURN
+-`ℓ`: A nested array whose element `ℓ[i][m]` is the log-likelihood of the m-th trial of i-th trialset
+"""
+function loglikelihood_each_trial(model::Model)
+	log2e = log2(exp(1))
+	memory = Memoryforgradient(model)
+	concatenatedθ = concatenateparameters(model)
+	P = update!(memory, model, concatenatedθ)
+	log_s = log(model.options.sf_y)
+	ℓ = map(model.trialsets) do trialset
+			N = length(trialset.mpGLMs)
+			map(trialset.trials) do trial
+				-N*trial.ntimesteps*log_s
+			end
+		end
+	@inbounds for i in eachindex(model.trialsets)
+		for m in eachindex(model.trialsets[i].trials)
+			memory.ℓ[1] = 0.0
+			forward!(memory, P, model.θnative, model.trialsets[i].trials[m])
+			ℓ[i][m] += log2e*memory.ℓ[1]
+		end
+	end
+	return ℓ
 end
 
 """
