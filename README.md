@@ -5,7 +5,10 @@ The code for fitting the model and computing quantities to characterizing the mo
 # table of contents
 * [tutorial](#tutorial)
   * [installing the FHMDDM repository](#installing-the-fhmddm-repository)
-  * [specifying the model options](#specifying-the-model-options)
+  * [creating a model with default options](#creating-a-model-with-default-options)
+  * [customizing model options](#customizing-model-options)
+  * [customizing multiple models](#customizing-multiple-models)
+  * [data format](#data-format)
   * [fitting the model](#fitting-the-model)
   * [examining the results](#examining-the-results)
     * [PSTH](#plotting-the-peri-stimulus-time-histogram-psth)
@@ -51,7 +54,7 @@ Provide your github credentials. Having added a package, update your environment
 If you check the status of your environment, you should see `FHMDDM` as one of your packages:
 ```
 (v1.6) pkg> st
-[<########>] FHMDDM v0.1.0 `https://github.com/Brody-Lab/FHMDDM.git#master`
+[<some numbers>] FHMDDM v0.1.0 `https://github.com/Brody-Lab/FHMDDM.git#master`
 ```
 Now, return to the Julia REPL by pressing `backspace`
 ```
@@ -85,11 +88,148 @@ Model
 ```
 If an error occurs and requires recompilation, Julia must be restarted.
 
-##  specifying the model options
-The fixed hyperparameters of model are documented in a comma-separated values (CSV) file named `options.csv`: An example can be seen [here](https://github.com/Brody-Lab/tzluo/blob/master/analyses/analysis_2023_02_08b_example/options.csv). Each column corresponds to a hyperparameter, and each row corresponds to a separate model. Depending on the goals of the analysis separate models can be fit to the same or different recording sessions. In this example, a single model is fit to the recording session `T176_2018_05_03`. For description of each model option, see [types.jl](/src/types.jl).
+##   creating a model with default options
+To create a model with the default model options, provide the absolute path of a data file ([the data format is discussed below](#data-format))
+```
+julia> datapath = "/mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_12/T176_2018_05_03.mat"
+```
+and the absolute path of an output folder
+```
+julia> outputpath = "/mnt/cup/labs/brody/tzluo/miscellaneous/fhmddm_sandbox/"
+```
+we can now create an object of type `Model` that contains the data, parameters, hyperparameters, and options (fixed hyperparameters):
+```
+julia> using FHMDDM
+julia> model = Model(datapath, outputpath)
+```
+All the options of this object are indicated in `model.options`
+```
+julia> model.options
+Options{Bool, String, Float64, Int64, Vector{Float64}}
+  a_latency_s: Float64 0.01
+  choiceobjective: String "posterior"
+  choiceLL_scaling_exponent: Float64 0.6
+  datapath: String "/mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_11/T176_2018_05_03.mat"
+  ⋮
+```
+which is an object of type `Options`. Detailed descriptions of each field can be found in [types.jl](/src/types.jl)
 
-## preparing the data
-Instructions on preparing the data using `options.csv` will be provided in the future.
+## customizing model options
+Suppose we wish not to fit the height of the absorbing bound of the drift-diffusion process, which is optimized by default. To specify this custom option, I create a hash table (a [Dict](https://docs.julialang.org/en/v1/base/collections/#Base.Dict) in Julia):
+```
+julia> datapath = "/mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_12/T176_2018_05_03.mat"
+julia> outputpath = "/mnt/cup/labs/brody/tzluo/miscellaneous/fhmddm_sandbox/"
+julia> dict = Dict("fit_B"=>false, "datapath"=>datapath, "outputpath"=>outputpath)
+```
+Using this hash table, the customized model can be created
+```
+julia> model = Model(Options(dict))
+julia> model.options.fit_B
+false
+```
+
+## customizing multiple models
+Typically, multiple models are fit simultaneously, to the same data file under different options, to different data files under the same options, or both. Specifying the options for multiple models can be simplified by using a table. Each row of the table specifies the options of a model.
+
+```
+julia> using DataFrames
+julia> df = DataFrame(fit_B=[true, false], outputpath = collect(outputpath*s for s = ["fit_B", "fix_B"]), datapath=datapath)
+```
+
+Please make sure that the output paths are different. I bolded the differences below
+
+| fit_B   | outputpath                                                       | datapath                                                                                   |
+| ------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| TRUE    | /mnt/cup/labs/brody/tzluo/miscellaneous/fhmddm_sandbox/__fit_B__ | /mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_12/T176_2018_05_03.mat |
+| FALSE   | /mnt/cup/labs/brody/tzluo/miscellaneous/fhmddm_sandbox/__fix_B__ | /mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_12/T176_2018_05_03.mat |
+
+```
+julia> model_fit_B = Model(df[1,:])
+julia> model_fix_B = Model(df[2,:])
+```
+
+If a column has a name that is not a field in the type `Options` as indicated in [types.jl](/src/types.jl), the column is ignored.
+
+If you have not added the module [DataFrames.jl](https://dataframes.juliadata.org/stable/) (you should), no worries. A model can also be created by supplying it with the absolute path to a comma-separated values (CSV) file and a row number
+
+```
+julia> csvpath = "/mnt/cup/people/zhihaol/Documents/tzl_state_dependent_encoding/src/scripts/analysis_2023_04_12a_cv/options.csv"
+julia> model = Model(csvpath, 2)
+``` 
+
+## data format
+Data are stored in binary MATLAB files (.mat). Below shows a data file of a single recording sessions with 664 complete trials and 76 choice-selective neurons (note that the model is fully compatible at fitting a single model to multiple sessions).  Each trial is an element of a cell array containing a scalar[ structure array](https://www.mathworks.com/help/matlab/ref/struct.html). Let's look at the first trial
+```
+MATLAB> load('X:\tzluo\manuscript2023a\recordingsessions\2023_04_12\T176_2018_05_03.mat', 'trials')
+MATLAB> trials{1}
+
+ans = 
+
+  struct with fields:
+
+                        choice: 0
+                    clicktimes: [1×1 struct]
+                         gamma: -4
+                movementtime_s: 3.8109e+03
+                previousanswer: 0
+            stereoclick_time_s: 3.8103e+03
+                    ntimesteps: 50
+    photostimulus_incline_on_s: NaN
+    photostimulus_decline_on_s: NaN
+                   spiketrains: {76×1 cell}
+```
+If you want to load this file on your computer, its Unix path is `/mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_12/T176_2018_05_03.mat`
+
+The field `choice` is a logical scalar indicating whether the animal chose left (false) or right (true).
+
+The struct `clicktimes` indicates the times of the left and right clicks relative to the stereoclick
+```
+>> trials{1}.clicktimes
+
+ans = 
+
+  struct with fields:
+
+    L: [0 0.0159 0.0315 0.0409 0.0607 0.1138 0.1498 0.1736 0.1775 0.1881 0.2511 … ]
+    R: [0 0.2386]
+```
+`gamma` is the ratio of the natural logarithm of the generative right click rate to the log of the left click rate.
+
+`movementtime_s` is the inferred time, in seconds, when the animal left the center port. 
+
+`previousanswer` indicates the location where the reward is baited in the previous completed trial (left:-1, right: 1, no previous trial: 0)
+
+`stereoclick_time_s` is the time when the stereoclick occured.
+
+`ntimesteps`: is the number of time steps between the stereoclick and when the animal left the center port (the number of time steps is often capped by a maximum trial duration of 1 second).
+
+`photostimulus_incline_on_s`: onset time of the "on-ramp" of the photostimulus
+
+`photostimulus_decline_on_s`: onset time of the "off-ramp" of the photostimulus
+
+`spiketrains` is a cell array whose each element corresponds to a neuron. The spike train of the first neuron in this trial is a vector length `ntimesteps`
+
+```
+MATLAB> trials{1}.spiketrains{1}
+
+ans =
+
+  Columns 1 through 14
+
+     0     0     0     0     0     0     0     0     0     0     0     0     0     1
+
+  Columns 15 through 28
+
+     1     0     0     0     0     0     1     1     0     0     0     0     0     0
+
+  Columns 29 through 42
+
+     0     0     0     0     0     0     0     0     0     0     0     0     0     0
+
+  Columns 43 through 50
+
+     0     1     0     0     0     0     0     0
+```
 
 ## fitting the model
 We will prepare two scripts, a Julia script for fitting the model, and a shell script to interact with the computational cluster's job scheduler and to run the Julia script. The typical Julia script is:
@@ -127,7 +267,7 @@ Once the scripts are prepared, run the Julia script on the cluster by calling `s
 sbatch /usr/people/zhihaol/Documents/tzluo/analyses/analysis_2023_02_08a_choiceLL_scaling_exponent/optimize.sh
 ```
 ## examining the results
-Code for plotting the results was written in MATLAB 2019a. To use the plotting tools, add the folder `/plotting` into MATLAB's search path. First, let's tabulate the models and their options. Here we are assuming that the MATLAB script is saved in the same folder where the `options.csv` is located:
+Code for plotting the results was written in MATLAB 2023a. To use the plotting tools, add the local copy of the folder [FHMDDM/src](https://github.com/Brody-Lab/FHMDDM/tree/master/src) into MATLAB's search path. First, let's tabulate the models and their options. Here we are assuming that the MATLAB script is saved in the same folder where the `options.csv` is located:
 ```
 >> analysispath = fileparts(matlab.desktop.editor.getActiveFilename)
 >> T = FHMDDM.tabulateoptions(analysispath)

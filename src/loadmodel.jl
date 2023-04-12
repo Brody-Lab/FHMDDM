@@ -25,6 +25,17 @@ Model(csvpath::String, row::Integer) = Model(Options(csvpath, row))
 Model(csvpath::String) = Model(csvpath,1)
 
 """
+	Model(datapath, outputpath)
+
+RETURN a model under default parameters
+
+ARGUMENT
+-`datapath`: absolute path of the binary MATLAB (``.mat`) file containing the data
+-`outputpath`: absolute path of the folder where the parameters and predictions of the model are to be stored
+"""
+Model(datapath::String, outputpath::String) = Model(Options(Dict("datapath"=>datapath, "outputpath"=>outputpath)))
+
+"""
 	Options(csvpath, row)
 
 RETURN a struct containing the fixed hyperparameters of the model
@@ -33,11 +44,9 @@ ARGUMENT
 -`csvpath`: the absolute path to a comma-separated values (CSV) file
 -`row`: the row of the CSV to be considered
 """
-function Options(csvpath::String, row::Integer)
-	options = DataFrames.DataFrame(CSV.File(csvpath))[row,:]
-	options = Dict((name=>options[name] for name in names(options))...)
-	Options(options)
-end
+Options(csvpath::String, row::Integer) = Options(DataFrames.DataFrame(CSV.File(csvpath)), row)
+Options(df::DataFrames.DataFrame, row::Integer) = Options(df[row,:])
+Options(dfrow::DataFrames.DataFrameRow) = Options(Dict((name=>dfrow[name] for name in names(dfrow))...))
 
 """
 	Options(options::Dict)

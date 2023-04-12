@@ -1,40 +1,4 @@
 """
-	Latentθ
-
-Parameters of the latent variables in the factorial hidden Markov drift-diffusion model.
-
-Not included are the weights of the linear filters of the mixture of Poisson generalized linear model of each neuron
-"""
-@with_kw struct Latentθ{VR<:Vector{<:Real}}
-	"transition probability of the coupling variable to remain in the coupled state"
-	Aᶜ₁₁::VR=[NaN]
-	"transition probability of the coupling variable to remain in the uncoupled state"
-	Aᶜ₂₂::VR=[NaN]
-	"height of the sticky bounds"
-	B::VR=[NaN]
-	"exponential change rate of inter-click adaptation"
-	k::VR=[NaN]
-	"leak or instability"
-	λ::VR=[NaN]
-	"constant added to the mean of the distribution of the accumulator variable at the first time step"
-	μ₀::VR=[NaN]
-	"strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
-	ϕ::VR=[NaN]
-	"prior probability of the coupling variable in the coupled state"
-	πᶜ₁::VR=[NaN]
-	"prior probability that the accumulator variable is not used to determine the behavioral choice"
-	ψ::VR=[NaN]
-	"multiplied by the width of the timestep `Δt`, this is the variance of the Gaussian noise added at each time step"
-	σ²ₐ::VR=[NaN]
-	"variance of the prior probability of the accumulator variable"
-	σ²ᵢ::VR=[NaN]
-	"multiplied by the sum of the absolute value of the post-adaptation click input, this is the variance of Gaussian noise added as a result of the clicks"
-	σ²ₛ::VR=[NaN]
-	"weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
-	wₕ::VR=[NaN]
-end
-
-"""
     Options
 
 Model settings
@@ -224,6 +188,42 @@ Model settings
 	tbf_b_scalefactor::TF=1.0
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
+end
+
+"""
+	Latentθ
+
+Parameters of the latent variables in the factorial hidden Markov drift-diffusion model.
+
+Not included are the weights of the linear filters of the mixture of Poisson generalized linear model of each neuron
+"""
+@with_kw struct Latentθ{VR<:Vector{<:Real}}
+	"transition probability of the coupling variable to remain in the coupled state"
+	Aᶜ₁₁::VR=[NaN]
+	"transition probability of the coupling variable to remain in the uncoupled state"
+	Aᶜ₂₂::VR=[NaN]
+	"height of the sticky bounds"
+	B::VR=[NaN]
+	"exponential change rate of inter-click adaptation"
+	k::VR=[NaN]
+	"leak or instability"
+	λ::VR=[NaN]
+	"constant added to the mean of the distribution of the accumulator variable at the first time step"
+	μ₀::VR=[NaN]
+	"strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
+	ϕ::VR=[NaN]
+	"prior probability of the coupling variable in the coupled state"
+	πᶜ₁::VR=[NaN]
+	"prior probability that the accumulator variable is not used to determine the behavioral choice"
+	ψ::VR=[NaN]
+	"multiplied by the width of the timestep `Δt`, this is the variance of the Gaussian noise added at each time step"
+	σ²ₐ::VR=[NaN]
+	"variance of the prior probability of the accumulator variable"
+	σ²ᵢ::VR=[NaN]
+	"multiplied by the sum of the absolute value of the post-adaptation click input, this is the variance of Gaussian noise added as a result of the clicks"
+	σ²ₛ::VR=[NaN]
+	"weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
+	wₕ::VR=[NaN]
 end
 
 """
