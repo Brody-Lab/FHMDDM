@@ -1,86 +1,89 @@
 """
-    test(datapath)
+    test(csvpath)
 
 Run a number of tests on the model
 
 ARGUMENT
--`datapath`: full path of the data file
+-`csvpath`: full path of the data file
 """
-function test(datapath::String; maxabsdiff::Real=1e-8)
-	println("testing `"*datapath*"`")
+function test(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+	options = Options(csvpath, row)
+	println("testing `"*options.datapath*"`")
     println("testing the hessian of the expectation of the log-likelihood of one neuron's spike train")
     println("	- `expectation_of_∇∇loglikelihood(γ, mpGLM, x)`")
     println("	- used for parameter initialization")
-    test_expectation_of_∇∇loglikelihood!(datapath; maxabsdiff=maxabsdiff)
+    test_expectation_of_∇∇loglikelihood!(csvpath, row; maxabsdiff=maxabsdiff)
     printseparator()
     println("testing the gradient of the expectation of the log-likelihood of one neuron's spike train")
     println("	- 'expectation_∇loglikelihood!(∇Q, γ, mpGLM)'")
     println("	- used for learning of the parameters of the full model")
-    test_expectation_∇loglikelihood!(datapath; maxabsdiff=maxabsdiff)
+    test_expectation_∇loglikelihood!(csvpath, row; maxabsdiff=maxabsdiff)
     printseparator()
     println("testing the gradient of log-likelihood of all the data")
     println("	- '∇negativeloglikelihood!(∇nℓ, memory, model, concatenatedθ)'")
-    test_∇negativeloglikelihood!(datapath; maxabsdiff=maxabsdiff)
+    test_∇negativeloglikelihood!(csvpath, row; maxabsdiff=maxabsdiff)
 	printseparator()
     println("testing the gradient of log-posterior conditioned on all the data")
 	println("	- `∇negativelogposterior(model)`")
-	test_∇negativelogposterior(datapath; maxabsdiff=maxabsdiff)
+	test_∇negativelogposterior(csvpath, row; maxabsdiff=maxabsdiff)
 	printseparator()
 	println("testing hessian of the log-likelihood of all the data")
 	println("	- `∇∇loglikelihood(model)`")
-	test_∇∇loglikelihood(datapath; maxabsdiff=maxabsdiff)
+	test_∇∇loglikelihood(csvpath, row; maxabsdiff=maxabsdiff)
 	printseparator()
     println("testing the hessian of the log-likelihood of only the behavioral choices")
 	println("	- `∇∇choiceLL(model)`")
-    test_∇∇choiceLL(datapath; maxabsdiff=maxabsdiff)
+    test_∇∇choiceLL(csvpath, row; maxabsdiff=maxabsdiff)
 	printseparator()
 	println("saving model summary")
-	model = Model(datapath)
-	optimization_folder_path = joinpath(dirname(model.options.datapath), "test")
-	save(ModelSummary(model), optimization_folder_path)
+	model = Model(csvpath, row)
+	testfolderpath = joinpath(model.options.outputpath, "test")
+	save(ModelSummary(model), testfolderpath)
 	printseparator()
 	println("loading model parameters from a saved summary")
-	model = Model(datapath)
-	sortparameters!(model, joinpath(optimization_folder_path, "modelsummary.mat"))
+	model = Model(csvpath, row)
+	sortparameters!(model, joinpath(testfolderpath, "modelsummary.mat"))
 	printseparator()
 	println("testing maximum likelihood estimation")
-	model = Model(datapath)
+	model = Model(csvpath, row)
 	initializeparameters!(model)
 	maximizelikelihood!(model, Optim.LBFGS(linesearch = LineSearches.BackTracking()); iterations=50)
 	printseparator()
 	println("testing maximum a posteriori estimation")
-	model = Model(datapath)
+	model = Model(csvpath, row)
 	initializeparameters!(model)
 	maximizeposterior!(model)
-	printseparator()
-	println("testing evidence optimization")
-	model = Model(datapath)
-	initializeparameters!(model)
-	maximizeevidence!(model)
+	if !model.options.fit_overdispersion
+		printseparator()
+		println("testing gradient of log evidence of all the data")
+		println("	- `∇logevidence(model)`")
+		test_∇logevidence(csvpath, row; maxabsdiff=maxabsdiff, simulate=false)
+		printseparator()
+		println("testing evidence optimization")
+		model = Model(csvpath, row)
+		initializeparameters!(model)
+		maximizeevidence!(model)
+	end
     printseparator()
-	model = Model(datapath)
+	model = Model(csvpath, row)
 	printseparator()
 	println("saving model characterization")
 	characterization = Characterization(model)
-	save(characterization, optimization_folder_path)
+	save(characterization, testfolderpath)
 	printseparator()
 	println("post-stimulus time histograms")
 	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
-	save(psthsets, optimization_folder_path)
+	save(psthsets, testfolderpath)
 	printseparator()
 	println("simulating model")
-	samplepaths = simulateandsave(Model(datapath), 2)
+	samplepaths = simulateandsave(Model(csvpath, row), 2)
 	printseparator()
 	println("loading simulated observations")
 	simulation = Model(samplepaths[1])
-	printseparator()
-	println("testing gradient of log evidence of all the data")
-	println("	- `∇logevidence(model)`")
-    test_∇logevidence(datapath; maxabsdiff=maxabsdiff, simulate=false)
     printseparator()
 	println("testing cross-validation and saving results")
-	model = Model(datapath)
-	cvfolderpath = joinpath(dirname(model.options.datapath), "cvtest")
+	model = Model(csvpath, row)
+	cvfolderpath = joinpath(model.options.outputpath, "cvtest")
 	cvresults = crossvalidate(2, model)
 	save(cvresults, cvfolderpath)
 	printseparator()
@@ -96,14 +99,14 @@ Write a standardized separator
 printseparator() = print("\n---------\n---------\n\n")
 
 """
-    test_expectation_of_∇∇loglikelihood(datapath)
+    test_expectation_of_∇∇loglikelihood(csvpath, row)
 
 Check the hessian and gradient of the expectation of the log-likelihood of one neuron's GLM.
 
 The function being checked is used in parameter initialization.
 """
-function test_expectation_of_∇∇loglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
-    model = Model(datapath)
+function test_expectation_of_∇∇loglikelihood!(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+    model = Model(csvpath, row)
     mpGLM = model.trialsets[1].mpGLMs[1]
     γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
     x₀ = concatenateparameters(mpGLM.θ; initialization=true)
@@ -129,14 +132,14 @@ function test_expectation_of_∇∇loglikelihood!(datapath::String; maxabsdiff::
 end
 
 """
-    test_expectation_∇loglikelihood(datapath)
+    test_expectation_∇loglikelihood(csvpath, row)
 
 Check the gradient of the expectation of the log-likelihood of one neuron's GLM.
 
 The function being checked is used in computing the gradient of the log-likelihood of the entire model.
 """
-function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
-    model = Model(datapath)
+function test_expectation_∇loglikelihood!(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+    model = Model(csvpath, row)
     mpGLM = model.trialsets[1].mpGLMs[1]
     if length(mpGLM.θ.b) > 0
         while abs(mpGLM.θ.b[1]) < 1e-4
@@ -160,12 +163,12 @@ function test_expectation_∇loglikelihood!(datapath::String; maxabsdiff::Real=1
 end
 
 """
-    test_∇negativeloglikelihood!(datapath)
+    test_∇negativeloglikelihood!(csvpath, row)
 
 Check the gradient of the negative of the log-likelihood of the model
 """
-function test_∇negativeloglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
-    model = Model(datapath)
+function test_∇negativeloglikelihood!(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+    model = Model(csvpath, row)
     for trialset in model.trialsets
         for mpGLM in trialset.mpGLMs
             if length(mpGLM.θ.b) > 0
@@ -193,12 +196,12 @@ function test_∇negativeloglikelihood!(datapath::String; maxabsdiff::Real=1e-8)
 end
 
 """
-    test_∇∇loglikelihood(datapath)
+    test_∇∇loglikelihood(csvpath, row)
 
 Check the computation of the hessian of the log-likelihood
 """
-function test_∇∇loglikelihood(datapath::String; maxabsdiff::Real=1e-8)
-    model = Model(datapath)
+function test_∇∇loglikelihood(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+    model = Model(csvpath, row)
     for trialset in model.trialsets
         for mpGLM in trialset.mpGLMs
             if length(mpGLM.θ.b) > 0
@@ -236,8 +239,8 @@ ARGUMENT
 -`model`: a structure containing the data, parameters, and hyperparameters of a factorial hidden-Markov drift-diffusion model
 ```
 """
-function test_∇negativelogposterior(datapath::String; maxabsdiff::Real=1e-8)
-	model = Model(datapath)
+function test_∇negativelogposterior(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+	model = Model(csvpath, row)
 	for trialset in model.trialsets
         for mpGLM in trialset.mpGLMs
             if length(mpGLM.θ.b) > 0
@@ -271,7 +274,8 @@ end
 Check whether the hand-coded gradient of the log-evidence matches the automatic gradient
 
 ARGUMENT
--`datapath`: path to the file containing the data and model settings
+-`csvpath`: absolute path of the CSV file
+-`row`: row of the CSV file containing the fixed hyperparameters of this model
 
 OPTIONAL ARGUMENT
 -`simulate`: whether to simulate Hessian and MAP solution. If not, the model is first fitted before a Hessian is computed
@@ -280,8 +284,8 @@ RETURN
 -maximum absolute normalized difference between the gradients
 -maximum absolute normalized difference between the log-evidence functions
 """
-function test_∇logevidence(datapath::String; maxabsdiff::Real=1e-8, simulate::Bool=false)
-    model = Model(datapath)
+function test_∇logevidence(csvpath::String, row::Integer; maxabsdiff::Real=1e-8, simulate::Bool=false)
+    model = Model(csvpath, row)
 	@unpack 𝛂, index𝐀, index𝚽, 𝚽 = model.gaussianprior
 	𝛉 = concatenateparameters(model)
 	index𝛉 = indexparameters(model)
@@ -334,7 +338,8 @@ end
 Compare the automatically computed and hand-coded gradients and hessians with respect to the parameters being fitted in their real space
 
 ARGUMENT
--`datapath`: path to the file containing the data and model settings
+-`csvpath`: absolute path of the CSV file
+-`row`: row of the CSV file containing the fixed hyperparameters of this model
 
 RETURN
 -`absdiffℓ`: absolute difference in the log-likelihood evaluted using the algorithm bein automatically differentiated and the hand-coded algorithm
@@ -342,8 +347,8 @@ RETURN
 -`absdiff∇∇`: absolute difference in the hessians
 ```
 """
-function test_∇∇choiceLL(datapath::String; maxabsdiff::Real=1e-8)
-	model = Model(datapath)
+function test_∇∇choiceLL(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
+	model = Model(csvpath, row)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇choiceLL(model)
 	concatenatedθ, indexθ = FHMDDM.concatenate_choice_related_parameters(model)
 	if isempty(concatenatedθ)

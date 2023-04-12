@@ -45,7 +45,8 @@ addParameter(parser, 'predicted_mean_linespec', 'k-', @(x) ischar(x))
 parse(parser, varargin{:});
 P = parser.Results; 
 if isempty(P.axes)
-    gca;
+    figure('pos', [100 100 450 250])
+    set(gca, 'position', [0.15, 0.2, 0.4, 0.7])
 else
     axes(P.axes)
 end
@@ -64,7 +65,8 @@ if ~isempty(P.predicted_mean_linespec)
     handles(2) = plot(groupDeltaclicks, pred, P.predicted_mean_linespec, 'linewidth', 1.5);
 end
 if P.legend && ~isempty(P.predicted_mean_linespec)
-    legend(handles, {'observed 95%CI', 'predicted'}, 'location', 'best')
+    hlegend = legend(handles, {'observed 95%CI', 'predicted'}, 'location', 'best');
+    set(hlegend, 'position', [0.575 0.5, 0.35, 0.2]);
 end
 absxlim = ceil(max(groupDeltaclicks)/10)*10;
 xlim([-absxlim, absxlim])

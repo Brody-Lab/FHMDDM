@@ -13,42 +13,71 @@ reindex(index_in_trialset, τ₀, trial)
 """
 
 """
-	Model(csvpath, rownumber)
+	Model(csvpath, row)
 
 RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
 
 ARGUMENT
 -`csvpath`: the absolute path to a comma-separated values (CSV) file
--`rownumber`: the row of the CSV to be considered
+-`row`: the row of the CSV to be considered
 """
-Model(csvpath::String, rownumber::Integer) = Model(Options(csvpath, rownumber))
+Model(csvpath::String, row::Integer) = Model(Options(csvpath, row))
+Model(csvpath::String) = Model(csvpath,1)
 
 """
-	Options(csvpath, rownumber)
+	Options(csvpath, row)
 
-Returns a struct containing the fixed hyperparameters of the model
+RETURN a struct containing the fixed hyperparameters of the model
 
 ARGUMENT
 -`csvpath`: the absolute path to a comma-separated values (CSV) file
--`rownumber`: the row of the CSV to be considered
+-`row`: the row of the CSV to be considered
 """
-function Options(csvpath::String, rownumber::Integer)
-	options = DataFrames.DataFrame(CSV.File(csvpath))[rownumber,:]
-	defaults = Options();
-	columnnames = names(options)
+function Options(csvpath::String, row::Integer)
+	options = DataFrames.DataFrame(CSV.File(csvpath))[row,:]
+	options = Dict((name=>options[name] for name in names(options))...)
+	Options(options)
+end
+
+"""
+	Options(options::Dict)
+
+RETURN a struct containing the fixed hyperparameters of the model
+
+ARGUMENT
+-`options`: a dictionary
+"""
+function Options(options::Dict)
+	keyset = keys(options)
+	defaults = Options()
 	entries = 	map(fieldnames(Options)) do fieldname
 					if fieldname == :datapath
-						joinpath(options["datafolder"], options["recording_id"]*".mat")
+						if haskey(options, "datapath")
+							options["datapath"]
+						else
+							joinpath(options["datafolder"], options["recording_id"]*".mat")
+						end
+					elseif fieldname == :outputpath
+						if haskey(options, "outputpath")
+							options["outputpath"]
+						else
+							joinpath(options["outputfolder"], options["fitname"])
+						end
+					elseif fieldname == :sf_tbf
+						getfield(defaults,fieldname)
 					else
 						defaultvalue = getfield(defaults,fieldname)
-						if String(fieldname) ∈ columnnames
+						if String(fieldname) ∈ keyset
 							convert(typeof(defaultvalue), options[String(fieldname)])
 						else
 							defaultvalue
 						end
 					end
 				end
-	Options(entries...)
+	options = Options(entries...)
+	!isdir(options.outputpath) && mkpath(options.outputpath)
+	@assert isdir(options.outputpath)
+	return options
 end
 
 """
@@ -61,7 +90,7 @@ ARGUMENT
 """
 function Model(options::Options)
 	data = read(matopen(options.datapath))
-	singletrialset = haskey(data, "neurons") && haskey(data, "trials")
+	singletrialset = haskey(data, "trials")
 	if singletrialset
 		nneurons = length(data["trials"][1]["spiketrains"][1])
 	else
@@ -76,45 +105,6 @@ function Model(options::Options)
 	else
 		trialsets = map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
 	end
-	Model(options, trialsets)
-end
-
-"""
-	Model(datapath, options)
-
-RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
-
-ARGUMENT
-- `datapath`: a string indicating the absolute path of the data file
--`options`: a struct containing the fixed hyperparameters of the model
-"""
-function Model(datapath::String, options::Options)
-	dataMAT = read(matopen(datapath))
-	nunits = 0
-	for rawtrialset in dataMAT["data"]
-		nunits += length(rawtrialset["units"])
-	end
-    options = Options(nunits, dataMAT["options"])
-	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
-	Model(options, trialsets)
-end
-
-"""
-    Model(datapath)
-
-RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
-
-ARGUMENT
-- `datapath`: absolute path of the data file
-"""
-function Model(datapath::String)
-    dataMAT = read(matopen(datapath))
-	nunits = 0
-	for rawtrialset in dataMAT["data"]
-		nunits += length(rawtrialset["units"])
-	end
-    options = Options(nunits, dataMAT["options"])
-	trialsets = map(trialset->Trialset(options, trialset), vec(dataMAT["data"]))
 	Model(options, trialsets)
 end
 
@@ -181,8 +171,8 @@ function Trial(index_in_trialset::Integer, options::Options, preceding_timesteps
 	ntimesteps = convert(Int, trial["ntimesteps"])
 	clicks = Clicks(options.a_latency_s, options.Δt, leftclicks, ntimesteps, rightclicks)
 	spiketrains = collect(convert.(UInt8, vec(spiketrain)) for spiketrain in vec(trial["spiketrains"]))
-	Trial(clicks=clicks,
-		  choice=trial["choice"],
+	Trial(choice=trial["choice"],
+		  clicks=clicks,
 		  γ=trial["gamma"],
 		  index_in_trialset = index_in_trialset,
 		  movementtime_s=trial["movementtime_s"],
@@ -264,27 +254,4 @@ function randomizeparameters!(model::Model)
 			randomizeparameters!(mpGLM.θ, model.options)
 		end
 	end
-end
-
-"""
-	reindex(index_in_trialset, τ₀, trial)
-
-Instantiate a trial with new indices for subsampling
-
-ARGUMENT
--`index_in_trialset`: index of trial in the subsampled trialset
--`τ₀`: number of time steps summed across all preceding trials in the trialset
--`trial`: structure containing the stimulus and behavioral information of a trial
-"""
-function reindex(index_in_trialset::Integer, τ₀::Integer, trial::Trial)
-	fieldvalues = map(fieldnames(Trial)) do fieldname
-		if fieldname == :index_in_trialset
-			index_in_trialset
-		elseif fieldname == :τ₀
-			τ₀
-		else
-			getfield(trial, fieldname)
-		end
-	end
-	Trial(fieldvalues...)
 end

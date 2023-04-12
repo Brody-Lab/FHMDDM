@@ -464,6 +464,8 @@ UNMODIFIED ARGUMENT
 -`dict`: a `Dict` containing the values used to update the parameters
 """
 function sortparameters!(glmθ::GLMθ, dict::Dict)
+	glmθ.a[1] = dict["a"]
+	glmθ.b[1] = dict["b"]
 	glmθ.𝐮 .= dict["u"]
 	for k in eachindex(glmθ.𝐯)
 		glmθ.𝐯[k] .= dict["v"][k]
@@ -471,5 +473,4 @@ function sortparameters!(glmθ::GLMθ, dict::Dict)
 	for k in eachindex(glmθ.𝛃)
 		glmθ.𝛃[k] .= dict["beta"][k]
 	end
-	glmθ.b .= dict["b"]
 end

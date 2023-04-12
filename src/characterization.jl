@@ -357,3 +357,38 @@ function save(characterization::Characterization, folderpath::String)
 	    matwrite(filepath, dict)
 	end
 end
+
+"""
+	sortbytrial(γ, model)
+
+Sort concatenated posterior probability or spike response by trials
+
+ARGUMENT
+-`γ`: a nested array whose element γ[s][j,k][τ] corresponds to the τ-th time step in the s-th trialset and the j-th accumulator state and k-th coupling state
+-`model`: structure containing data, parameters, and hyperparameters
+
+RETURN
+-`fb`: a nested array whose element fb[s][m][t][j,k] corresponds to the t-th time step in the m-th trial of the s-th trialset and the j-th accumulator state and k-th coupling state
+"""
+function sortbytrial(γ::Vector{<:Matrix{<:Vector{T}}}, model::Model) where {T<:Real}
+	@unpack K, Ξ = model.options
+	fb = map(model.trialsets) do trialset
+			map(trialset.trials) do trial
+				collect(zeros(T, Ξ, K) for i=1:trial.ntimesteps)
+			end
+		end
+	for s in eachindex(fb)
+		τ = 0
+		for m in eachindex(fb[s])
+			for t in eachindex(fb[s][m])
+				τ += 1
+				for j=1:Ξ
+					for k=1:K
+						fb[s][m][t][j,k] = γ[s][j,k][τ]
+					end
+				end
+			end
+		end
+	end
+	return fb
+end

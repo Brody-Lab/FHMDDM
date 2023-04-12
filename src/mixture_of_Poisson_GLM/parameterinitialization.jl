@@ -13,7 +13,7 @@ OUTPUT
 """
 function GLMθ(indices𝐮::Indices𝐮, n𝐯::Integer, options::Options)
 	n𝐮 = maximum(vcat((getfield(indices𝐮, field) for field in fieldnames(Indices𝐮))...))
-	θ = GLMθ(b_scalefactor = options.b_scalefactor,
+	θ = GLMθ(b_scalefactor = options.tbf_b_scalefactor,
 			fit_b = options.fit_b,
 			fit_𝛃 = options.fit_𝛃,
 			fit_overdispersion = options.fit_overdispersion,

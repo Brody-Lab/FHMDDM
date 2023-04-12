@@ -186,7 +186,7 @@ OUTPUT
 function subsample(trialset::Trialset, trialindices::Vector{<:Integer}, timesteps::Vector{<:Integer})
 	trials = trialset.trials[trialindices]
 	𝛕₀ = cumsum(vcat(0, collect(trials[m].ntimesteps for m=1:length(trials)-1)))
-	trials = collect(FHMDDM.reindex(index_in_trialset, τ₀, trial) for (index_in_trialset, τ₀, trial) in zip(1:length(trials), 𝛕₀, trials))
+	trials = collect(reindex(index_in_trialset, τ₀, trial) for (index_in_trialset, τ₀, trial) in zip(1:length(trials), 𝛕₀, trials))
     Trialset(trials = trials, mpGLMs = map(mpGLM->subsample(mpGLM, timesteps, trialindices), trialset.mpGLMs))
 end
 
@@ -222,4 +222,27 @@ function save(cvresults::CVResults, folderpath::String)
 	save(cvresults.characterization, folderpath)
 	save(cvresults.psthsets, folderpath)
     return nothing
+end
+
+"""
+	reindex(index_in_trialset, τ₀, trial)
+
+Instantiate a trial with new indices for subsampling
+
+ARGUMENT
+-`index_in_trialset`: index of trial in the subsampled trialset
+-`τ₀`: number of time steps summed across all preceding trials in the trialset
+-`trial`: structure containing the stimulus and behavioral information of a trial
+"""
+function reindex(index_in_trialset::Integer, τ₀::Integer, trial::Trial)
+	fieldvalues = map(fieldnames(Trial)) do fieldname
+		if fieldname == :index_in_trialset
+			index_in_trialset
+		elseif fieldname == :τ₀
+			τ₀
+		else
+			getfield(trial, fieldname)
+		end
+	end
+	Trial(fieldvalues...)
 end

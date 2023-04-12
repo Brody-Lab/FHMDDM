@@ -20,19 +20,21 @@ OPTIONAL ARGUMENT
 -`max_number_basis_functions`: maximum number of basis functions
 -`time_step_duration_s`: the time resolution for modelling the drift
 """
-function drift_design_matrix(options::Options, stereoclick_times_s::Vector{<:AbstractFloat}, trialdurations::Vector{<:Integer}, 𝐲::Vector{<:Integer}; kfold::Integer=10, nrepeats::Integer=2, time_step_duration_s::Real=1.0)
+function drift_design_matrix(options::Options, stereoclick_times_s::Vector{<:AbstractFloat}, trialdurations::Vector{<:Integer}, 𝐲::Vector{<:Integer}; kfold::Integer=10, time_step_duration_s::Real=1.0)
     𝐫 = spikerate(options.Δt, trialdurations, 𝐲)
-    stereoclick_timesteps = ceil.(Int, stereoclick_times_s./time_step_duration_s) .+ 1
+    stereoclick_timesteps = ceil.(Int, stereoclick_times_s./time_step_duration_s)
+	stereoclick_timesteps = stereoclick_timesteps .- minimum(stereoclick_timesteps) .+ 1
 	ntrials = length(stereoclick_timesteps)
     mse = zeros(options.tbf_gain_maxfunctions)
     for i = 1:options.tbf_gain_maxfunctions
         Φ = drift_design_matrix(i, options, stereoclick_timesteps, trialdurations)
-        for j = 1:nrepeats
-            testindices, trainindices = cvpartition(kfold, ntrials)
-            mse[i] += gaussianmse(testindices, trainindices, Φ, 𝐫)/nrepeats
-        end
+        testindices, trainindices = cvpartition(kfold, ntrials)
+        mse[i] += gaussianmse(testindices, trainindices, Φ, 𝐫)
     end
     Φ = drift_design_matrix(argmin(mse), options, stereoclick_timesteps, trialdurations)
+	𝐰 = (Φ'*Φ) \ (Φ'*𝐫)
+	Φ = Φ*𝐰
+	Φ = reshape(Φ,length(Φ),1)
 	𝐔 = vcat((repeat(Φ[m,:]', trialdurations[m]) for m in eachindex(trialdurations))...)
     return Φ, 𝐔
 end

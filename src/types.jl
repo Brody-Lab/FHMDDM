@@ -42,8 +42,6 @@ Model settings
 @with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}}
 	"response latency of the accumulator to the clicks"
     a_latency_s::TF=1e-2
-	"scale factor for the accumulator transformation parameter"
-	b_scalefactor::TF=1.0
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
 	"Exponent used to compute the scale factor of the log-likelihood of the choices. The scale factor is computed by raising the product of the number of neurons and the average number of time steps in each trial to the exponent. An exponent of 0 means no scaling"
@@ -90,8 +88,8 @@ Model settings
 	K::TI = 1
 	"maximum and minimum of the L2 shrinkage penalty for each class of parameters. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	"accumulator transformation"
-	L2_b_max::TF=1e-2
-	L2_b_min::TF=1e-4
+	L2_b_max::TF=1e1
+	L2_b_min::TF=1e-3
 	"latent variable parameter when fitting to only choices"
 	L2_choices_max::TF=1e0
 	L2_choices_min::TF=1e-4
@@ -175,6 +173,8 @@ Model settings
 	minpa::TF=1e-8
 	"value to maximized to learn the parameters"
 	objective::TS="posterior"; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
+	"absolute path of the folder where the model output, including the summary and predictions, are saved"
+	outputpath::TS=""
 	"coefficient multiplied to any scale factor of the temporal basis functions of a Poisson mixture GLM"
 	sf_tbf::TVF=[NaN]
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
@@ -196,7 +196,7 @@ Model settings
 	"Options for the temporal basis function whose linear combination constitute the post-spike filter. The setting `tbf_postspike_dur_s` is the duration, in seconds, of the filter. The setting `tbf_postspike_linear` determines whether a linear function is included in the basis."
 	tbf_postspike_begins0::TB=false
 	tbf_postspike_dur_s::TF=0.25
-	tbf_postspike_ends0::TB=false
+	tbf_postspike_ends0::TB=true
 	tbf_postspike_hz::TF=12.0
 	tbf_postspike_scalefactor::TF=1.0
 	tbf_postspike_stretch::TF=1.0
@@ -220,6 +220,8 @@ Model settings
 	tbf_poststereoclick_hz::TF=5.0
 	tbf_poststereoclick_scalefactor::TF=5.0
 	tbf_poststereoclick_stretch::TF=0.2
+	"scale factor for the accumulator transformation parameter"
+	tbf_b_scalefactor::TF=1.0
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end

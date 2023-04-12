@@ -39,7 +39,6 @@ include("types.jl") # This list contains files that in which functions and types
 include("accumulatortransformation.jl")
 include("characterization.jl")
 include("choicemodel.jl")
-include("conversions.jl")
 include("crossvalidation.jl")
 include("drift_diffusion_dynamics.jl")
 include("E_step.jl")
