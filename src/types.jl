@@ -124,9 +124,9 @@ Model settings
 	Aᶜ₂₂_q::TF=0.5
 	Aᶜ₂₂_u::TF= 1.0-1e-4
 	"bound height"
-	B_l::TF=5.0
+	B_l::TF=10.0
 	B_q::TF=15.0
-	B_u::TF=25.0
+	B_u::TF=20.0
 	"adaptation change rate"
 	k_l::TF=1e-4
 	k_q::TF=1e-3
