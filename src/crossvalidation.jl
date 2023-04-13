@@ -209,8 +209,7 @@ Save the results of cross-validation
 
 Each field of the composite `cvresults` is saved within a separate file, with the same name as that of the field, within a folder whose absolute path is specified by `folderpath`.
 """
-function save(cvresults::CVResults; foldername::String="crossvalidation")
-	folderpath = joinpath(model.options.outputpath, foldername)
+function save(cvresults::CVResults, folderpath::String)
 	if !isdir(folderpath)
 		mkdir(folderpath)
 		@assert isdir(folderpath)
