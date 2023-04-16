@@ -10,7 +10,7 @@ function options = tabulateoptions(analysispath)
     [~, analysisname] = fileparts(analysispath);
     fitpath = FHMDDM.find_fit_paths(analysisname); 
     options = readtable(fullfile(analysispath, 'options.csv'), 'Delimiter', ',');
-    for field = ["outputpath", "recording_id"]
+    for field = ["outputpath"]
         options.(field) = string(options.(field));
     end
     [~, fitnames] = cellfun(@(x) fileparts(char(x)), fitpath, 'uni', 0);

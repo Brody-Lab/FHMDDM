@@ -47,9 +47,9 @@ Model settings
 	"whether to fit the weight of the rewarded option of the previous trial on the mean of the accumulator at the first time step"
 	fit_wₕ::TB=false
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
-	g_tol::TF=1e-2
+	g_tol::TF=1e-8
 	"number of states of the coupling variable"
-	K::TI = 1
+	K::TI = 1; @assert (K==1 || K == 2)
 	"maximum and minimum of the L2 shrinkage penalty for each class of parameters. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	"accumulator transformation"
 	L2_b_max::TF=1e1

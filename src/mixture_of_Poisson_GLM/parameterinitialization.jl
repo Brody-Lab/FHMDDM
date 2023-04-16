@@ -48,13 +48,9 @@ function randomizeparameters!(θ::GLMθ, options::Options)
 	end
 	scalefactor = options.tbf_accumulator_scalefactor*options.sf_tbf[1]
 	K = length(θ.𝐯)
-	if K > 1
-		𝐯₀ = (-1.0:2.0/(K-1):1.0)./scalefactor
-		for k = 1:K
-			θ.𝐯[k] .= 𝐯₀[k]
-		end
-	else
-		θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./scalefactor
+    θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./scalefactor
+	if K ==2
+		θ.𝐯[2] .= 0
 	end
 	for k = 1:K
 		θ.𝛃[k] .= θ.fit_𝛃 ? -θ.𝐯[k] : 0.0
@@ -82,12 +78,10 @@ function initialize_GLM_parameters!(model::Model; iterations::Integer=5, show_tr
 	        maximize_expectation_of_loglikelihood!(mpGLM, γᵢ; show_trace=show_trace)
 	    end
 	end
-	if model.options.K > 1
+	if model.options.K == 2
 		for i in eachindex(model.trialsets)
 			for mpGLM in model.trialsets[i].mpGLMs
-				vmean = mean(mpGLM.θ.𝐯)
-				mpGLM.θ.𝐯[1] .= mpGLM.θ.𝛃[1] .= 3.0.*vmean
-				mpGLM.θ.𝐯[2] .= mpGLM.θ.𝛃[2] .= -vmean
+				mpGLM.θ.𝐯[2] .= mpGLM.θ.𝛃[2] .= 0
 			end
 		end
 	end
