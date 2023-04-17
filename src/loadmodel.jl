@@ -72,7 +72,7 @@ function Options(options::Dict)
 						else
 							joinpath(options["outputfolder"], options["fitname"])
 						end
-					elseif fieldname == :sf_tbf
+					elseif fieldname == :sf_mpGLM
 						getfield(defaults,fieldname)
 					else
 						defaultvalue = getfield(defaults,fieldname)
@@ -108,7 +108,7 @@ function Model(options::Options)
 			nneurons += length(trialset["trials"][1]["spiketrains"][1])
 		end
 	end
-	options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
+	options.sf_mpGLM[1] = nneurons^options.choiceLL_scaling_exponent
 	if singletrialset
 		trialsets = [Trialset(options, data["trials"], 1)]
 	else
@@ -156,7 +156,7 @@ function Trialset(options::Options, trials, trialsetindex::Integer)
 	ntimesteps_each_trial = collect(convert(Int, trial["ntimesteps"]) for trial in trials)
 	preceding_timesteps = vcat(0, cumsum(ntimesteps_each_trial[1:end-1]))
 	trials = collect(Trial(m, options, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
-	mpGLMs = MixturePoissonGLM(options, trials)
+	mpGLMs = initialize_mpGLMs(options, trials)
     Trialset(mpGLMs=mpGLMs, trials=trials)
 end
 

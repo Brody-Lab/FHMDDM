@@ -5,27 +5,24 @@ Randomly initiate the parameters for a mixture of Poisson generalized linear mod
 
 ARGUMENT
 -`indices𝐮`: indices of the encoding weights of the temporal basis vectors of each filter that is independent of the accumulator
--`n𝐯`: number of temporal basis vectors specifying the time-varying weight of the accumulator
 -`options`: settings of the model
+-`v_scalefactor`: scalefactor of the accumulator encoding weight
 
 OUTPUT
 -an instance of `GLMθ`
 """
-function GLMθ(indices𝐮::Indices𝐮, n𝐯::Integer, options::Options)
+function GLMθ(indices𝐮::Indices𝐮, options::Options)
 	n𝐮 = maximum(vcat((getfield(indices𝐮, field) for field in fieldnames(Indices𝐮))...))
-	θ = GLMθ(b_scalefactor = options.tbf_b_scalefactor,
-			fit_b = options.fit_b,
-			fit_𝛃 = options.fit_𝛃,
-			fit_overdispersion = options.fit_overdispersion,
-			𝐮 = fill(NaN, n𝐮),
-			indices𝐮=indices𝐮,
-			𝐯 = collect(fill(NaN,n𝐯) for k=1:options.K))
+	θ = GLMθ(fit_b = options.fit_b,
+			 fit_β = options.fit_β,
+		 	 𝐮 = fill(NaN, n𝐮),
+			 indices𝐮=indices𝐮)
 	randomizeparameters!(θ, options)
 	return θ
 end
 
 """
-	randomizeparameters!(θ, options)
+	randomizeparameters!(glmθ, options)
 
 Randomly initialize parameters of a mixture of Poisson GLM
 
@@ -35,25 +32,19 @@ MODIFIED ARGUMENT
 UNMODIFIED ARGUMENT
 -`options`: hyperparameters of the model
 """
-function randomizeparameters!(θ::GLMθ, options::Options)
-	θ.a[1] = θ.fit_overdispersion ? rand() : -Inf
-	θ.b[1] = 0.0
-	for i in eachindex(θ.𝐮)
-		θ.𝐮[i] = 1.0 .- 2rand()
+function randomizeparameters!(glmθ::GLMθ, options::Options)
+	glmθ.b[1] = 0.0
+	for i in eachindex(glmθ.𝐮)
+		glmθ.𝐮[i] = 1.0 - 2rand()
 	end
-	for fieldname in fieldnames(typeof(θ.indices𝐮))
-		indices = getfield(θ.indices𝐮, fieldname)
+	for fieldname in fieldnames(typeof(glmθ.indices𝐮))
+		indices = getfield(glmθ.indices𝐮, fieldname)
 		scalefactor = getfield(options, Symbol("tbf_"*String(fieldname)*"_scalefactor"))*options.sf_tbf[1]
-		θ.𝐮[indices] ./= scalefactor
+		glmθ.𝐮[indices] ./= scalefactor
 	end
-	scalefactor = options.tbf_accumulator_scalefactor*options.sf_tbf[1]
-	K = length(θ.𝐯)
-    θ.𝐯[1] .= (1.0 .- 2rand(length(θ.𝐯[1])))./scalefactor
-	if K ==2
-		θ.𝐯[2] .= 0
-	end
-	for k = 1:K
-		θ.𝛃[k] .= θ.fit_𝛃 ? -θ.𝐯[k] : 0.0
+    θ.v[1] = (1.0 - 2rand())/v_scalefactor
+	if glmθ.fit_β
+		glmθ.β[1] = -θ.v[1]
 	end
 end
 
@@ -77,13 +68,6 @@ function initialize_GLM_parameters!(model::Model; iterations::Integer=5, show_tr
 	    for mpGLM in trialset.mpGLMs
 	        maximize_expectation_of_loglikelihood!(mpGLM, γᵢ; show_trace=show_trace)
 	    end
-	end
-	if model.options.K == 2
-		for i in eachindex(model.trialsets)
-			for mpGLM in model.trialsets[i].mpGLMs
-				mpGLM.θ.𝐯[2] .= mpGLM.θ.𝛃[2] .= 0
-			end
-		end
 	end
 	maximize_expectation_of_loglikelihood!(model;iterations=iterations, show_trace=show_trace)
 end
@@ -120,13 +104,12 @@ UNMODIFIED ARGUMENT
 function maximize_expectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, γ::Matrix{<:Vector{<:Real}}; show_trace::Bool=false, iterations::Integer=20)
 	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	nparameters = length(x₀)
-	D = GLMDerivatives(mpGLM)
 	Q = fill(NaN,1)
 	∇Q = fill(NaN, nparameters)
 	∇∇Q = fill(NaN, nparameters, nparameters)
-	f(x) = negexpectation_of_loglikelihood!(mpGLM,D,Q,∇Q,∇∇Q,γ,x)
-	∇f!(∇, x) = negexpectation_of_∇loglikelihood!(∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)
-	∇∇f!(∇∇, x) = negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)
+	f(x) = negexpectation_of_loglikelihood!(mpGLM,Q,∇Q,∇∇Q,γ,x)
+	∇f!(∇, x) = negexpectation_of_∇loglikelihood!(∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
+	∇∇f!(∇∇, x) = negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,Q,∇Q,∇∇Q,γ,x)
     results = Optim.optimize(f, ∇f!, ∇∇f!, x₀, NewtonTrustRegion(), Optim.Options(show_trace=show_trace, iterations=iterations))
 	sortparameters!(mpGLM.θ, Optim.minimizer(results); initialization=true)
 	return nothing
@@ -141,7 +124,6 @@ MODIFIED ARGUMENT
 -`∇∇`: Hessian of the negative of the expectation
 -`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
 -`Q`: an one-element vector that quantifies the expectation
--`D`: an object for in-place computation of first and second derivatives of the log-likelihood
 -`∇Q`: gradient of the expectation with respect to the filters in the k-th state
 -`∇∇Q`: Hessian of the expectation with respect to the filters in the k-th state
 
@@ -149,11 +131,11 @@ UNMODIFIED ARGUMENT
 -`γ`: posterior probability of the latent variables. Element `γ[j][τ]` corresponds to the posterior probability of the j-th accumulator state  in the τ-th time step
 -`x`: filters
 """
-function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, D::GLMDerivatives, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+function negexpectation_of_∇∇loglikelihood!(∇∇::Matrix{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
 	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
 		sortparameters!(mpGLM.θ, x; initialization=true)
-		expectation_of_∇∇loglikelihood!(D,Q,∇Q,∇∇Q,γ,mpGLM)
+		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	nparameters = length(x)
 	for i =1:nparameters
@@ -177,11 +159,11 @@ For other modified and unmodified arguments see documentation for `negexpectatio
 RETURN
 -a scalar that is the negative of the expectation of the log-likelihood under the posterior probability distribution
 """
-function negexpectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, D::GLMDerivatives, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+function negexpectation_of_loglikelihood!(mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
 	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
 		sortparameters!(mpGLM.θ, x; initialization=true)
-		expectation_of_∇∇loglikelihood!(D,Q,∇Q,∇∇Q,γ,mpGLM)
+		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	-Q[1]
 end
@@ -194,11 +176,11 @@ Gradient of the negative of the expectation of the log-likelihood under the post
 ARGUMENT
 For other modified and unmodified arguments see documentation for `negexpectation_of_∇∇loglikelihood!(∇∇,mpGLM,D,Q,∇Q,∇∇Q,γ,x)`
 """
-function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, D::GLMDerivatives, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
+function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::MixturePoissonGLM, Q::Vector{<:Real}, ∇Q::Vector{<:Real}, ∇∇Q::Matrix{<:Real}, γ::Matrix{<:Vector{<:Real}}, x::Vector{<:Real})
 	x₀ = concatenateparameters(mpGLM.θ; initialization=true)
 	if (x != x₀) || isnan(Q[1])
 		sortparameters!(mpGLM.θ, x; initialization=true)
-		expectation_of_∇∇loglikelihood!(D,Q,∇Q,∇∇Q,γ,mpGLM)
+		expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,mpGLM)
 	end
 	for i in eachindex(∇)
 		∇[i] = -∇Q[i]
@@ -207,12 +189,11 @@ function negexpectation_of_∇loglikelihood!(∇::Vector{<:Real}, mpGLM::Mixture
 end
 
 """
-	expectation_of_∇∇loglikelihood!(D, Q,∇Q,∇∇Q,γ,k,mpGLM)
+	expectation_of_∇∇loglikelihood!(Q,∇Q,∇∇Q,γ,k,mpGLM)
 
 Compute the expectation of the log-likelihood and its gradient and Hessian
 
 ARGUMENT
--`D`: an object for in-place computation of first and second derivatives of the log-likelihood
 -`Q`: expectation of the log-likelihood under the posterior probability of the latent variables. Only the component in the coupling state `k` is included
 -`∇Q`: first-order derivatives of the expectation
 -`∇∇Q`: second-order derivatives of the expectation
@@ -222,61 +203,67 @@ UNMODIFIED ARGUMENT
 -`k`: index of the coupling state
 -`mpGLM`: a structure containing the data and parameters of the mixture of Poisson GLM of one neuron
 """
-function expectation_of_∇∇loglikelihood!(D::GLMDerivatives, Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
-    @unpack Δt, 𝐕, 𝐗, 𝐲, d𝛏_dB = mpGLM
-	@unpack a, 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
+function expectation_of_∇∇loglikelihood!(Q::Vector{<:type}, ∇Q::Vector{<:type}, ∇∇Q::Matrix{<:type}, γ::Matrix{<:Vector{<:type}}, mpGLM::MixturePoissonGLM) where {type<:AbstractFloat}
+    @unpack Δt, 𝐗, 𝐲, d𝛏_dB, index0, Ξ = mpGLM
+	@unpack 𝐮, v, β, fit_β = mpGLM.θ
 	d𝛏_dB² = d𝛏_dB.^2
-	Ξ, K = size(γ)
-	T = length(𝐲)
 	Q[1] = 0.0
 	∇Q .= 0.0
 	∇∇Q .= 0.0
-	∑ᵢₖ_dQᵢₖ_dLᵢₖ = zeros(type,T)
-	∑ᵢₖ_d²Qᵢₖ_dLᵢₖ² = zeros(type,T)
-	∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ = zeros(type,T)
-	∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-	∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-	∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-	∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-	∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB² = collect(zeros(type,T) for k=1:K)
-	differentiate_twice_overdispersion!(D, a[1])
-	if fit_overdispersion
-		∑_d²Q_da² = 0.0
-		∑_dQ_da = 0.0
-		∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
-		∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB = collect(zeros(type,T) for k=1:K)
+	for parameter in fieldnames(mpGLM.θ.concatenationorder)
+		getfield(∇Q, parameter) .= 0
 	end
+	𝐋₀ = linearpredictor(mpGLM,index0)
+	𝛌₀ = inverselink.(𝐋₀)
+	𝐟₀ = collect(poissonlikelihood(λ₀*Δt, y) for (λ₀,y) in zip(𝛌₀,𝐲))
+	𝐃₀ = collect(differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, L₀, λ₀, y) for (L₀, λ₀, y) in zip(𝐋₀,𝛌₀,𝐲))
+	π₁ = couplingprobability(mpGLM)
+	π₀ = 1-π₁
+	n𝐮 = length(𝐮)
 	@inbounds for i = 1:Ξ
-		for k = 1:K
-			𝐋 = linearpredictor(mpGLM,i,k)
-			for t=1:T
-				differentiate_twice_loglikelihood!(D,𝐋[t],mpGLM.𝐲[t])
-				if fit_overdispersion
-					∑_dQ_da += γ[i,k][t]*D.dℓ_da[1]
-					∑_d²Q_da² += γ[i,k][t]*D.d²ℓ_da²[1]
-					d²Qᵢₖ_dadLᵢₖ = γ[i,k][t]*D.d²ℓ_dadL[1]
-					∑ᵢₖ_d²Qᵢₖ_dadLᵢₖ[t] += d²Qᵢₖ_dadLᵢₖ
-					if (i==1) || (i==Ξ)
-						∑_post_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dadLᵢₖ*d𝛏_dB[i]
-					else
-						∑_pre_d²Qᵢₖ_dadLᵢₖ⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dadLᵢₖ*d𝛏_dB[i]
-					end
+		𝐋₁ = (i == index0) ? 𝐋₀ : linearpredictor(mpGLM,i)
+		for t=1:length(𝐲)
+			d²ℓ₀_dL₀² = 𝐃₀[t][1]
+			dℓ₀_dL₀ = 𝐃₀[t][2]
+			if i == index0
+				d²ℓ₁_dL₁² = dℓ₀_dL₀
+				dℓ₁_dL₁ = dℓ₀_dL₀
+				f₁ = 𝐟₀[t]
+			else
+				λ₁ = inverselink(𝐋₁[t])
+				d²ℓ₁_dL₁², dℓ₁_dL₁ = differentiate_twice_loglikelihood_wrt_linearpredictor(Δt, 𝐋₁[t], λ₁, 𝐲[t])
+				f₁ = poissonlikelihood(λ₁*Δt, 𝐲[t])
+			end
+			f₁π₁ = f₁*π₁
+			f₀π₀ = 𝐟₀[t]*π₀
+			f = f₁π₁ + f₀π₀
+			Q[1] += γ[i][t]*log(f)
+			for j in eachindex(∇Q.𝐮)
+				∇Q[j] += γ[i][t]*𝐗[t,j]*(f₁π₁*dℓ₁_dL₁ + f₀π₀*dℓ₀_dL₀)/f
+			end
+			if i != index0
+				j = (fit_β && ((i==1) || (i==Ξ))) ? n𝐮+2 : n𝐮+1
+				∇Q[j] += γ[i][t]*d𝛏_dB[i]*𝐗[t,end]*f₁π₁*dℓ₁_dL₁/f
+			end
+			for j in eachindex(∇Q.𝐮)
+				for k = j:n𝐮
+
 				end
-				Q[1] += γ[i,k][t]*D.ℓ[1]
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * D.dℓ_dL[1]
-				d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * D.d²ℓ_dL²[1]
-				∑ᵢₖ_dQᵢₖ_dLᵢₖ[t] += dQᵢₖ_dLᵢₖ
-				∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²[t] += d²Qᵢₖ_dLᵢₖ²
-				if (i==1) || (i==Ξ)
-					∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-					∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-					∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
-				else
-					∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
-					∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
-					∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
-				end
+			end
+
+
+			dQᵢₖ_dLᵢₖ = γ[i,k][t] * D.dℓ_dL[1]
+			d²Qᵢₖ_dLᵢₖ² = γ[i,k][t] * D.d²ℓ_dL²[1]
+			∑ᵢₖ_dQᵢₖ_dLᵢₖ[t] += dQᵢₖ_dLᵢₖ
+			∑ᵢₖ_d²Qᵢₖ_dLᵢₖ²[t] += d²Qᵢₖ_dLᵢₖ²
+			if (i==1) || (i==Ξ)
+				∑_post_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+				∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+				∑_post_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
+			else
+				∑_pre_dQᵢₖ_dLᵢₖ⨀dξᵢ_dB[k][t] += dQᵢₖ_dLᵢₖ*d𝛏_dB[i]
+				∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB[i]
+				∑_pre_d²Qᵢₖ_dLᵢₖ²⨀dξᵢ_dB²[k][t] += d²Qᵢₖ_dLᵢₖ²*d𝛏_dB²[i]
 			end
 		end
 	end

@@ -1,4 +1,3 @@
-
 """
 	randomize_latent_parameters(options)
 
@@ -100,28 +99,6 @@ function real2native!(θnative::Latentθ, options::Options, θreal::Latentθ)
 end
 
 """
-	real2native(r,q,l,u)
-
-Convert a parameter from real space to latent space
-
-ARGUMENT
--`r`: value in real space
--`q`: value in native space equal to a zero-valued in real space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--scalar representing the value in native space
-"""
-function real2native(r::Real, q::Real, l::Real, u::Real)
-	if q == l
-		l + (u-l)*logistic(r)
-	else
-		l + (u-l)*logistic(r+logit((q-l)/(u-l)))
-	end
-end
-
-"""
     real2native(options, θreal)
 
 Map values of model parameters from real space to native space
@@ -159,28 +136,6 @@ function native2real!(θreal::Latentθ, options::Options, θnative::Latentθ)
 		r[1] = native2real(n,q,l,u)
 	end
 	return nothing
-end
-
-"""
-	real2native(r,q,l,u)
-
-Convert a parameter from native space to real space
-
-ARGUMENT
--`n`: value in native space
--`q`: value in native space equal to a zero-valued in real space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--scalar representing the value in real space
-"""
-function native2real(n::Real, q::Real, l::Real, u::Real)
-	if q == l
-		logit((n-l)/(u-l))
-	else
-		logit((n-l)/(u-l)) - logit((q-l)/(u-l))
-	end
 end
 
 """
@@ -279,29 +234,6 @@ function differentiate_native_wrt_real(model::Model)
 end
 
 """
-	differentiate_native_wrt_real(r,q,l,u)
-
-Derivative of the native value of a parameter with respect to its value in real space
-
-ARGUMENT
--`r`: value in real space
--`q`: value in native space equal to a zero-valued in real space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--a scalar representing the derivative
-"""
-function differentiate_native_wrt_real(r::Real, q::Real, l::Real, u::Real)
-	if q == l
-		x = logistic(r)
-	else
-		x = logistic(r + logit((q-l)/(u-l)))
-	end
-	(u-l)*x*(1.0-x)
-end
-
-"""
 	differentiate_twice_native_wrt_real(model)
 
 Second derivative of each latent-variable-related parameter in its native space with respect to its value in real space
@@ -325,58 +257,12 @@ function differentiate_twice_native_wrt_real(model::Model)
 end
 
 """
-	differentiate_twice_native_wrt_real(r,q,l,u)
-
-Second derivative of the native value of a parameter with respect to its value in real space
-
-ARGUMENT
--`r`: value in real space
--`q`: value in native space equal to a zero-valued in real space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--a scalar representing the second derivative
-"""
-function differentiate_twice_native_wrt_real(r::Real, q::Real, l::Real, u::Real)
-	if q == l
-		x = logistic(r)
-	else
-		x = logistic(r + logit((q-l)/(u-l)))
-	end
-	(u-l)*(x*(1.0-x)^2 - x^2*(1-x))
-end
-
-"""
-	differentiate_native_wrt_real(r,l,u)
-
-Derivative of the native value of hyperparameters with respect to values in real space
-
-ARGUMENT
--`r`: value in real space
--`l`: lower bound in native space
--`u`: upper bound in native space
-
-RETURN
--derivatives
-"""
-function differentiate_native_wrt_real(r::Real, l::Real, u::Real)
-	x = logistic(r)
-	(u-l)*x*(1.0-x)
-end
-
-
-"""
 	julianame(name)
 
 Return the Symbol of a parameter in this module corresponding its valid variable name in MATLAB
 """
 function julianame(name::String)
-	if name == "Ac11"
-		:Aᶜ₁₁
-	elseif name == "Ac22"
-		:Aᶜ₂₂
- 	elseif name == "B"
+	if name == "B"
 		:B
 	elseif name == "k"
 		:k
@@ -386,8 +272,6 @@ function julianame(name::String)
 		:μ₀
 	elseif name == "phi"
 		:ϕ
-	elseif name == "pic1"
-		:πᶜ₁
 	elseif name == "psi"
 		:ψ
 	elseif name == "sigma2_a"
@@ -407,11 +291,7 @@ end
 A string containing the Valid variable name in MATLAB
 """
 function matlabname(name::Symbol)
-	if name == :Aᶜ₁₁
-		"Ac11"
-	elseif name == :Aᶜ₂₂
-		"Ac22"
- 	elseif name == :B
+	if name == :B
 		"B"
 	elseif name == :k
 		"k"
@@ -421,8 +301,6 @@ function matlabname(name::Symbol)
 		"mu0"
 	elseif name == :ϕ
 		"phi"
-	elseif name == :πᶜ₁
-		"pic1"
 	elseif name == :ψ
 		"psi"
 	elseif name == :σ²ₐ

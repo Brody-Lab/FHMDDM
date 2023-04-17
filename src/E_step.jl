@@ -19,22 +19,7 @@ function scaledlikelihood!(p𝐘𝑑::Vector{<:Vector{<:Vector{<:Matrix{<:Real}}
 	Ξ = size(p𝐘𝑑[1][1][end],1)
 	K = size(p𝐘𝑑[1][1][end],2)
     @inbounds for i in eachindex(p𝐘𝑑)
-		N = length(trialsets[i].mpGLMs)
-	    for j = 1:Ξ
-	        for k = 1:K
-				𝐩 = scaledlikelihood(trialsets[i].mpGLMs[1], j, k)
-	            for n = 2:N
-				    scaledlikelihood!(𝐩, trialsets[i].mpGLMs[n], j, k)
-	            end
-	            t = 0
-	            for m in eachindex(p𝐘𝑑[i])
-	                for tₘ in eachindex(p𝐘𝑑[i][m])
-	                    t += 1
-	                    p𝐘𝑑[i][m][tₘ][j,k] = 𝐩[t]
-	                end
-	            end
-	        end
-	    end
+		scaledlikelihood!(p𝐘𝑑[i], trialsets[i].mpGLMs)
 		for m in eachindex(p𝐘𝑑[i])
 			conditionallikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, ψ)
 			p𝐘𝑑[i][m][end] .*= p𝑑_a[i][m]

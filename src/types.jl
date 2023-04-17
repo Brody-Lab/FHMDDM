@@ -14,28 +14,20 @@ Model settings
     datapath::TS=""
 	"duration of each timestep in seconds"
     Δt::TF=0.01
-	"whether the transition probability of remaining in the first state is fitted"
-	fit_Aᶜ₁₁::TB=false
-	"whether the transition probability of remaining in the second state is fitted"
-	fit_Aᶜ₂₂::TB=false
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
 	"whether to fit the parameter for transforming the accumulator"
 	fit_b::TB=false
 	"whether to fit separate encoding weights for when the accumulator is at the bound"
-	fit_𝛃::TB=true
+	fit_β::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
 	fit_k::TB=false
 	"whether to fit the parameter specifying leak or instability"
 	fit_λ::TB=false
 	"whether to fit the constant added to the mean of the distribution of the accumulator variable at the first time step"
 	fit_μ₀::TB=true
-	"whether to fit an overdispersion parameter for the model of each neuron's spike count response. If true, the count response model is negative binomial rather than Poisson"
-	fit_overdispersion::TB=false
 	"whether to fit the strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
 	fit_ϕ::TB=false
-	"whether the prior probability of the first state is fitted"
-	fit_πᶜ₁::TB=false
 	"whether to fit the behavioral lapse rate"
 	fit_ψ::TB=false
 	"whether to fit the variance of the Gaussian noise added at each time step"
@@ -48,8 +40,6 @@ Model settings
 	fit_wₕ::TB=false
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-8
-	"number of states of the coupling variable"
-	K::TI = 1; @assert (K==1 || K == 2)
 	"maximum and minimum of the L2 shrinkage penalty for each class of parameters. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
 	"accumulator transformation"
 	L2_b_max::TF=1e1
@@ -78,15 +68,6 @@ Model settings
 	"encoding of accumulated evidence"
 	L2_accumulator_max::TF=1e-4
 	L2_accumulator_min::TF=1e-6
-	"Value in native space corresponding to the lower bound ('l'), zero-value in real space ('q'), and upper bound ('u')"
-	"transition probability of the coupling variable to remain in the coupled state"
-	Aᶜ₁₁_l::TF=1e-4
-	Aᶜ₁₁_q::TF=0.5
-	Aᶜ₁₁_u::TF= 1.0-1e-4
-	"transition probability of the coupling variable to remain in the decoupled state"
-	Aᶜ₂₂_l::TF=1e-4
-	Aᶜ₂₂_q::TF=0.5
-	Aᶜ₂₂_u::TF= 1.0-1e-4
 	"bound height"
 	B_l::TF=10.0
 	B_q::TF=15.0
@@ -107,10 +88,6 @@ Model settings
 	ϕ_l::TF=1e-4
 	ϕ_q::TF=1-1e-3
 	ϕ_u::TF=1.0-1e-4
-	"prior probability of the coupled state"
-	πᶜ₁_l::TF=1e-4
-	πᶜ₁_q::TF=0.5
-	πᶜ₁_u::TF=1-1e-4
 	"behavioral lapse rate. A value of 0 will result in underflow"
 	ψ_l::TF=1e-4
 	ψ_q::TF=1e-2
@@ -131,28 +108,16 @@ Model settings
 	wₕ_l::TF = -5.0
 	wₕ_q::TF = 0.0
 	wₕ_u::TF = 5.0
-	"maximum duration of each trial"
-	maxduration_s::TF=1.0
 	"minimum value of the prior and transition probabilities of the accumulator"
 	minpa::TF=1e-8
 	"value to maximized to learn the parameters"
 	objective::TS="posterior"; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
 	"absolute path of the folder where the model output, including the summary and predictions, are saved"
 	outputpath::TS=""
-	"coefficient multiplied to any scale factor of the temporal basis functions of a Poisson mixture GLM"
-	sf_tbf::TVF=[NaN]
+	"coefficient multiplied to any scale factor of a parameter of a Poisson mixture GLM"
+	sf_mpGLM::TVF=[NaN]
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
-	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the beginning of the trial"
-	tbf_accumulator_begins0::TB=false
-	"whether the temporal basis functions parametrizing the weight of the accumulator is at the trough or at the peak in the end of the trial"
-	tbf_accumulator_ends0::TB=false
-	"number of temporal basis functions parametrizing the weight of the accumulator per second"
-	tbf_accumulator_hz::TF=0.0
-	"scale factor of the temporal basis functions"
-	tbf_accumulator_scalefactor::TF=5.0
-	"degree to which temporal basis functions centered at later times in the trial are stretched. Larger values indicates greater stretch. This value must be positive"
-	tbf_accumulator_stretch::TF=0.2
 	"scale factor of the gain parameter"
 	tbf_gain_scalefactor::TF=5.0
 	"maximum number of basis functions"
@@ -184,8 +149,6 @@ Model settings
 	tbf_poststereoclick_hz::TF=5.0
 	tbf_poststereoclick_scalefactor::TF=5.0
 	tbf_poststereoclick_stretch::TF=0.2
-	"scale factor for the accumulator transformation parameter"
-	tbf_b_scalefactor::TF=1.0
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
 end
@@ -198,10 +161,6 @@ Parameters of the latent variables in the factorial hidden Markov drift-diffusio
 Not included are the weights of the linear filters of the mixture of Poisson generalized linear model of each neuron
 """
 @with_kw struct Latentθ{VR<:Vector{<:Real}}
-	"transition probability of the coupling variable to remain in the coupled state"
-	Aᶜ₁₁::VR=[NaN]
-	"transition probability of the coupling variable to remain in the uncoupled state"
-	Aᶜ₂₂::VR=[NaN]
 	"height of the sticky bounds"
 	B::VR=[NaN]
 	"exponential change rate of inter-click adaptation"
@@ -212,8 +171,6 @@ Not included are the weights of the linear filters of the mixture of Poisson gen
 	μ₀::VR=[NaN]
 	"strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
 	ϕ::VR=[NaN]
-	"prior probability of the coupling variable in the coupled state"
-	πᶜ₁::VR=[NaN]
 	"prior probability that the accumulator variable is not used to determine the behavioral choice"
 	ψ::VR=[NaN]
 	"multiplied by the width of the timestep `Δt`, this is the variance of the Gaussian noise added at each time step"
@@ -307,29 +264,27 @@ end
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
-	"overdispersion parameter in real space. It is mapped into a nonnegative value using the softplus function."
-	a::VR=[-Inf]
+@with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}}
     "nonlinearity in accumulator transformation"
-	b::VR=[NaN]
-	"scale factor for the nonlinearity of accumulator transformation"
-	b_scalefactor::R
+	b::VR=[0.0]
+	"coupling parameter"
+	c::VR=[0.0]
 	"order by which parameters are concatenated"
-	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :a, :b]
+	concatenationorder::VS = [:𝐮, :v, :β, :b, :c]
 	"whether the nonlinearity parameter is fit"
 	fit_b::B
+	"whether the coupling parameter is fit"
+	fit_c::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
-	fit_𝛃::B
-	"whether to fit an overdispersion parameter. If so, the count response model is negative binomial rather than Poisson"
-	fit_overdispersion::B
+	fit_β::B
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
 	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
 	indices𝐮::IU
     "state-dependent linear filters of the inputs from the accumulator "
-    𝐯::VVR
+    v::VR=[NaN]
 	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
-	𝛃::VVR=deepcopy(𝐯)
+	β::VR=[NaN]
 end
 
 """
@@ -348,10 +303,6 @@ Mixture of Poisson generalized linear model
     Δt::F
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
-	"scale factor multiplied to the likelihood to avoid underflow when computing the likelihood of the population response"
-	likelihoodscalefactor::F
-	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
-	Φaccumulator::MF
 	"values of the basis functions parametrizing the slow drift in gain on each trial"
 	Φgain::MF
 	"Values of the smooth temporal basis functions used to parametrize the post-spike filter"
@@ -364,55 +315,26 @@ Mixture of Poisson generalized linear model
 	Φpostphotostimulus_timesteps::UI
 	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
 	Φpoststereoclick::MF
+	"scale factor used for all parameter of the GLM"
+	sf_mpGLM::F
+	"scale factor of the transformation parameter"
+	sf_b::F=sf_mpGLM
+	"scale factor of the coupling parameter"
+	sf_c::F=sf_mpGLM
+	"scale factor of the accumulator encoding weight"
+	sf_v::F=sf_mpGLM
+	"scale factor multiplied to the likelihood to avoid underflow when computing the likelihood of the population response"
+	sf_y::F
 	"parameters"
 	θ::Tθ
-    "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
-    𝐕::MF
 	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
 	𝐗::MF
-	"columns corresponding to the state-independent inputs"
-	𝐗columns_𝐮::UI = 1:(size(𝐗,2)-size(𝐕,2))
-	"columns corresponding to the input from the accumulator"
-	𝐗columns_𝐯::UI = (size(𝐗,2)-size(𝐕,2)+1):size(𝐗,2)
 	"number of accumulator states"
 	Ξ::TI=length(d𝛏_dB)
+	"index of the state for which the accumulator is 0"
+	index0::TI=cld(Ξ,2)
 	"Poisson observations"
     𝐲::VI
-end
-
-
-
-"""
-
-Quantities and memory used for computing the conditional partial derivatives of spike count response generalized linear model
-"""
-@with_kw struct GLMDerivatives{B<:Bool, F<:AbstractFloat, VF<:Vector{<:AbstractFloat}, MF<:Matrix{<:AbstractFloat}}
-	"overdispersion parameter"
-	α::VF=fill(NaN,1)
-	"time step duration, in seconds"
-	Δt::F
-	"log-likelihood"
-	ℓ::VF=fill(NaN,1)
-	"derivative of the overdispersion parameter with respect to its real-valued parameter"
-	dα_da::VF=fill(NaN,1)
-	"second derivative of the overdispersion parameter with respect to its real-valued parameter"
-	d²α_da²::VF=fill(NaN,1)
-	"first-order partial derivative of the log-likelihood with respect to the real-valued over-dispersion parameter"
-	dℓ_da::VF=fill(NaN,1)
-	"first-order partial derivative of the log-likelihood with respect to the linear predictor"
-	dℓ_dL::VF=fill(NaN,1)
-	"second-order partial derivative of the log-likelihood with respect to the real-valued over-dispersion parameter"
-	d²ℓ_da²::VF=fill(NaN,1)
-	"second-order partial derivative of the log-likelihood with respect to the real-valued over-dispersion parameter and the linear predictor"
-	d²ℓ_dadL::VF=fill(NaN,1)
-	"second-order partial derivative of the log-likelihood with respect to the linear predictor"
-	d²ℓ_dL²::VF=fill(NaN,1)
-	"whether the model is a gamma-poisson mixture or a poisson"
-	fit_overdispersion::B
-	"vector for in-place computation of first-order partial derivatives "
-	g::VF=fill(NaN,2)
-	"matrix for in-place computation of second-order partial derivatives"
-	H::MF=fill(NaN,2,2)
 end
 
 """

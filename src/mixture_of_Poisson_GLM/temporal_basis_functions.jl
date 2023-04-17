@@ -1,35 +1,4 @@
 """
-	accumulatorbasis(maxtimesteps, options)
-
-Temporal basis functions for the accumulator kernel
-
-ARGUMENT
--`maxtimesteps`: maximum number of time steps across all trials in a trialset
--`options`: settings of the model
-
-RETURN
--`Φ`: temporal basis functions. Element Φ[τ,i] corresponds to the value of  i-th temporal basis function in the τ-th time bin in the kernel
-"""
-function accumulatorbasis(maxtimesteps::Integer, options::Options)
-	nfunctions = ceil(options.tbf_accumulator_hz*(maxtimesteps*options.Δt))
-	scalefactor = options.sf_tbf[1]*options.tbf_accumulator_scalefactor
-	if isnan(nfunctions)
-		return ones(0,0)
-	elseif nfunctions < 1
-		return ones(maxtimesteps,1) .* (scalefactor/√maxtimesteps)
-	else
-		temporal_basis_functions(options.tbf_accumulator_begins0,
-								options.tbf_accumulator_ends0,
-								false,
-								convert(Int, nfunctions),
-								maxtimesteps,
-								options.scalefactor,
-								options.tbf_accumulator_stretch;
-								orthogonal_to_ones=false)
-	end
-end
-
-"""
 	temporal_basis_functions(filtername, options)
 
 Temporal basis functions used to fit a filter

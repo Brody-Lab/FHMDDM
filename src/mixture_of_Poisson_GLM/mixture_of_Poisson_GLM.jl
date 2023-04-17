@@ -2,11 +2,11 @@
 	contents
 
 MixturePoissonGLM(options, trials)
-linearpredictor(mpGLM, j, k)
-evidenceinput(j, k, mpGLM)
+linearpredictor(mpGLM, i)
+evidenceinput(i, mpGLM)
 conditionallikelihood!(p, mpGLM, τ)
-scaledlikelihood(mpGLM, j, k)
-scaledlikelihood!(𝐩, mpGLM, j, k)
+scaledlikelihood(mpGLM, i)
+scaledlikelihood!(𝐩, mpGLM, i)
 expectation_∇loglikelihood!(∇Q, D, γ, mpGLM)
 expectation_of_loglikelihood(γ, mpGLM, x)
 postspikefilter(mpGLM)
@@ -16,7 +16,7 @@ samplespiketrain(a, c, 𝐄𝐞, 𝐡, mpGLM, 𝛚, 𝛕)
 """
 
 """
-	MixturePoissonGLM(options, trials)
+	initialize_mpGLMs(options, trials)
 
 Initialize the Poisson mixture generalized linear model for each neuron in a trialset
 
@@ -27,7 +27,7 @@ ARGUMENT
 RETURN
 -a vector of structs each of which corresponds to the Poisson mixture generalized linear model of a neuron
 """
-function MixturePoissonGLM(options::Options, trials::Vector{<:Trial})
+function initialize_mpGLMs(options::Options, trials::Vector{<:Trial})
 	Φpoststereoclick = temporal_basis_functions("poststereoclick", options)
 	Φpostspike = temporal_basis_functions("postspike", options)
 	Φpremovement = temporal_basis_functions("premovement", options)
@@ -38,77 +38,148 @@ function MixturePoissonGLM(options::Options, trials::Vector{<:Trial})
 	photostimulus_incline_on_s = collect(trial.photostimulus_incline_on_s for trial in trials)
 	photostimulus_decline_on_s = collect(trial.photostimulus_decline_on_s for trial in trials)
 	Φpostphotostimulus, Φpostphotostimulus_timesteps, 𝐔postphotostimulus = photostimulusbasis(options, photostimulus_incline_on_s, photostimulus_decline_on_s, trialdurations)
-	Φaccumulator = accumulatorbasis(maximum(trialdurations), options)
-	𝐕 = temporal_basis_functions(Φaccumulator, trialdurations)
 	d𝛏_dB=(2collect(1:options.Ξ) .- options.Ξ .- 1)./(options.Ξ-1)
 	stereoclick_times_s = collect(trial.stereoclick_time_s for trial in trials)
 	nneurons = length(trials[1].spiketrains)
 	map(1:nneurons) do n
 		𝐲 = vcat((trial.spiketrains[n] for trial in trials)...)
-		@assert length(𝐲)==sum(trialdurations)
+		T = sum(trialdurations)
+		@assert length(𝐲)==T
 		Φgain, 𝐔gain = drift_design_matrix(options, stereoclick_times_s, trialdurations, 𝐲)
 		𝐔postspike = spikehistorybasis(Φpostspike, trialdurations, 𝐲)
-		𝐗=hcat(𝐔gain, 𝐔postspike, 𝐔poststereoclick, 𝐔premovement, 𝐔postphotostimulus, 𝐕)
+		𝐗=hcat(𝐔gain, 𝐔postspike, 𝐔poststereoclick, 𝐔premovement, 𝐔postphotostimulus, fill(options.sf_mpGLM[1], T))
 		indices𝐮 = Indices𝐮(size(𝐔gain,2), size(Φpostspike,2), size(Φpoststereoclick,2), size(Φpremovement,2), size(Φpostphotostimulus,2))
-		glmθ = GLMθ(indices𝐮, size(𝐕,2), options)
+		glmθ = GLMθ(indices𝐮, options)
 		MixturePoissonGLM(Δt=options.Δt,
 						d𝛏_dB=d𝛏_dB,
-						likelihoodscalefactor=options.sf_y,
-						Φaccumulator=Φaccumulator,
 						Φgain=Φgain,
 						Φpostphotostimulus=Φpostphotostimulus,
 						Φpostphotostimulus_timesteps=Φpostphotostimulus_timesteps,
 						Φpostspike=Φpostspike,
 						Φpoststereoclick=Φpoststereoclick,
 						Φpremovement=Φpremovement,
+						sf_y = options.sf_y,
 						θ=glmθ,
-						𝐕=𝐕,
 						𝐗=𝐗,
 						𝐲=𝐲)
 	end
 end
 
 """
-    linearpredictor(mpGLM, j, k)
+    linearpredictor(mpGLM, i)
 
-Linear combination of the weights in the j-th accumulator state and k-th coupling state
+Linear combination of the weights in the i-th accumulator state and the coupled state
 
 ARGUMENT
 -`mpGLM`: the mixture of Poisson generalized linear model of one neuron
--`j`: state of the accumulator variable
--`k`: state of the coupling variable
+-`i`: state of the accumulator variable
 
 RETURN
 -`𝐋`: a vector whose element 𝐋[t] corresponds to the t-th time bin in the trialset
 """
-function linearpredictor(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack θ, 𝐗 = mpGLM
-	ωⱼ𝐯ₖ = evidenceinput(j, k, mpGLM)
-	𝐗*vcat(θ.𝐮, ωⱼ𝐯ₖ)
-end
+linearpredictor(mpGLM::MixturePoissonGLM, i::Integer) = mpGLM.𝐗 * vcat(mpGLM.θ.𝐮, evidenceinput(i, mpGLM))
 
 """
-	evidenceinput(j,k,mpGLM)
+	evidenceinput(i,mpGLM)
 
 Weighted input of the accumulated evidence
 
 ARGUMENT
--`j`: state of the accumulator variable
--`k`: state of the coupling variable
+-`i`: state of the accumulator variable
 -`mpGLM`: the mixture of Poisson generalized linear model of one neuron
 
 RETURN
 -vector representing the weighted input of the accumulated evidence
 """
-function evidenceinput(j::Integer, k::Integer, mpGLM::MixturePoissonGLM)
+function evidenceinput(i::Integer, mpGLM::MixturePoissonGLM)
 	@unpack d𝛏_dB, Ξ = mpGLM
-    @unpack b, b_scalefactor, 𝐯, 𝛃, fit_𝛃 = mpGLM.θ
-	ωⱼ = (b == 0.0) ? d𝛏_dB[j] : transformaccumulator(b[1]*b_scalefactor, d𝛏_dB[j])
-	if (j == 1 || j == Ξ) && fit_𝛃
-		ωⱼ.*𝛃[k]
+    @unpack b, v, β, fit_β = mpGLM.θ
+	ω = (b == 0.0) ? d𝛏_dB[i] : transformaccumulator(b[1]*mpGLM.sf_b, d𝛏_dB[i])
+	if (i == 1 || i == Ξ) && fit_β
+		ω*β
 	else
-		ωⱼ.*𝐯[k]
+		ω*v
 	end
+end
+
+"""
+	scaledlikelihood!(pₛ𝐘, mpGLMs)
+
+Scaled conditional likelihood of the population spike train
+
+MODIFIED ARGUMENT
+-`pₛ𝐘`: a nested array whose element `pₛ𝐘[m][t][i]` corresponds to the conditional scaled likelihood of the population response at the t-th time step of the m-th trial, given that the accumulator is in the i-th state.
+"""
+function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Vector{<:Real}}}, mpGLMs::Vector{<:MixturePoissonGLM})
+    𝐟₀s = collect(conditionallikelihood(mpGLM, mpGLM.index0) for mpGLM in mpGLMs)
+	@inbounds for i = 1:Ξ
+		𝐩 = ones(size(𝐟₀s[1]))
+		for (mpGLM, 𝐟₀) in zip(mpGLMs, 𝐟₀s)
+			scaledlikelihood!(𝐩, mpGLM, i, 𝐟₀)
+		end
+		τ = 0
+		for m in eachindex(p𝐘)
+			for t in eachindex(p𝐘[m])
+				τ += 1
+				p𝐘[m][t][i] = 𝐩[τ]
+			end
+		end
+	end
+end
+
+"""
+	conditionallikelihood(mpGLM)
+
+Likelihood of the spike train given the i-th accumulator state and a coupled state
+
+ARGUMENT
+-`mpGLM`: an object containing the parameters, hyperparameters, and data of Poisson mixture model
+
+RETURN
+-`𝐩`: a vector whose each element corresponds to the likelihood of a spike train response
+"""
+function conditionallikelihood(i::Integer, mpGLM::MixturePoissonGLM)
+    @unpack Δt, sf_y, 𝐲, Ξ = mpGLM
+    𝐋₁ = linearpredictor(mpGLM, i)
+    𝐟₁ = 𝐋₁
+    @inbounds for τ in eachindex(𝐟₁)
+        𝐟₁[τ] = poissonlikelihood(𝐋₁[τ], Δt, 𝐲[τ])
+    end
+    return 𝐟₁
+end
+
+"""
+    scaledlikelihood!(𝐩, mpGLM, i, 𝐩₀)
+
+In-place scaled multiplication of the conditional likelihood of spike train responses
+
+MODIFIED ARGUMENT
+-`𝐩`: a vector by which the conditional likelihood of the spike train and the prior likelihood of the regression weights are multiplied against
+
+UNMODIFIED ARGUMENT
+-`mpGLM`: the mixture of Poisson generalized linear model for one neuron
+-`i`: state of accumulator variable
+-`𝐩₀`: likelihood of the spike train of the above neuron in the absence of accumulated evidence
+
+RETURN
+-`nothing`
+"""
+function scaledlikelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, i::Integer, 𝐟₀::Vector{<:Real})
+    @unpack Δt, index0, sf_y, 𝐲 = mpGLM
+	if i == index0
+		@inbounds for τ in eachindex(𝐩)
+			𝐩[τ] *= sf_y*𝐟₀[τ]
+		end
+	else
+		π₁ = couplingprobability(mpGLM)
+		π₀ = 1-π₁
+	    𝐋₁ = linearpredictor(mpGLM, i)
+	    @inbounds for τ in eachindex(𝐩)
+			f₁ = poissonlikelihood(Δt, 𝐋₁[τ], 𝐲[τ])
+			𝐩[τ] *= sf_y*(π₁*f₁ + π₀*𝐟₀[τ])
+	    end
+	end
+    return nothing
 end
 
 """
@@ -117,91 +188,59 @@ end
 Conditional likelihood the spike train response at a single timestep
 
 MODIFIED ARGUMENT
--`p`: a matrix whose element `p[i,j]` represents the likelihood conditioned on the accumulator in the i-th state and the coupling in the j-th state
+-`p`: a vector whose element `p[i]` represents the likelihood conditioned on the accumulator in the i-th state
 
 UNMODIFIED ARGUMENT
 -`mpGLM`:a structure with information on the mixture of Poisson GLM of a neuron
 -`τ`: timestep among time steps concatenated across all trials in a trialset
 """
-function conditionallikelihood!(p::Matrix{<:Real}, mpGLM::MixturePoissonGLM, τ::Integer)
-	@unpack Δt, θ, 𝐗, 𝐕, 𝐲 = mpGLM
-	@unpack a, fit_overdispersion, 𝐮 = θ
-	α = inverselink(a[1])
-	overdispersed = α > 0
-	L = 0
+function conditionallikelihood!(p::Vector{<:Real}, mpGLM::MixturePoissonGLM, τ::Integer)
+	@unpack Δt, index0, 𝐗, 𝐲, Ξ = mpGLM
+	@unpack 𝐮 = mpGLM.θ
+	L₀ = 0
 	for i in eachindex(𝐮)
-		L += 𝐗[τ,i]*𝐮[i]
+		L₀ += 𝐗[τ,i]*𝐮[i]
 	end
-	Ξ, K = size(p)
-	for k=1:K
-		for j=1:Ξ
-			Lⱼₖ = L
-			ωⱼ𝐯ₖ = evidenceinput(j,k,mpGLM)
-			for q in eachindex(ωⱼ𝐯ₖ)
-				Lⱼₖ += 𝐕[τ,q]*ωⱼ𝐯ₖ[q]
-			end
-			p[j,k] = overdispersed ? negbinlikelihood(α, Δt, inverselink(Lⱼₖ), 𝐲[τ]) : poissonlikelihood(Δt, Lⱼₖ, 𝐲[τ])
+	f₀ = poissonlikelihood(Δt, L₀, 𝐲[τ])
+	π = couplingprobability(mpGLM)
+	for i=1:Ξ
+		if i == index0
+			p[i] = f₀
+		else
+			L₁ = L₀ + 𝐗[τ,end]*evidenceinput(i,mpGLM)
+			f₁ = poissonlikelihood(Δt, L₁, 𝐲[τ])
+			p[i] = π*f₁ + (1-π)*f₀
 		end
 	end
 	return nothing
 end
 
 """
-    scaledlikelihood(mpGLM, j, k)
+	couplingprobability(glmθ)
 
-Conditional likelihood of the spike train, given the index of the state of the accumulator `j` and the state of the coupling `k`, and also by the prior likelihood of the regression weights
+Probability of being coupled to the accumulator
 
-UNMODIFIED ARGUMENT
--`mpGLM`: the mixture of Poisson generalized linear model for one neuron
--`j`: state of accumulator variable
--`k`: state of the coupling variable
+ARGUMENT
+-`glmθ`: parameters of a Poisson mixture GLM
 
 RETURN
--`𝐩`: a vector by which the conditional likelihood of the spike train and the prior likelihood of the regression weights are multiplied against
+-a scalar indicating the probability fo coupling
 """
-function scaledlikelihood(mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack Δt, likelihoodscalefactor, 𝐲 = mpGLM
-	@unpack a, fit_overdispersion = mpGLM.θ
-	α = inverselink(a[1])
-	overdispersed = α > 0
-    𝐋 = linearpredictor(mpGLM, j, k)
-    𝐩 = 𝐋
-    @inbounds for i=1:length(𝐩)
-		μ = inverselink(𝐋[i])
-		p = overdispersed ? negbinlikelihood(α, Δt, μ, 𝐲[i]) : poissonlikelihood(μ*Δt, 𝐲[i])
-        𝐩[i] = p*likelihoodscalefactor
-    end
-    return 𝐩
+function couplingprobability(mpGLM::MixturePoissonGLM)
+	r = mpGLM.θ.c[1]*mpGLM.sf_c
+	q,l,u = coupling_probability_parameters()
+	real2native(r,l,q,u)
 end
-
-"""
-    scaledlikelihood!(𝐩, mpGLM, j, k)
-
-In-place multiplication of `𝐩` by the conditional likelihood of the spike train, given the index of the state of the accumulator `j` and the state of the coupling `k`, and also by the prior likelihood of the regression weights
-
-MODIFIED ARGUMENT
--`𝐩`: a vector by which the conditional likelihood of the spike train and the prior likelihood of the regression weights are multiplied against
-
-UNMODIFIED ARGUMENT
--`mpGLM`: the mixture of Poisson generalized linear model for one neuron
--`j`: state of accumulator variable
--`k`: state of the coupling variable
-
-RETURN
--`nothing`
-"""
-function scaledlikelihood!(𝐩::Vector{<:Real}, mpGLM::MixturePoissonGLM, j::Integer, k::Integer)
-    @unpack Δt, likelihoodscalefactor, 𝐲 = mpGLM
-	@unpack a, fit_overdispersion = mpGLM.θ
-	α = inverselink(a[1])
-	overdispersed = α > 0
-    𝐋 = linearpredictor(mpGLM, j, k)
-    @inbounds for i=1:length(𝐩)
-		μ = inverselink(𝐋[i])
-		p = overdispersed ? negbinlikelihood(α, Δt, μ, 𝐲[i]) : poissonlikelihood(μ*Δt, 𝐲[i])
-		𝐩[i] *= p*likelihoodscalefactor
-    end
-    return nothing
+function differentiate_π_wrt_c(mpGLM::MixturePoissonGLM)
+	r = mpGLM.θ.c[1]*mpGLM.sf_c
+	q,l,u = coupling_probability_parameters()
+	mpGLM.sf_c*differentiate_native_wrt_real(r,q,l,u)
+end
+function coupling_probability_parameters()
+	q = 0.90
+	l = 0.81
+	u = 0.99
+	return q, l, u
 end
 
 """
@@ -215,72 +254,59 @@ MODIFIED ARGUMENT
 -`∇`: The gradient
 
 UNMODIFIED ARGUMENT
--`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i,k][t] corresponds to the i-th accumulator state and the k-th coupling state in the t-th time bin in the trialset.
+-`γ`: Joint posterior probability of the accumulator and coupling variable. γ[i][t] corresponds to the i-th accumulator state in the t-th time bin in the trialset.
 -`D`: a struct containing quantities used for computing the derivatives of GLM parameters
 -`mpGLM`: structure containing information for the mixture of Poisson GLM for one neuron
 """
-function expectation_∇loglikelihood!(∇Q::GLMθ, D::GLMDerivatives, γ::Matrix{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
-	@unpack Δt, 𝐕, 𝐗, Ξ, 𝐲 = mpGLM
-	@unpack a, fit_b, fit_𝛃, fit_overdispersion, 𝐯 = mpGLM.θ
+function expectation_∇loglikelihood!(∇Q::GLMθ, γ::Vector{<:Vector{<:Real}}, mpGLM::MixturePoissonGLM)
+	@unpack Δt, 𝐗, Ξ, 𝐲, index0 = mpGLM
+	@unpack fit_b, fit_β, fit_c, v, β = mpGLM.θ
 	𝛚 = transformaccumulator(mpGLM)
 	d𝛚_db = dtransformaccumulator(mpGLM)
-	Ξ, K = size(γ)
-	T = length(𝐲)
-	∑ᵢ_dQᵢₖ_dLᵢₖ = collect(zeros(T) for k=1:K)
-	if ∇Q.fit_𝛃
-		∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
-		∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
-	else
-		∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ = collect(zeros(T) for k=1:K)
+	for parameter in fieldnames(mpGLM.θ.concatenationorder)
+		getfield(∇Q, parameter) .= 0
 	end
-	differentiate_overdispersion!(D,a[1])
-	∇Q.a[1] = 0
-	if ∇Q.fit_b
-		∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db = collect(zeros(T) for k=1:K)
-	end
-	@inbounds for k = 1:K
-		for i = 1:Ξ
-			𝐋 = linearpredictor(mpGLM,i,k)
-			for t=1:T
-				differentiate_loglikelihood!(D, 𝐋[t], 𝐲[t])
-				if fit_overdispersion
-					∇Q.a[1] += γ[i,k][t] * D.dℓ_da[1]
-				end
-				dQᵢₖ_dLᵢₖ = γ[i,k][t] * D.dℓ_dL[1]
-				∑ᵢ_dQᵢₖ_dLᵢₖ[k][t] += dQᵢₖ_dLᵢₖ
-				if fit_𝛃
-					if (i==1) || (i==Ξ)
-						∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
-					else
-						∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
-					end
+	𝐋₀ = linearpredictor(mpGLM,index0)
+	𝛌₀ = inverselink.(𝐋₀)
+	𝐟₀ = collect(poissonlikelihood(λ₀*Δt, y) for (λ₀,y) in zip(𝛌₀,𝐲))
+	dℓ₀_d𝐋₀ = collect(differentiate_loglikelihood_wrt_linearpredictor(Δt, L₀, λ₀, y) for (L₀, λ₀, y) in zip(𝐋₀,𝛌₀,𝐲))
+	π₁ = couplingprobability(mpGLM)
+	π₀ = 1-π₁
+	@inbounds for i = 1:Ξ
+		𝐋₁ = (i == index0) ? 𝐋₀ : linearpredictor(mpGLM,i)
+		for t=1:length(𝐲)
+			if i == index0
+				dℓ₁_dL₁ = dℓ₀_d𝐋₀[t]
+				f₁ = 𝐟₀[t]
+			else
+				λ₁ = inverselink(𝐋₁[t])
+				dℓ₁_dL₁ = differentiate_loglikelihood_wrt_linearpredictor(Δt, 𝐋₁[t], λ₁, 𝐲[t])
+				f₁ = poissonlikelihood(λ₁*Δt, 𝐲[t])
+			end
+			f₁π₁ = f₁*π₁
+			f₀π₀ = 𝐟₀[t]*π₀
+			f = f₁π₁ + f₀π₀
+			for j in eachindex(∇Q.𝐮)
+				∇Q.𝐮[j] += γ[i][t]*𝐗[t,j]*(f₁π₁*dℓ₁_dL₁ + f₀π₀*dℓ₀_d𝐋₀[t])/f
+			end
+			if i != index0
+				γdℓ_dwₐ = γ[i][t]*𝛚[i]*𝐗[t,end]*f₁π₁*dℓ₁_dL₁/f
+				if fit_β && ((i==1) || (i==Ξ))
+					∇Q.β[1] += γdℓ_dwₐ
 				else
-					∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k][t] += dQᵢₖ_dLᵢₖ*𝛚[i]
+					∇Q.v[1] += γdℓ_dwₐ
 				end
 				if fit_b
-					∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k][t] += dQᵢₖ_dLᵢₖ*d𝛚_db[i]
+					∇Q.b[1] += γ[i][t]*d𝛚_db[i]*𝐗[t,end]*f₁π₁*dℓ₁_dL₁/f
 				end
+			end
+			if fit_c
+				∇Q.c[1] += γ[i][t]*(f₁-f₀)/f
 			end
 		end
 	end
-	𝐔 = @view 𝐗[:, mpGLM.𝐗columns_𝐮]
-	mul!(∇Q.𝐮, 𝐔', sum(∑ᵢ_dQᵢₖ_dLᵢₖ))
-	𝐕ᵀ = 𝐕'
-	if fit_𝛃
-		@inbounds for k = 1:K
-			mul!(∇Q.𝐯[k], 𝐕ᵀ, ∑_pre_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
-			mul!(∇Q.𝛃[k], 𝐕ᵀ, ∑_post_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
-		end
-	else
-		@inbounds for k = 1:K
-			mul!(∇Q.𝐯[k], 𝐕ᵀ, ∑ᵢ_dQᵢₖ_dLᵢₖ⨀ωᵢ[k])
-		end
-	end
-	if ∇Q.fit_b
-		∇Q.b[1] = 0.0
-		@inbounds for k = 1:K
-			∇Q.b[1] += dot(∑ᵢ_dQᵢₖ_dLᵢₖ⨀dωᵢ_db[k], 𝐕, 𝐯[k])
-		end
+	if fit_c
+		∇Q.c[1] *= differentiate_π_wrt_c(mpGLM)
 	end
 	return nothing
 end
@@ -300,22 +326,19 @@ ARGUMENT
 RETURN
 -expectation of the log-likelihood of the spike train of one neuron
 """
-function expectation_of_loglikelihood(γ::Matrix{<:Vector{<:AbstractFloat}}, mpGLM::MixturePoissonGLM, x::Vector{<:Real}; initialization::Bool=false)
+function expectation_of_loglikelihood(γ::Vector{<:Vector{<:AbstractFloat}}, mpGLM::MixturePoissonGLM, x::Vector{<:Real}; initialization::Bool=false)
 	mpGLM = MixturePoissonGLM(x, mpGLM; initialization=initialization)
-    @unpack Δt, 𝐲 = mpGLM
-	@unpack a, fit_overdispersion = mpGLM.θ
-	α = inverselink(a[1])
-	overdispersed = α > 0
-    T = length(𝐲)
-    Ξ,K = size(γ)
+    @unpack Δt, index0, 𝐲, Ξ = mpGLM
     Q = 0.0
+	𝐋₀ = linearpredictor(mpGLM,index0)
+	𝐟₀ = collect(poissonlikelihood(Δt, L, y) for (L,y) in zip(𝐋₀,𝐲))
+	π₁ = couplingprobability(mpGLM)
+	π₀ = 1-π₁
     @inbounds for i = 1:Ξ
-	    for k = 1:K
-			𝐋 = linearpredictor(mpGLM,i,k)
-            for t = 1:T
-				ℓ = overdispersed ? negbinloglikelihood(α, Δt, inverselink(𝐋[t]), 𝐲[t]) : poissonloglikelihood(Δt, 𝐋[t], 𝐲[t])
-				Q += γ[i,k][t]*ℓ
-            end
+		𝐋₁ = (i == index0) ? 𝐋₀ : linearpredictor(mpGLM,i)
+        for t = 1:length(𝐲)
+			f₁ = (i == index0) ? 𝐟₀[t] : poissonlikelihood(Δt, 𝐋₁[t], 𝐲[t])
+			Q += γ[i][t]*log(π₁*f₁ + π₀*𝐟₀[t])
         end
     end
     return Q
@@ -371,8 +394,7 @@ OUTPUT
 function subsample(mpGLM::MixturePoissonGLM, timesteps::Vector{<:Integer}, trialindices::Vector{<:Integer})
     MixturePoissonGLM(Δt = mpGLM.Δt,
                         d𝛏_dB = mpGLM.d𝛏_dB,
-						likelihoodscalefactor=mpGLM.likelihoodscalefactor,
-						Φaccumulator = mpGLM.Φaccumulator,
+						sf_y=mpGLM.sf_y,
 						Φgain = mpGLM.Φgain[trialindices, :],
 						Φpostspike = mpGLM.Φpostspike,
 						Φpremovement = mpGLM.Φpremovement,
@@ -380,7 +402,6 @@ function subsample(mpGLM::MixturePoissonGLM, timesteps::Vector{<:Integer}, trial
 						Φpostphotostimulus_timesteps = mpGLM.Φpostphotostimulus_timesteps,
 						Φpoststereoclick = mpGLM.Φpoststereoclick,
 						θ = FHMDDM.copy(mpGLM.θ),
-                        𝐕 = mpGLM.𝐕[timesteps, :],
                         𝐗 = mpGLM.𝐗[timesteps, :],
                         𝐲 =mpGLM.𝐲[timesteps])
 end
@@ -392,7 +413,6 @@ Generate a sample of spiking response on each time step of one trial
 
 ARGUMENT
 -`a`: a vector representing the state of the accumulator at each time step of a trial. Note that length(a) >= length(𝛕).
--`c`: a vector representing the state of the coupling variable at each time step. Note that length(c) >= length(𝛕).
 -`𝐄𝐞`: input from external events
 -`𝐡`: value of the post-spikefilter at each time lag
 -`mpGLM`: a structure containing information on the mixture of Poisson GLM of a neuron
@@ -403,42 +423,28 @@ RETURN
 -`𝛌`: a vector of floats representing the spikes per second at each time step
 -`𝐲̂`: a vector of integers representing the sampled spiking response at each time step
 """
-function samplespiketrain(a::Vector{<:Integer}, c::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
-	@unpack Δt, 𝐕, 𝐲, Ξ = mpGLM
-	@unpack 𝐮, 𝐯, 𝛃, fit_𝛃, fit_overdispersion = mpGLM.θ
-	α = inverselink(mpGLM.θ.a[1])
-	overdispersed = α > 0
+function samplespiketrain(a::Vector{<:Integer}, 𝐄𝐞::Vector{<:AbstractFloat}, 𝐡::Vector{<:AbstractFloat}, mpGLM::MixturePoissonGLM, 𝛚::Vector{<:AbstractFloat}, 𝛕::UnitRange{<:Integer})
+	@unpack Δt, 𝐗, 𝐲, Ξ = mpGLM
+	@unpack 𝐮, v, β, fit_β = mpGLM.θ
 	max_spikehistory_lag = length(𝐡)
-	K = length(𝐯)
 	max_spikes_per_step = floor(1000Δt)
     𝐲̂ = zeros(eltype(𝐲), length(𝛕))
 	𝛌 = zeros(length(𝛕))
+	π₁ = couplingprobability(mpGLM)
     for t = 1:length(𝛕)
         τ = 𝛕[t]
-        j = a[t]
-        k = c[t]
 		L = 𝐄𝐞[τ]
-		for i in eachindex(𝐯[k])
-			if fit_𝛃 && (j==1 || j==Ξ)
-				L += 𝛚[j]*𝐕[τ,i]*𝛃[k][i]
-			else
-				L += 𝛚[j]*𝐕[τ,i]*𝐯[k][i]
-			end
-		end
 		for lag = 1:min(max_spikehistory_lag, t-1)
 			if 𝐲̂[t-lag] > 0
 				L += 𝐡[lag]*𝐲̂[t-lag]
 			end
 		end
-        𝛌[t] = softplus(L)
-		if overdispersed
-			μ = 𝛌[t]
-			p = probabilitysuccess(α,Δt,μ)
-			r = 1/α
-			𝐲̂[t] = min(rand(NegativeBinomial(r,p)), max_spikes_per_step)
-		else
-			𝐲̂[t] = min(rand(Poisson(𝛌[t]*Δt)), max_spikes_per_step)
+		if rand() < π₁
+			wₐ = fit_β && (a[t]=1 || a[t]==Ξ) ? β[1] : v[1]
+			L += 𝛚[a[t]]*𝐗[τ,end]*wₐ
 		end
+        𝛌[t] = inverselink(L)
+		𝐲̂[t] = min(rand(Poisson(𝛌[t]*Δt)), max_spikes_per_step)
     end
 	return 𝛌, 𝐲̂
 end
