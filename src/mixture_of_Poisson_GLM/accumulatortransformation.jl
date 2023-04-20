@@ -16,11 +16,7 @@ ARGUMENT
 RETURN
 -a vector representing the transformed values of accumulated evidence
 """
-function transformaccumulator(mpGLM::MixturePoissonGLM)
-	@unpack d𝛏_dB = mpGLM
-	@unpack b, b_scalefactor = mpGLM.θ
-	map(dξᵢ_dB->transformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
-end
+transformaccumulator(mpGLM::MixturePoissonGLM) = map(dξᵢ_dB->transformaccumulator(mpGLM.θ.b[1], mpGLM.sf_mpGLM, dξᵢ_dB), mpGLM.d𝛏_dB)
 
 """
 	dtransformaccumulator(mpGLM)
@@ -33,11 +29,7 @@ ARGUMENT
 RETURN
 -a vector representing the derivative for each discrete value of normalized accumulated evidence
 """
-function dtransformaccumulator(mpGLM::MixturePoissonGLM)
-	@unpack d𝛏_dB = mpGLM
-	@unpack b, b_scalefactor = mpGLM.θ
-		d𝛚_db = map(dξᵢ_dB->dtransformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
-end
+dtransformaccumulator(mpGLM::MixturePoissonGLM) = map(dξᵢ_dB->dtransformaccumulator(mpGLM.θ.b[1], mpGLM.sf_mpGLM, dξᵢ_dB), mpGLM.d𝛏_dB)
 
 """
 	dtransformaccumulator(mpGLM)
@@ -50,8 +42,4 @@ ARGUMENT
 RETURN
 -a vector representing the derivative for each discrete value of normalized accumulated evidence
 """
-function d²transformaccumulator(mpGLM::MixturePoissonGLM)
-	@unpack d𝛏_dB = mpGLM
-	@unpack b, b_scalefactor = mpGLM.θ
-	d²𝛚_db² = map(dξᵢ_dB->d²transformaccumulator(b[1], b_scalefactor, dξᵢ_dB), d𝛏_dB)
-end
+d²transformaccumulator(mpGLM::MixturePoissonGLM) = map(dξᵢ_dB->d²transformaccumulator(mpGLM.θ.b[1], mpGLM.sf_mpGLM, dξᵢ_dB), mpGLM.d𝛏_dB)

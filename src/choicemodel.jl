@@ -499,7 +499,7 @@ RETURN
 """
 function choiceLL!(memory::Memoryforgradient, P::Probabilityvector, θnative::Latentθ, trial::Trial)
 	@unpack clicks = trial
-	@unpack Aᵃinput, Aᵃsilent, ℓ, πᶜᵀ = memory
+	@unpack Aᵃinput, Aᵃsilent, ℓ = memory
 	priorprobability!(P, trial.previousanswer)
 	f = copy(P.𝛑)
 	if length(clicks.time) > 0
@@ -515,7 +515,7 @@ function choiceLL!(memory::Memoryforgradient, P::Probabilityvector, θnative::La
 		end
 		f = Aᵃ*f
 	end
-	forward!(f, trial.choice, θnative.ψ[1])
+	conditionallikelihood!(f, trial.choice, θnative.ψ[1])
 	ℓ[1] += log(sum(f))
 	return nothing
 end
@@ -577,7 +577,7 @@ function choiceLL(concatenatedθ::Vector{T}, indexθ::Latentθ, model::Model) wh
 				end
 				f = Aᵃ*f
 			end
-			forward!(f, trial.choice, θnative.ψ[1])
+			conditionallikelihood!(f, trial.choice, θnative.ψ[1])
 			ℓ+=log(sum(f))
 		end
 	end
@@ -652,7 +652,7 @@ function ∇negativechoiceLL!(∇nℓ::Vector{<:Real},
 	indexfit = 0
 	for field in fieldnames(Latentθ)
 		indexall+=1
-		if (getfield(memory.indexθ.latentθ, field)[1] > 0) && (field != :Aᶜ₁₁) && (field != :Aᶜ₂₂) && (field != :πᶜ₁)
+		if getfield(memory.indexθ.latentθ, field)[1] > 0
 			indexfit +=1
 			∇nℓ[indexfit] = -memory.∇ℓlatent[indexall]
 		end
@@ -707,9 +707,7 @@ function ∇choiceLL!(memory::Memoryforgradient,
 	t = 1
 	∇priorprobability!(∇pa₁, P, trial.previousanswer)
 	f[t] .= P.𝛑
-	if length(clicks.time) > 0
-		adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
-	end
+	adaptedclicks = ∇adapt(trial.clicks, θnative.k[1], θnative.ϕ[1])
 	@inbounds for t=2:trial.ntimesteps
 		if t ∈ clicks.inputtimesteps
 			clickindex = clicks.inputindex[t][1]
@@ -722,7 +720,7 @@ function ∇choiceLL!(memory::Memoryforgradient,
 		end
 		f[t] = Aᵃ * f[t-1]
 	end
-	p𝑑_a = zeros(Ξ)
+	p𝑑_a = ones(Ξ)
 	conditionallikelihood!(p𝑑_a, trial.choice, θnative.ψ[1])
 	p𝑑 = dot(p𝑑_a, f[trial.ntimesteps])
 	ℓ[1] += log(p𝑑)
@@ -760,10 +758,10 @@ end
 """
     conditionallikelihood!(p, choice, ψ)
 
-In-place computation of the likelihood of a choice conditioned on the accumulator state
+In-place multiplication of the likelihood of a choice conditioned on the accumulator state
 
 MODIFIED ARGUMENT
--`p`: Element `p[i]` represents the conditional likelihood of an observed choice given that the accumulator is in the i-th state.
+-`p`: The conditional likelihood of an observed choice given that the accumulator is in the i-th state is multiplied to the i-th element
 
 ARGUMENT
 -`choice`: the observed choice, either right (`choice`=true) or left.
@@ -771,41 +769,15 @@ ARGUMENT
 """
 function conditionallikelihood!(p::Vector{<:T}, choice::Bool, ψ::T) where {T<:Real}
 	zeroindex = cld(length(p),2)
-    p[zeroindex] = 0.5
+    p[zeroindex] *= 0.5
     if choice
-        p[1:zeroindex-1]   .= ψ/2
-        p[zeroindex+1:end] .= 1-ψ/2
+        p[1:zeroindex-1]   .*= ψ/2
+        p[zeroindex+1:end] .*= 1-ψ/2
     else
-        p[1:zeroindex-1]   .= 1-ψ/2
-        p[zeroindex+1:end] .= ψ/2
+        p[1:zeroindex-1]   .*= 1-ψ/2
+        p[zeroindex+1:end] .*= ψ/2
     end
 	return nothing
-end
-
-"""
-    forward!(f, choice, ψ)
-
-Multiply by the likelihood of an observed choice conditioned on the accumulator state
-
-MODIFIED ARGUMENT
--`f`: the forward term
-
-ARGUMENT
--`choice`: the observed choice, either right (`choice`=true) or left.
--`ψ`: the prior probability of a lapse state
-"""
-function forward!(f::Array{<:Real}, choice::Bool, ψ::Real)
-	Ξ = length(f)
-	zeroindex = cld(Ξ,2)
-    f[zeroindex] *= 0.5
-    if choice
-        f[1:zeroindex-1]   .*= ψ/2
-        f[zeroindex+1:end] .*= 1-ψ/2
-    else
-        f[1:zeroindex-1]   .*= 1-ψ/2
-        f[zeroindex+1:end] .*= ψ/2
-    end
-    return nothing
 end
 
 """
@@ -830,62 +802,16 @@ julia> model = Model("/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_04_2
 julia> memory, P = FHMDDM.Memoryforgradient(model; choicemodel=true)
 julia> P = update_for_choiceLL!(model, memory, rand(length(memory.concatenatedθ)))
 """
-function update_for_choiceLL!(memory::Memoryforgradient,
-							 model::Model,
-							 concatenatedθ::Vector{<:Real})
+function update_for_choiceLL!(memory::Memoryforgradient, model::Model, concatenatedθ::Vector{<:Real})
 	memory.concatenatedθ .= concatenatedθ
 	sortparameters!(model, memory.concatenatedθ, memory.indexθ.latentθ)
 	real2native!(model.θnative, model.options, model.θreal)
 	@unpack options, θnative = model
-	@unpack Δt, K, minpa, Ξ = options
+	@unpack Δt, minpa, Ξ = options
 	P = Probabilityvector(Δt, minpa, θnative, Ξ)
 	update_for_∇transition_probabilities!(P)
 	∇transitionmatrix!(memory.∇Aᵃsilent, memory.Aᵃsilent, P)
 	return P
-end
-
-
-"""
-	update_drift_diffusion_transformation(model)
-
-Update the transformation of the drift-diffusion parameters between real and native spaces.
-
-Specifically, the hyperparameter that specifies the value of each drift-diffusion parameter in native space that corresponds to its value of zero in real space is updated.
-
-ARGUMENT
--`model`: structure containing, the settings and hyperparameters of the model
-
-RETURN
--`model`: structure containing the new settings and hyperparameters of the model
-
-EXAMPLE
-```julia-repl
-julia> using FHMDDM
-julia> datapath = "/mnt/cup/labs/brody/tzluo/analysis_data/analysis_2022_07_06a_test/T176_2018_05_03_b5K1K1/data.mat"
-julia> model = Model(datapath)
-julia> newmodel = FHMDDM.update_drift_diffusion_transformation(model)
-```
-"""
-function update_drift_diffusion_transformation(model::Model)
-	dict = dictionary(model.options)
-	dict["lqu_B"][2] = model.θnative.B[1]
-	dict["lqu_k"][2] = model.θnative.k[1]
-	dict["lqu_lambda"][2] = model.θnative.λ[1]
-	dict["lqu_mu0"][2] = model.θnative.μ₀[1]
-	dict["lqu_phi"][2] = model.θnative.ϕ[1]
-	dict["lqu_psi"][2] = model.θnative.ψ[1]
-	dict["lqu_sigma2_a"][2] = model.θnative.σ²ₐ[1]
-	dict["lqu_sigma2_i"][2] = model.θnative.σ²ᵢ[1]
-	dict["lqu_sigma2_s"][2] = model.θnative.σ²ₛ[1]
-	dict["lqu_w_h"][2] = model.θnative.wₕ[1]
-	newoptions = Options(dict)
-	native2real!(model.θreal,newoptions,model.θnative)
-	Model(options=newoptions,
-		gaussianprior=model.gaussianprior,
-		θnative = model.θnative,
-		θreal = model.θreal,
-		θ₀native = model.θ₀native,
-		trialsets = model.trialsets)
 end
 
 """
@@ -943,7 +869,7 @@ UNMODIFIED ARGUMENT
 """
 function ∇∇choiceLL!(memory::Memory_for_hessian_choiceLL, θnative::Latentθ, trial::Trial)
 	@unpack clicks = trial
-	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, ∇D, ∇b, ∂p𝑑_∂ψ, P, ∇pa₁, ∇∇pa₁, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_ψ, nθ, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_ψ_in_θ, p𝑑, ∂p𝑑_∂ψ = memory
+	@unpack ℓ, ∇ℓ, ∇∇ℓ, f, ∇f, ∇D, ∇b, ∂p𝑑_∂ψ, P, ∇pa₁, ∇∇pa₁, indexθ_pa₁, indexθ_paₜaₜ₋₁, indexθ_ψ, nθ, nθ_pa₁, nθ_paₜaₜ₋₁, nθ_ψ, index_pa₁_in_θ, index_paₜaₜ₋₁_in_θ, index_ψ_in_θ, ∂p𝑑_∂ψ = memory
 	∇∇priorprobability!(∇∇pa₁, ∇pa₁, P, trial.previousanswer)
 	f[1] .= P.𝛑
 	for q = 1:nθ
@@ -969,7 +895,8 @@ function ∇∇choiceLL!(memory::Memory_for_hessian_choiceLL, θnative::Latentθ
 	end
 	t = trial.ntimesteps
 	Aᵃ, ∇Aᵃ, ∇∇Aᵃ = ∇∇transitionmatrices!(memory, adaptedclicks, clicks, t)
-	conditional_choice_likelihood!(p𝑑, trial.choice, θnative.ψ[1])
+	p𝑑 = ones(Ξ)
+	conditionallikelihood!(p𝑑, trial.choice, θnative.ψ[1])
 	differentiate_conditional_choice_likelihood_wrt_ψ!(∂p𝑑_∂ψ, trial.choice)
 	f[t] = p𝑑.* (Aᵃ * f[t-1])
 	D = sum(f[t])
@@ -1142,32 +1069,6 @@ function ∇∇transitionmatrices(memory::Memory_for_hessian_choiceLL, adaptedcl
 		∇∇Aᵃ = ∇∇Aᵃsilent
 	end
 	return Aᵃ, ∇Aᵃ, ∇∇Aᵃ
-end
-
-"""
-    conditional_choice_likelihood!(p, choice, ψ)
-
-In-place computation of the condition likelihood a choice given the accumulator state
-
-MODIFIED ARGUMENT
--`p`: after modidication, element `p[i]` corresponds to `p(choice ∣ a=ξᵢ)`
-
-ARGUMENT
--`choice`: the observed choice, either right (`choice`=true) or left.
--`ψ`: the prior probability of a lapse state
-"""
-function conditional_choice_likelihood!(p::Vector{<:Real}, choice::Bool, ψ::Real)
-	Ξ = length(p)
-	zeroindex = cld(Ξ,2)
-    p[zeroindex] = 0.5
-    if choice
-        p[1:zeroindex-1]   .= ψ/2
-        p[zeroindex+1:end] .= 1-ψ/2
-    else
-        p[1:zeroindex-1]   .= 1-ψ/2
-        p[zeroindex+1:end] .= ψ/2
-    end
-    return nothing
 end
 
 """

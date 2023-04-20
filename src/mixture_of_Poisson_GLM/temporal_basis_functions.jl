@@ -16,7 +16,7 @@ function temporal_basis_functions(filtername::String, options::Options)
 							getfield(options, Symbol("tbf_"*filtername*"_dur_s")),
                             getfield(options, Symbol("tbf_"*filtername*"_ends0")),
                             getfield(options, Symbol("tbf_"*filtername*"_hz")),
-                            getfield(options, Symbol("tbf_"*filtername*"_scalefactor"))*options.sf_tbf[1],
+							options.sf_mpGLM[1],
                             getfield(options, Symbol("tbf_"*filtername*"_stretch")),
 							orthogonal_to_ones = true)
 end
@@ -163,7 +163,7 @@ function photostimulusbasis(duration::Integer, options::Options, 𝐓::Vector{<:
 	nsteps_onset_to_trialend = map((T, tₒₙ)-> tₒₙ < 0 ? T-tₒₙ : T-tₒₙ+1, 𝐓, 𝐭ₒₙ)
 	ntimesteps = maximum(nsteps_onset_to_trialend)
 	nfunctions = ceil(Int, options.tbf_postphotostimulus_hz*duration*options.Δt)
-	scalefactor = options.tbf_postphotostimulus_scalefactor*options.sf_tbf[1]
+	scalefactor = options.sf_mpGLM[1]
 	Φon = temporal_basis_functions(options.tbf_postphotostimulus_begins0,
 									options.tbf_postphotostimulus_ends0,
 									nfunctions,

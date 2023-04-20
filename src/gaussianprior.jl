@@ -72,8 +72,7 @@ function namepenalties(indices::Latentθ)
 	penaltynames = String[]
 	for name in fieldnames(Latentθ)
 		i = getfield(indices, name)[1]
-		if (i == 0) || (name == :Aᶜ₁₁) || (name == :Aᶜ₂₂) || (name == :πᶜ₁)
-		else
+		if i > 0
 			penaltynames = vcat(penaltynames, matlabname(name))
 		end
 	end
@@ -130,8 +129,7 @@ function shrinkagematrices(indexθlatent::Latentθ, options::Options)
 	index𝐀 = Vector{typeof(1)}[]
 	for field in fieldnames(Latentθ)
 		i = getfield(indexθlatent, field)[1]
-		if (i == 0) || (field == :Aᶜ₁₁) || (field == :Aᶜ₂₂) || (field == :πᶜ₁)
-		else
+		if i > 0
 			𝐀 = vcat(𝐀, [ones(1,1)])
 			index𝐀 = vcat(index𝐀, [[i]])
 		end
@@ -165,16 +163,19 @@ function precision_matrix_components(nestedindices::Vector{<:Vector{<:GLMθ}}, o
 				parameterindices = reduce(vcat, reduce(vcat, index.𝐮[getfield(index.indices𝐮, parametername)] for index in indices) for indices in nestedindices)
 				𝐀, 𝛂max, 𝛂min, index𝐀 = addprior(𝐀, 𝛂max, 𝛂min, index𝐀, options, parameterindices, parametername)
 			end
-		elseif (name == :𝐯)
-			if options.fit_𝛃
-				parameterindices = reduce(vcat, reduce(vcat, reduce(vcat, reduce(vcat, vcat(v,Δv) for (v, Δv) in zip(𝐯ₖ, 𝛃ₖ)) for (𝐯ₖ, 𝛃ₖ) in zip(index.𝐯, index.𝛃)) for index in indices) for indices in nestedindices)
+		elseif name == :v
+			if options.fit_β
+				parameterindices = reduce(vcat, reduce(vcat, [index.v[1], index.β[1]] for index in indices) for indices in nestedindices)
 			else
-				parameterindices = reduce(vcat, reduce(vcat, vcat(index.𝐯...) for index in indices) for indices in nestedindices)
+				parameterindices = reduce(vcat, reduce(vcat, index.v[1] for index in indices) for indices in nestedindices)
 			end
-			𝐀, 𝛂max, 𝛂min, index𝐀 = addprior(𝐀, 𝛂max, 𝛂min, index𝐀, options, parameterindices, :accumulator)
+			𝐀, 𝛂max, 𝛂min, index𝐀 = addprior(𝐀, 𝛂max, 𝛂min, index𝐀, options, parameterindices, name)
 		elseif (name == :b) & options.fit_b
 			parameterindices = reduce(vcat, collect(index.b[1] for index in indices) for indices in nestedindices)
-			𝐀, 𝛂max, 𝛂min, index𝐀 = addprior(𝐀, 𝛂max, 𝛂min, index𝐀, options, parameterindices, :b)
+			𝐀, 𝛂max, 𝛂min, index𝐀 = addprior(𝐀, 𝛂max, 𝛂min, index𝐀, options, parameterindices, name)
+		elseif (name == :c) & options.fit_c
+			parameterindices = reduce(vcat, collect(index.c[1] for index in indices) for indices in nestedindices)
+			𝐀, 𝛂max, 𝛂min, index𝐀 = addprior(𝐀, 𝛂max, 𝛂min, index𝐀, options, parameterindices, name)
 		end
 	end
 	return 𝐀, index𝐀, 𝛂max, 𝛂min
@@ -209,8 +210,7 @@ function addprior(𝐀::Vector{<:Matrix{<:AbstractFloat}},
 				parametername::Symbol)
 	nparameters = length(parameterindices)
 	if nparameters > 0
-		scalefactor = getfield(options, Symbol("tbf_"*String(parametername)*"_scalefactor"))*options.sf_tbf[1]
-		𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + scalefactor^2*I])
+		𝐀 = vcat(𝐀, [zeros(nparameters,nparameters) + options.sf_mpGLM[1]^2*I])
 		index𝐀 = vcat(index𝐀, [parameterindices])
 		𝛂max = vcat(𝛂max, getfield(options, Symbol("L2_"*String(parametername)*"_max")))
 		𝛂min = vcat(𝛂min, getfield(options, Symbol("L2_"*String(parametername)*"_max")))

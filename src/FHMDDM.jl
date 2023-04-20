@@ -13,8 +13,7 @@ using   Bootstrap,
         SpecialFunctions,
         StatsFuns
 import  CSV,
-        DataFrames,
-        Flux
+        DataFrames
 export  analyzeandsave,
         Characterization,
         concatenateparameters,
@@ -52,6 +51,7 @@ include("mixture_of_Poisson_GLM/accumulatortransformation.jl")
 include("mixture_of_Poisson_GLM/driftbasis.jl")
 include("mixture_of_Poisson_GLM/hessian.jl")
 include("mixture_of_Poisson_GLM/inverselink.jl")
+include("mixture_of_Poisson_GLM/loadmodel.jl")
 include("mixture_of_Poisson_GLM/mixture_of_Poisson_GLM.jl")
 include("mixture_of_Poisson_GLM/parameterinitialization.jl")
 include("mixture_of_Poisson_GLM/parametersorting.jl")

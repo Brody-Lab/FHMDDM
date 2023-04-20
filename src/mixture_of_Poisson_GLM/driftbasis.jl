@@ -81,7 +81,7 @@ RETURN
 -`𝐗`: a  matrix with a number of rows equal to the number of trials (i.e., `length(stereoclick_timesteps)` or `length(trialdurations)`) and a number of columns equal to `nfunctions`
 """
 function drift_design_matrix(nfunctions::Integer, options::Options, stereoclick_timesteps::Vector{<:Integer}, trialdurations::Vector{<:Integer})
-	scalefactor = options.sf_tbf[1]*options.tbf_gain_scalefactor
+	scalefactor = options.sf_mpGLM[1]
 	if nfunctions == 0
 		error("nfunctions must be > 0")
 	elseif nfunctions == 1

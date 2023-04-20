@@ -13,9 +13,9 @@ OPTIONAL ARGUMENT
 OUTPUT
 -an instance of `CVResults`
 """
-function crossvalidate(kfold::Integer, model::Model; choicesonly::Bool=false)
+function crossvalidate(kfold::Integer, model::Model; choicesonly::Bool=false, iterations::Integer=500)
     cvindices = CVIndices(model, kfold)
-	trainingmodels = pmap(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
+	trainingmodels = pmap(cvindices->train(cvindices, model;choicesonly=choicesonly,iterations=iterations), cvindices)
 	trainingsummaries = collect(ModelSummary(trainingmodel) for trainingmodel in trainingmodels)
 	testmodels = collect(test(cvindex, model, trainingmodel) for (cvindex, trainingmodel) in zip(cvindices, trainingmodels))
 	characterization = Characterization(cvindices, testmodels, trainingmodels)
@@ -38,7 +38,7 @@ OPTIONAL ARGUMENT
 RETURN
 -`trainingmodel`: structure containing the data in the training trials, parameters optimized for the data in the trainings, and hyperparameters
 """
-function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false)
+function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false, iterations::Integer=500)
 	θ₀native = FHMDDM.randomize_latent_parameters(model.options)
 	training_trialsets = trainingset(cvindices, model.trialsets)
 	gaussianprior = GaussianPrior(model.options, training_trialsets)
@@ -51,7 +51,7 @@ function train(cvindices::CVIndices, model::Model; choicesonly::Bool=false)
 	if choicesonly
 		fitonlychoices!(trainingmodel)
 	else
-		learnparameters!(trainingmodel)
+		learnparameters!(trainingmodel, iterations=iterations)
 	end
 	return trainingmodel
 end

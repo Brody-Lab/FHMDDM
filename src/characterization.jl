@@ -1,18 +1,26 @@
 """
-	Characterization(model)
+	Characterization(cvindices, testmodels, trainingmodels)
 
-Compute quantities useful for characterizing the model
+Out-of-sample computation of quantities for characterizing the model
 
 ARGUMENT
--a composite containing the data, parameters, and hyperparameter of a factoral hidden Markov drift-diffusion model
-
-OPTIONAL ARGUMENT
--`nsamples`: number of samples to include within the composite
-
-RETURN
--a composite containg quantities useful for understanding the model. See `types.jl` for details on each field of the composite.
+-`cvindices`: a vector of composites, each of which containing the indices of trials used for testing and training for a particular cross-validation fold
+-`testmodels`: a vector of composites, each of which containing the held-out data for a cross-validation fold
+-`trainingmodels`: a vector of composites, each of which containing the training data for a cross-validation fold
 """
-Characterization(model::Model; nsamples=100) = Characterization(model, model;nsamples=nsamples)
+function Characterization(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model}, trainingmodels::Vector{<:Model}; nsamples::Integer=100)
+	characterization_each_fold = map((testmodel, trainingmodel)->Characterization(testmodel, trainingmodel; nsamples=nsamples), testmodels, trainingmodels)
+	ntrialsets = length(cvindices[1].testingtrials)
+	trialindices = collect(sortperm(vcat((cvindex.testingtrials[i] for cvindex in cvindices)...)) for i=1:ntrialsets)
+	values =
+		map(fieldnames(Characterization)) do fieldname
+			map(1:ntrialsets) do i
+				field = vcat((getfield(characterization, fieldname)[i] for characterization in characterization_each_fold)...)
+				field[trialindices[i]]
+			end
+		end
+	Characterization(values...)
+end
 
 """
 	Characterization(testmodel, trainingmodel)
@@ -30,6 +38,23 @@ function Characterization(testmodel::Model, trainingmodel::Model; nsamples::Inte
 					LLspikes_poisson = map((testset, trainingset)->loglikelihood_spiketrains_poisson(testset, trainingset), testmodel.trialsets, trainingmodel.trialsets),
 					expectedemissions = ExpectedEmissions(testmodel, nsamples))
 end
+
+"""
+	Characterization(model)
+
+In-sample computation of quantities used for characterization
+
+ARGUMENT
+-a composite containing the data, parameters, and hyperparameter of a factoral hidden Markov drift-diffusion model
+
+OPTIONAL ARGUMENT
+-`nsamples`: number of samples to include within the composite
+
+RETURN
+-a composite containg quantities useful for understanding the model. See `types.jl` for details on each field of the composite.
+"""
+Characterization(model::Model; nsamples=100) = Characterization(model, model;nsamples=nsamples)
+
 
 """
 	accumulator_distribution(model)
@@ -72,12 +97,11 @@ OPTIONAL ARGUMENT
 
 RETURN
 -`𝐩`: a nested array whose element `𝐩[i][m][t][j]` corresponds to the probability of the accumulator in the j-th state during the t-th time step of the m-th trial in the i-th trialset
-
 """
 function posterior_accumulator_distribution(model::Model; conditionedon::String="choices_spikes")
 	memory = Memoryforgradient(model)
 	if occursin("choice", conditionedon) && occursin("spike", conditionedon)
-		posteriors!(memory, model)
+		posteriors(memory, model)
 	elseif occursin("choice", conditionedon)
 		choiceposteriors!(memory, model)
 	elseif occursin("spike", conditionedon)
@@ -85,16 +109,33 @@ function posterior_accumulator_distribution(model::Model; conditionedon::String=
 	else
 		error("unrecognized data type")
 	end
-	fb = sortbytrial(memory.γ, model)
-	map(fb) do fb
-		map(fb) do fb
-			map(fb) do fb
-				dropdims(sum(fb, dims=2), dims=2)
+	sort_posteriors_by_trial(memory.γ, model)
+end
+
+"""
+	sort_posteriors_by_trial(γ, model)
+
+Sort the concatenated posterior probability by trial
+
+ARGUMENT
+-`γ`: posterior probabilities: element γ[s][j][t] corresponds to the p{a(t)=ξ(j)∣ 𝐘} for the t-th time step in the s-th trialset"
+-`model`: object containing the data, parameters, and hyperparameters
+
+RETURN
+-`fb`: posterior probability of each accumulator state sorted by trial. Element `fb[s][m][t][i]` corresponds to the `p{a(t)=ξ(j)∣ 𝐘}`the t-th time step of the m-th trial of the s-th trialset
+"""
+function sort_posteriors_by_trial(γ::Vector{<:Vector{<:Vector{<:Real}}}, model::Model)
+	map(γ, model.trialsets) do γ, trialset
+		map(trialset.trials) do trial
+			timesteps = trial.τ₀ .+ (1:trial.ntimesteps)
+			map(timesteps) do τ
+				map(1:model.options.Ξ) do i
+					γ[i][τ]
+				end
 			end
 		end
 	end
 end
-
 
 """
 	loglikelihood_each_trial(model)
@@ -110,8 +151,7 @@ RETURN
 function loglikelihood_each_trial(model::Model)
 	log2e = log2(exp(1))
 	memory = Memoryforgradient(model)
-	concatenatedθ = concatenateparameters(model)
-	P = update!(memory, model, concatenatedθ)
+	P = update!(memory, model, concatenateparameters(model))
 	log_s = log(model.options.sf_y)
 	ℓ = map(model.trialsets) do trialset
 			N = length(trialset.mpGLMs)
@@ -151,9 +191,9 @@ function loglikelihood_choice(model::Model)
 				Aᵃ = transitionmatrix(trial.clicks, memory.Aᵃinput, memory.Aᵃsilent, t)
 				p𝐚 = Aᵃ*p𝐚
 			end
-			p𝑑_𝐚 = memory.p𝑑_a[trial.trialsetindex][trial.index_in_trialset]
-			conditionallikelihood!(p𝑑_𝐚, trial.choice, model.θnative.ψ[1])
-			log2(dot(p𝐚, p𝑑_𝐚))
+			p𝑑_a = ones(model.options.Ξ)
+			conditionallikelihood!(p𝑑_a, trial.choice, model.θnative.ψ[1])
+			log2(dot(p𝐚, p𝑑_a))
 		end
 	end
 end
@@ -171,10 +211,10 @@ RETURN
 """
 function loglikelihood_choice_given_spikes(model::Model)
 	memory = Memoryforgradient(model)
-	P = update!(memory, model)
+	P = update!(memory, model, concatenateparameters(model))
 	memory_𝐘 = Memoryforgradient(model)
 	for i in eachindex(memory_𝐘.p𝐘𝑑)
-		scaledlikelihood!(memory_𝐘.p𝐘𝑑[i], model.trialsets[i])
+		scaledlikelihood!(memory_𝐘.p𝐘𝑑[i], model.trialsets[i].mpGLMs)
 	end
 	P_𝐘 = update_for_latent_dynamics!(memory_𝐘, model.options, model.θnative)
 	log2e = log2(exp(1))
@@ -253,23 +293,21 @@ RETURN
 function loglikelihood_spiketrains(model::Model)
 	memory = Memoryforgradient(model)
 	P = update_for_∇latent_dynamics!(memory, model.options, model.θnative)
-	p𝑦_𝐚𝐜 = zeros(model.options.Ξ, model.options.K)
+	p𝑦_𝐚 = zeros(model.options.Ξ)
 	map(model.trialsets) do trialset
 		map(trialset.trials) do trial
 			ℓ₂𝐲 = collect(zeros(trial.ntimesteps) for mpGLM in trialset.mpGLMs)
 			accumulator_prior_transitions!(memory.Aᵃinput, P, memory.p𝐚₁, trial)
 			p𝐚 = memory.p𝐚₁
-			p𝐜 = memory.πᶜ
 			for t=1:trial.ntimesteps
 				if t > 1
 					Aᵃ = transitionmatrix(trial.clicks, memory.Aᵃinput, memory.Aᵃsilent, t)
 					p𝐚 = Aᵃ*p𝐚
-					p𝐜 = memory.Aᶜ*p𝐜
 				end
 				τ = trial.τ₀ + t
 				for (mpGLM, ℓ₂𝐲) in zip(trialset.mpGLMs, ℓ₂𝐲)
-					conditionallikelihood!(p𝑦_𝐚𝐜, mpGLM, τ)
-					ℓ₂𝐲[t] = log2(p𝐚'*p𝑦_𝐚𝐜*p𝐜)
+					conditionallikelihood!(p𝑦_𝐚, mpGLM, τ)
+					ℓ₂𝐲[t] = log2(dot(p𝐚, p𝑦_𝐚))
 				end
 			end
 			return ℓ₂𝐲
@@ -297,7 +335,6 @@ function ExpectedEmissions(model::Model, nsamples)
 	memory = Memoryforgradient(model)
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	a = zeros(Int, memory.maxtimesteps)
-	c = zeros(Int, memory.maxtimesteps)
 	𝛏 = model.trialsets[1].mpGLMs[1].d𝛏_dB.*model.θnative.B[1]
 	map(model.trialsets) do trialset
 		𝐄𝐞 = map(mpGLM->externalinput(mpGLM), trialset.mpGLMs)
@@ -309,7 +346,7 @@ function ExpectedEmissions(model::Model, nsamples)
 			E𝐘right = deepcopy(E𝐘left)
 			nright = 0
 			for s = 1:nsamples
-				trialsample = sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset, 𝛏)
+				trialsample = sampletrial!(a, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset, 𝛏)
 				nright += trialsample.choice
 				E𝐘 = trialsample.choice ? E𝐘right : E𝐘left
 				for (E𝐲, 𝐲) in zip(E𝐘, trialsample.spiketrains)
@@ -341,30 +378,6 @@ function ExpectedEmissions(model::Model, nsamples)
 end
 
 """
-	Characterization(cvindices, testmodels, trainingmodels)
-
-Out-of-sample computation of quantities for characterizing the model
-
-ARGUMENT
--`cvindices`: a vector of composites, each of which containing the indices of trials used for testing and training for a particular cross-validation fold
--`testmodels`: a vector of composites, each of which containing the held-out data for a cross-validation fold
--`trainingmodels`: a vector of composites, each of which containing the training data for a cross-validation fold
-"""
-function Characterization(cvindices::Vector{<:CVIndices}, testmodels::Vector{<:Model}, trainingmodels::Vector{<:Model}; nsamples::Integer=100)
-	characterization_each_fold = map((testmodel, trainingmodel)->Characterization(testmodel, trainingmodel; nsamples=nsamples), testmodels, trainingmodels)
-	ntrialsets = length(cvindices[1].testingtrials)
-	trialindices = collect(sortperm(vcat((cvindex.testingtrials[i] for cvindex in cvindices)...)) for i=1:ntrialsets)
-	values =
-		map(fieldnames(Characterization)) do fieldname
-			map(1:ntrialsets) do i
-				field = vcat((getfield(characterization, fieldname)[i] for characterization in characterization_each_fold)...)
-				field[trialindices[i]]
-			end
-		end
-	Characterization(values...)
-end
-
-"""
 	save(characterization, folderpath)
 
 Save the characterizations of the model.
@@ -391,39 +404,4 @@ function save(characterization::Characterization, folderpath::String)
 		dict = Dict(String(fieldname)=>entry)
 	    matwrite(filepath, dict)
 	end
-end
-
-"""
-	sortbytrial(γ, model)
-
-Sort concatenated posterior probability or spike response by trials
-
-ARGUMENT
--`γ`: a nested array whose element γ[s][j,k][τ] corresponds to the τ-th time step in the s-th trialset and the j-th accumulator state and k-th coupling state
--`model`: structure containing data, parameters, and hyperparameters
-
-RETURN
--`fb`: a nested array whose element fb[s][m][t][j,k] corresponds to the t-th time step in the m-th trial of the s-th trialset and the j-th accumulator state and k-th coupling state
-"""
-function sortbytrial(γ::Vector{<:Matrix{<:Vector{T}}}, model::Model) where {T<:Real}
-	@unpack K, Ξ = model.options
-	fb = map(model.trialsets) do trialset
-			map(trialset.trials) do trial
-				collect(zeros(T, Ξ, K) for i=1:trial.ntimesteps)
-			end
-		end
-	for s in eachindex(fb)
-		τ = 0
-		for m in eachindex(fb[s])
-			for t in eachindex(fb[s][m])
-				τ += 1
-				for j=1:Ξ
-					for k=1:K
-						fb[s][m][t][j,k] = γ[s][j,k][τ]
-					end
-				end
-			end
-		end
-	end
-	return fb
 end

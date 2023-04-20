@@ -15,21 +15,21 @@ OUTPUT
 """
 function concatenateparameters(glmθ::GLMθ; includeunfit::Bool=false, initialization::Bool=false)
 	emptyvector = eltype(getfield(glmθ,glmθ.concatenationorder[1]))[]
-	vcat((	if name==:𝛃
-				if includeunfit || glmθ.fit_𝛃
-					vcat(glmθ.𝛃...)
-				else
-					emptyvector
-				end
-			elseif name==:a
-				if (includeunfit || glmθ.fit_overdispersion)
-					glmθ.a
+	vcat((	if name==:β
+				if includeunfit || glmθ.fit_β
+					glmθ.β
 				else
 					emptyvector
 				end
 			elseif name==:b
 				if !initialization && (includeunfit || glmθ.fit_b)
 					glmθ.b
+				else
+					emptyvector
+				end
+			elseif name==:c
+				if !initialization && (includeunfit || glmθ.fit_c)
+					glmθ.c
 				else
 					emptyvector
 				end
@@ -75,7 +75,7 @@ ARGUMENT
 
 OPTION ARGUMENT
 -`offset`: the number of unrelated parameters in `concatenatedθ` preceding the relevant parameters
--`initialization`: whether to purposefully ignore the transformation parameteter `b` and the bound encoding `𝛃`
+-`initialization`: whether to purposefully ignore the transformation parameteter `b` and the coupling probability parameter `c`
 """
 function GLMθ(concatenatedθ::Vector{elementtype}, glmθ::GLMθ; offset::Integer, initialization::Bool=false) where {elementtype<:Real}
 	θnew = GLMθ(elementtype, glmθ)
@@ -276,22 +276,14 @@ function nameparameters(glmθ::GLMθ)
 					parameternames = vcat(parameternames, string(field)*string(q))
 				end
 			end
-		elseif name == :𝐯
-			for k in eachindex(glmθ.𝐯)
-				for q in eachindex(glmθ.𝐯[k])
-					parameternames = vcat(parameternames, "precommitment_encoding_"*string(k)*"_"*string(q))
-				end
-			end
-		elseif (name == :𝛃) & glmθ.fit_𝛃
-			for k in eachindex(glmθ.𝛃)
-				for q in eachindex(glmθ.𝛃[k])
-					parameternames = vcat(parameternames, "postcommitment_encoding_"*string(k)*"_"*string(q))
-				end
-			end
-		elseif (name == :a) & glmθ.fit_overdispersion
-			parameternames = vcat(parameternames, "overdispersion")
+		elseif name == :v
+			parameternames = vcat(parameternames, "precommitment_encoding")
+		elseif (name == :β) & glmθ.fit_β
+			parameternames = vcat(parameternames, "postcommitment_encoding")
 		elseif (name == :b) & glmθ.fit_b
 			parameternames = vcat(parameternames, "transformation")
+		elseif (name == :c) & glmθ.fit_c
+			parameternames = vcat(parameternames, "coupling_probability")
 		end
 	end
 	return parameternames
@@ -351,39 +343,26 @@ OPTIONAL ARGUMENT
 """
 function sortparameters!(θ::GLMθ, concatenatedθ::Vector{<:Real}; includeunfit::Bool=false, initialization::Bool=false, offset::Integer=0)
 	for name in θ.concatenationorder
-		if name == :𝛃
-			if (includeunfit || θ.fit_𝛃)
-				for k in eachindex(θ.𝛃)
-					for q in eachindex(θ.𝛃[k])
-						offset += 1
-						θ.𝛃[k][q] = concatenatedθ[offset]
-					end
-				end
-			end
-		elseif name == :a
-			if (includeunfit || θ.fit_overdispersion)
+		if name == :β
+			if (includeunfit || θ.fit_β)
 				offset += 1
-				θ.a[1] = concatenatedθ[offset]
+				θ.β[1] = concatenatedθ[offset]
 			end
 		elseif name == :b
 			if !initialization && (includeunfit || θ.fit_b)
 				offset += 1
 				θ.b[1] = concatenatedθ[offset]
 			end
+		elseif name == :c
+			if !initialization && (includeunfit || θ.fit_c)
+				offset += 1
+				θ.c[1] = concatenatedθ[offset]
+			end
 		else
 			x = getfield(θ, name)
-			if eltype(x) <: Real
-				for q in eachindex(x)
-					offset += 1
-					x[q] = concatenatedθ[offset]
-				end
- 			else
-				for k in eachindex(x)
-					for q in eachindex(x[k])
-						offset += 1
-						x[k][q] = concatenatedθ[offset]
-					end
-				end
+			for q in eachindex(x)
+				offset += 1
+				x[q] = concatenatedθ[offset]
 			end
 		end
 	end
@@ -464,13 +443,9 @@ UNMODIFIED ARGUMENT
 -`dict`: a `Dict` containing the values used to update the parameters
 """
 function sortparameters!(glmθ::GLMθ, dict::Dict)
-	glmθ.a[1] = dict["a"]
-	glmθ.b[1] = dict["b"]
 	glmθ.𝐮 .= dict["u"]
-	for k in eachindex(glmθ.𝐯)
-		glmθ.𝐯[k] .= dict["v"][k]
-	end
-	for k in eachindex(glmθ.𝛃)
-		glmθ.𝛃[k] .= dict["beta"][k]
-	end
+	glmθ.v[1] = dict["v"]
+	glmθ.β[1] = dict["beta"]
+	glmθ.b[1] = dict["b"]
+	glmθ.c[1] = dict["c"]
 end

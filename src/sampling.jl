@@ -66,7 +66,6 @@ function drawsamples(model::Model, nsamples::Integer)
 	memory = Memoryforgradient(model)
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	a = zeros(Int, memory.maxtimesteps)
-	c = zeros(Int, memory.maxtimesteps)
 	𝛏 = model.trialsets[1].mpGLMs[1].d𝛏_dB.*model.θnative.B[1]
 	trialsamples =
 		map(model.trialsets) do trialset
@@ -75,7 +74,7 @@ function drawsamples(model::Model, nsamples::Integer)
 			𝛚 = map(mpGLM->transformaccumulator(mpGLM), trialset.mpGLMs)
 			map(trialset.trials) do trial
 				accumulator_prior_transitions!(memory.Aᵃinput, P, memory.p𝐚₁, trial)
-				collect(sampletrial!(a, c, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset, 𝛏) for s=1:nsamples)
+				collect(sampletrial!(a, 𝐄𝐞, 𝐡, memory, 𝛚, model.θnative.ψ[1], trial, trialset, 𝛏) for s=1:nsamples)
 			end
 		end
 	map(1:nsamples) do s
@@ -90,7 +89,7 @@ function drawsamples(model::Model, nsamples::Integer)
 end
 
 """
-	sampletrial!(a, c, 𝐄𝐞, 𝐡, memory 𝛚, trial, trialset, 𝛏)
+	sampletrial!(a, 𝐄𝐞, 𝐡, memory 𝛚, trial, trialset, 𝛏)
 
 Simulate the choice and spike trains on a trial.
 
@@ -98,7 +97,6 @@ The model is run forward in time, and the value of the latent variables are simu
 
 MODIFIED ARGUMENT
 -`a`: a vector used for the simulation of the accumulator state
--`c`: a vector used for the simulation of the coupling state
 
 UNMODIFIED ARGUMENT
 -`𝐄𝐞`: external input. Element `𝐄𝐞[n][τ]` corresponds to the n-th neuron at the τ-th time step among timesteps concatenated across trials in a trialset
@@ -114,7 +112,6 @@ RETURN
 -simulation of the choice and the spike trains in a trial
 """
 function sampletrial!(a::Vector{<:Integer},
-					c::Vector{<:Integer},
 					𝐄𝐞::Vector{<:Vector{<:AbstractFloat}},
 					𝐡::Vector{<:Vector{<:AbstractFloat}},
 					memory::Memoryforgradient,
@@ -124,11 +121,10 @@ function sampletrial!(a::Vector{<:Integer},
 					trialset::Trialset,
 					𝛏::Vector{<:AbstractFloat})
 	sampleaccumulator!(a, memory.Aᵃinput, memory.Aᵃsilent, memory.p𝐚₁, trial)
-	samplecoupling!(c, memory.Aᶜ, trial.ntimesteps, memory.πᶜ)
 	choice = samplechoice(a[trial.ntimesteps], ψ, memory.Ξ)
 	timesteps = trial.τ₀ .+ (1:trial.ntimesteps)
 	outputs = map(𝐄𝐞, 𝐡, trialset.mpGLMs, 𝛚) do 𝐄𝐞, 𝐡, mpGLM, 𝛚
-					samplespiketrain(a, c, 𝐄𝐞, 𝐡, mpGLM, 𝛚, timesteps)
+					samplespiketrain(a, 𝐄𝐞, 𝐡, mpGLM, 𝛚, timesteps)
 				end
 	λ = collect(output[1] for output in outputs)
 	spiketrains = collect(output[2] for output in outputs)
@@ -275,34 +271,6 @@ function sampleclicks(a_latency_s::Real,
 	leftclicktimes = samplePoissonprocess(leftrate, duration_s; rng=rng)
 	rightclicktimes = samplePoissonprocess(rightrate, duration_s; rng=rng)
 	Clicks(a_latency_s, Δt, leftclicktimes, ntimesteps, rightclicktimes)
-end
-
-"""
-	samplecoupling!(c, Aᶜ, ntimesteps, πᶜ)
-
-Sample the values of the coupling variable in one trial
-
-MODIFIED ARGUMENT
--`c`: a vector containing the sample value of the coupling variable in each time step
-
-ARGUMENT
--`Aᶜ`: transition matrix of the coupling variable
--`ntimesteps`: number of time steps in the trial
--`πᶜ`: prior probability of the coupling variable
-"""
-function samplecoupling!(c::Vector{<:Integer}, Aᶜ::Matrix{<:Real}, ntimesteps::Integer, πᶜ::Vector{<:Real})
-	if length(πᶜ) == 1
-		c .= 1
-	else
-		cumulativep𝐜 = cumsum(πᶜ)
-	    c[1] = findfirst(rand() .< cumulativep𝐜)
-		cumulativeAᶜ = cumsum(Aᶜ, dims=1)
-	    for t = 2:ntimesteps
-	        cumulativep𝐜 = cumulativeAᶜ[:,c[t-1]]
-	        c[t] = findfirst(rand() .< cumulativep𝐜)
-	    end
-	end
-	return nothing
 end
 
 """

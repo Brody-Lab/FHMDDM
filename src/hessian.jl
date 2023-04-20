@@ -427,88 +427,48 @@ function update_emissions!(∂pY𝑑_∂ψ::Matrix{<:Real}, pY::Matrix{<:Real}, 
 end
 
 """
-	conditionallikelihood!(pY, 𝑑, ψ)
-
-Multiply the conditional likelihood of the choice to the conditional likelihood of spiking
-
-ARGUMENT
--`pY`: a matrix whose element `pY[i,j]` corresponds to the i-th accumulator state and j-th coupling state and represents p{Y ∣ a(T)=ξ(i), c(T)=j}
--`𝑑`: left (false) or right (true) choice of the animal
--`ψ`: lapse rate
-
-MODIFIED ARGUMENT
--`pY`: p{Y, 𝑑 ∣ a(T)=ξ(i), c(T)=j}
-"""
-function conditionallikelihood!(pY::Matrix{<:Real}, 𝑑::Bool, ψ::Real)
-	if 𝑑
-		p𝑑_ξ⁻ = ψ/2
-		p𝑑_ξ⁺ = 1-ψ/2
-	else
-		p𝑑_ξ⁻ = 1-ψ/2
-		p𝑑_ξ⁺ = ψ/2
-	end
-	Ξ,K = size(pY)
-	zeroindex = cld(Ξ,2)
-	@inbounds for j = 1:K
-		for i = 1:zeroindex-1
-			pY[i,j] *= p𝑑_ξ⁻
-		end
-		pY[zeroindex,j] *= 0.5
-		for i = zeroindex+1:Ξ
-			pY[i,j] *= p𝑑_ξ⁺
-		end
-	end
-	return nothing
-end
-
-"""
 	sum_product_over_states(D,fₜ₋₁,bₜ,Y,A,C)
 
 Multiply terms across different states of the latent variables at consecutive time step and sum
 
 ARGUMENT
--`Y`: similar to η, element Y[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the coupling at time t
+-`D`: past-conditioned likelihood
+-`fₜ₋₁`: forward term of the previous state
+-`bₜ`: backward term of the current state
+-`Y`: element Y[i] corresponds to i-th state of the accumulator at time t
 -`A`: element A[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the accumulator at time t-1
--`C`: element C[i,j] corresponds to i-th state of the coupling at time t and the j-th state of the coupling at time t-1
 
 RETURN
 -`s`: sum of the product across all states of the two latent variables at two consecutive time steps
 """
-function sum_product_over_states(D::Real, fₜ₋₁::Matrix{<:Real}, bₜ::Matrix{<:Real}, Y::Matrix{<:Real}, A::Matrix{<:Real}, C::Matrix{<:Real})
+function sum_product_over_states(D::Real, fₜ₋₁::Vector{<:Real}, bₜ::Vector{<:Real}, Y::Vector{<:Real}, A::Matrix{<:Real})
 	s = 0.0
-	Ξ,K = size(fₜ₋₁)
+	Ξ = length(fₜ₋₁)
 	@inbounds for iaₜ = 1:Ξ
-		for icₜ = 1:K
-			for iaₜ₋₁ = 1:Ξ
-				for icₜ₋₁ = 1:K
-					s += fₜ₋₁[iaₜ₋₁,icₜ₋₁]*bₜ[iaₜ,icₜ]*Y[iaₜ,icₜ]*A[iaₜ,iaₜ₋₁]*C[icₜ, icₜ₋₁]
-				end
-			end
+		for iaₜ₋₁ = 1:Ξ
+			s += fₜ₋₁[iaₜ₋₁]*bₜ[iaₜ]*Y[iaₜ]*A[iaₜ,iaₜ₋₁]
 		end
 	end
 	return s/D
 end
 
 """
-	sum_product_over_states(D, b,Y,A,C)
+	sum_product_over_states(D,b,Y,A)
 
 Multiply terms across different states of the latent variables at a single time step and sum
 
 ARGUMENT
 -`Y`: similar to η, element Y[i,j] corresponds to i-th state of the accumulator at time t and the j-th state of the coupling at time t
 -`A`: element A[i] corresponds to the i-th state of the accumulator at time t
--`C`: element C[j] corresponds to the j-th state of the coupling at time t-1
 
 RETURN
 -`s`: sum of the product across all states of the two latent variables at a single time step
 """
-function sum_product_over_states(D::Real, b::Matrix{<:Real}, Y::Matrix{<:Real}, A::Vector{<:Real}, C::Vector{<:Real})
+function sum_product_over_states(D::Real, b::Vector{<:Real}, Y::Vector{<:Real}, A::Vector{<:Real})
 	s = 0.0
-	Ξ,K = size(b)
-	@inbounds for iaₜ = 1:Ξ
-		for icₜ = 1:K
-			s += b[iaₜ,icₜ]*Y[iaₜ,icₜ]*A[iaₜ]*C[icₜ]
-		end
+	Ξ = length(b)
+	@inbounds for i = 1:length(b)
+		s += b[i]*Y[i]*A[i]
 	end
 	return s/D
 end
@@ -769,7 +729,6 @@ function Memoryforhessian(model::Model, S::Sameacrosstrials)
 					∇b=∇b,
 					D = zeros(maxtimesteps),
 					∇D=∇D,
-					glmderivatives=GLMDerivatives(model.trialsets[1].mpGLMs[1]),
 					indexθglms = collect(collect(indexparameters(mpGLM.θ; includeunfit=true) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
 					∇ℓ=zeros(S.nθ_alltrialsets),
 					∇∇ℓ=zeros(S.nθ_alltrialsets,S.nθ_alltrialsets),

@@ -74,27 +74,27 @@ OPTIONAL ARGUMENT
 -`computehessian`: whether the hessian of the log-likelihood and log-posterior functions are to be computed
 """
 function ModelSummary(model::Model; computehessian::Bool=false)
-	modelsummary =
-	ModelSummary(externalinputs = collect(collect(externalinput(mpGLM) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
+	modelsummary = ModelSummary(designmatrix = collect(collect(mpGLM.𝐗 for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
+			externalinputs = collect(collect(externalinput(mpGLM) for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
+			glm_parameter_scale_factor = model.options.sf_mpGLM[1],
 			loglikelihood=loglikelihood(model),
-			loglikelihood_each_trial = loglikelihood_each_trial(model),
 		 	logposterior=logposterior(model),
-			thetanative=model.θnative,
-			thetareal=model.θreal,
-			theta0native=model.θ₀native,
-			thetaglm=map(trialset->map(mpGLM->mpGLM.θ, trialset.mpGLMs), model.trialsets),
-			temporal_basis_vectors_gain=collect(collect(mpGLM.Φgain for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
-			temporal_basis_vectors_accumulator=collect(trialset.mpGLMs[1].Φaccumulator for trialset in model.trialsets),
-	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φpostspike for trialset in model.trialsets),
-	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φpremovement for trialset in model.trialsets),
-	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φpoststereoclick for trialset in model.trialsets),
 			parametervalues=concatenateparameters(model),
 			parameternames=nameparameters(model),
 	        penaltycoefficients=model.gaussianprior.𝛂,
 	        penaltymatrices=model.gaussianprior.𝐀,
 	        penaltymatrixindices=model.gaussianprior.index𝐀,
 			penaltynames=model.gaussianprior.penaltynames,
-	        precisionmatrix=model.gaussianprior.𝚲)
+	        precisionmatrix=model.gaussianprior.𝚲,
+			thetanative=model.θnative,
+			thetareal=model.θreal,
+			theta0native=model.θ₀native,
+			thetaglm=map(trialset->map(mpGLM->mpGLM.θ, trialset.mpGLMs), model.trialsets),
+			temporal_basis_vectors_gain=collect(collect(mpGLM.Φgain for mpGLM in trialset.mpGLMs) for trialset in model.trialsets),
+	        temporal_basis_vectors_postspike=collect(trialset.mpGLMs[1].Φpostspike for trialset in model.trialsets),
+	        temporal_basis_vectors_premovement=collect(trialset.mpGLMs[1].Φpremovement for trialset in model.trialsets),
+	        temporal_basis_vectors_poststereoclick=collect(trialset.mpGLMs[1].Φpoststereoclick for trialset in model.trialsets))
+
 	if computehessian
 		modelsummary.hessian_loglikelihood .= ∇∇loglikelihood(model)[3]
 		modelsummary.hessian_logposterior .= modelsummary.hessian_loglikelihood - modelsummary.precisionmatrix
@@ -165,12 +165,11 @@ end
 Convert into a dictionary the parameters of a mixture of Poisson generalized linear model
 """
 function dictionary(glmθ::GLMθ)
-    Dict("a"=>glmθ.a,
-		"b"=>glmθ.b,
-		"b_scalefactor"=>glmθ.b_scalefactor,
+    Dict("b"=>glmθ.b[1],
+		 "c"=>glmθ.c[1],
 		"u"=>glmθ.𝐮,
-		"v"=>glmθ.𝐯,
-		"beta"=>glmθ.𝛃,
+		"v"=>glmθ.v[1],
+		"beta"=>glmθ.β[1],
 		("u_"*string(field)=>glmθ.𝐮[getfield(glmθ.indices𝐮, field)] for field in fieldnames(Indices𝐮))...)
 end
 

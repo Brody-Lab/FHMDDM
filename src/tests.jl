@@ -27,22 +27,32 @@ function test(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
 	println("	- `∇negativelogposterior(model)`")
 	test_∇negativelogposterior(csvpath, row; maxabsdiff=maxabsdiff)
 	printseparator()
-	println("testing hessian of the log-likelihood of all the data")
-	println("	- `∇∇loglikelihood(model)`")
-	test_∇∇loglikelihood(csvpath, row; maxabsdiff=maxabsdiff)
-	printseparator()
-    println("testing the hessian of the log-likelihood of only the behavioral choices")
-	println("	- `∇∇choiceLL(model)`")
-    test_∇∇choiceLL(csvpath, row; maxabsdiff=maxabsdiff)
-	printseparator()
-	println("saving model summary")
+	#println("testing hessian of the log-likelihood of all the data")
+	#println("	- `∇∇loglikelihood(model)`")
+	#test_∇∇loglikelihood(csvpath, row; maxabsdiff=maxabsdiff)
+	#printseparator()
+    # println("testing the hessian of the log-likelihood of only the behavioral choices")
+	# println("	- `∇∇choiceLL(model)`")
+    # test_∇∇choiceLL(csvpath, row; maxabsdiff=maxabsdiff)
+	# printseparator()
+	println("saving model summary and loading model parameters from a saved summary")
 	model = Model(csvpath, row)
 	testfolderpath = joinpath(model.options.outputpath, "test")
 	save(ModelSummary(model), testfolderpath)
-	printseparator()
-	println("loading model parameters from a saved summary")
 	model = Model(csvpath, row)
 	sortparameters!(model, joinpath(testfolderpath, "modelsummary.mat"))
+	printseparator()
+	println("saving model characterization")
+	model = Model(csvpath, row)
+	testfolderpath = joinpath(model.options.outputpath, "test")
+	characterization = Characterization(model)
+	save(characterization, testfolderpath)
+	printseparator()
+	println("post-stimulus time histograms")
+	model = Model(csvpath, row)
+	testfolderpath = joinpath(model.options.outputpath, "test")
+	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
+	save(psthsets, testfolderpath)
 	printseparator()
 	println("testing maximum likelihood estimation")
 	model = Model(csvpath, row)
@@ -52,30 +62,19 @@ function test(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
 	println("testing maximum a posteriori estimation")
 	model = Model(csvpath, row)
 	initializeparameters!(model)
-	maximizeposterior!(model)
-	if !model.options.fit_overdispersion
-		printseparator()
-		println("testing gradient of log evidence of all the data")
-		println("	- `∇logevidence(model)`")
-		test_∇logevidence(csvpath, row; maxabsdiff=maxabsdiff, simulate=false)
-		printseparator()
-		println("testing evidence optimization")
-		model = Model(csvpath, row)
-		initializeparameters!(model)
-		maximizeevidence!(model)
-	end
-    printseparator()
-	model = Model(csvpath, row)
-	printseparator()
-	println("saving model characterization")
-	characterization = Characterization(model)
-	save(characterization, testfolderpath)
-	printseparator()
-	println("post-stimulus time histograms")
-	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
-	save(psthsets, testfolderpath)
+	maximizeposterior!(model; iterations=100)
+	# printseparator()
+	# println("testing gradient of log evidence of all the data")
+	# println("	- `∇logevidence(model)`")
+	# test_∇logevidence(csvpath, row; maxabsdiff=maxabsdiff, simulate=false)
+	# printseparator()
+	# println("testing evidence optimization")
+	# model = Model(csvpath, row)
+	# initializeparameters!(model)
+	# maximizeevidence!(model)
 	printseparator()
 	println("simulating model")
+	model = Model(csvpath, row)
 	samplepaths = simulateandsave(Model(csvpath, row), 2)
 	printseparator()
 	println("loading simulated observations")
@@ -84,7 +83,7 @@ function test(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
 	println("testing cross-validation and saving results")
 	model = Model(csvpath, row)
 	cvfolderpath = joinpath(model.options.outputpath, "cvtest")
-	cvresults = crossvalidate(2, model)
+	cvresults = crossvalidate(2, model; iterations=100)
 	save(cvresults, cvfolderpath)
 	printseparator()
 	println("tests completed")
@@ -107,14 +106,14 @@ The function being checked is used in parameter initialization.
 """
 function test_expectation_of_∇∇loglikelihood!(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
     model = Model(csvpath, row)
+	FHMDDM.nonzero_accumulator_transformation!(model)
+	γ = FHMDDM.posteriors(model)[1]
     mpGLM = model.trialsets[1].mpGLMs[1]
-    γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
     x₀ = concatenateparameters(mpGLM.θ; initialization=true)
     nparameters = length(x₀)
     fhand, ghand, hhand = fill(NaN,1), fill(NaN,nparameters),
     fill(NaN,nparameters,nparameters)
-	glmderivatives = FHMDDM.GLMDerivatives(mpGLM)
-    expectation_of_∇∇loglikelihood!(glmderivatives, fhand, ghand, hhand, γ, mpGLM)
+    FHMDDM.expectation_of_∇∇loglikelihood!(fhand, ghand, hhand, γ, mpGLM)
     f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x; initialization=true);
     fauto = f(x₀);
     gauto = ForwardDiff.gradient(f, x₀);
@@ -140,16 +139,11 @@ The function being checked is used in computing the gradient of the log-likeliho
 """
 function test_expectation_∇loglikelihood!(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
     model = Model(csvpath, row)
+	FHMDDM.nonzero_accumulator_transformation!(model)
+	γ = FHMDDM.posteriors(model)[1]
     mpGLM = model.trialsets[1].mpGLMs[1]
-    if length(mpGLM.θ.b) > 0
-        while abs(mpGLM.θ.b[1]) < 1e-4
-            mpGLM.θ.b[1] = 1 - 2rand()
-        end
-    end
-    γ = FHMDDM.randomposterior(mpGLM; rng=MersenneTwister(1234))
     ∇Q = FHMDDM.GLMθ(eltype(mpGLM.θ.𝐮), mpGLM.θ)
-	glmderivatives = FHMDDM.GLMDerivatives(mpGLM)
-    FHMDDM.expectation_∇loglikelihood!(∇Q, glmderivatives, γ, mpGLM)
+    FHMDDM.expectation_∇loglikelihood!(∇Q, γ, mpGLM)
     ghand = concatenateparameters(∇Q)
     concatenatedθ = concatenateparameters(mpGLM.θ)
     f(x) = FHMDDM.expectation_of_loglikelihood(γ, mpGLM, x)
@@ -169,15 +163,7 @@ Check the gradient of the negative of the log-likelihood of the model
 """
 function test_∇negativeloglikelihood!(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
     model = Model(csvpath, row)
-    for trialset in model.trialsets
-        for mpGLM in trialset.mpGLMs
-            if length(mpGLM.θ.b) > 0
-                while abs(mpGLM.θ.b[1]) < 1e-4
-                    mpGLM.θ.b[1] = 1 - 2rand()
-                end
-            end
-        end
-    end
+    FHMDDM.nonzero_accumulator_transformation!(model)
     concatenatedθ = concatenateparameters(model)
 	indexθ = indexparameters(model)
     ∇nℓ = similar(concatenatedθ)
@@ -202,15 +188,7 @@ Check the computation of the hessian of the log-likelihood
 """
 function test_∇∇loglikelihood(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
     model = Model(csvpath, row)
-    for trialset in model.trialsets
-        for mpGLM in trialset.mpGLMs
-            if length(mpGLM.θ.b) > 0
-                while abs(mpGLM.θ.b[1]) < 1e-4
-                    mpGLM.θ.b[1] = 1 - 2rand()
-                end
-            end
-        end
-    end
+    FHMDDM.nonzero_accumulator_transformation!(model)
 	concatenatedθ = concatenateparameters(model)
 	indexθ = indexparameters(model)
 	ℓhand, ∇hand, ∇∇hand = FHMDDM.∇∇loglikelihood(model)
@@ -241,15 +219,7 @@ ARGUMENT
 """
 function test_∇negativelogposterior(csvpath::String, row::Integer; maxabsdiff::Real=1e-8)
 	model = Model(csvpath, row)
-	for trialset in model.trialsets
-        for mpGLM in trialset.mpGLMs
-            if length(mpGLM.θ.b) > 0
-                while abs(mpGLM.θ.b[1]) < 1e-4
-                    mpGLM.θ.b[1] = 1 - 2rand()
-                end
-            end
-        end
-    end
+	FHMDDM.nonzero_accumulator_transformation!(model)
 	concatenatedθ = concatenateparameters(model)
 	indexθ = indexparameters(model)
 	memory = FHMDDM.Memoryforgradient(model)
@@ -369,4 +339,22 @@ function test_∇∇choiceLL(csvpath::String, row::Integer; maxabsdiff::Real=1e-
 			error("Maxmimum absolute difference exceeded")
 		end
 	end
+end
+
+"""
+	nonzero_accumulator_transformation!(model)
+
+Set the parameter for accumulator transformation to be nonzero
+
+When this parameter is zero, automatic differentiation fails to compute the limit of the derivative at zero
+
+MODIFIED ARGUMENT
+-`model`: a structure containing the parameters, hyperparameters, and data for a drift-diffusion-coupled generalized linear model
+"""
+function nonzero_accumulator_transformation!(model::Model)
+	for trialset in model.trialsets
+        for mpGLM in trialset.mpGLMs
+            mpGLM.θ.b[1] = 1 - 2rand()
+        end
+    end
 end

@@ -31,7 +31,7 @@ function concatenate_choice_related_parameters(model::Model)
     counter = 0
 	indexθ = Latentθ(collect(zeros(Int64,1) for i in fieldnames(Latentθ))...)
 	for field in fieldnames(Latentθ)
-		tofit = is_parameter_fit(options, field) && !any(field .== (:Aᶜ₁₁, :Aᶜ₂₂, :πᶜ₁))
+		tofit = is_parameter_fit(options, field)
 		if tofit
 			counter += 1
 			getfield(indexθ, field)[1] = counter
@@ -187,9 +187,6 @@ function is_parameter_fit(options::Options, parametername::Symbol)
 		tofit = getfield(options, options_field)
 	else
 		error("Unrecognized field: "*String(parametername))
-	end
-	if parametername == :Aᶜ₁₁ || parametername == :Aᶜ₂₂ || parametername == :πᶜ₁
-		tofit = tofit && (options.K == 2)
 	end
 	return tofit
 end

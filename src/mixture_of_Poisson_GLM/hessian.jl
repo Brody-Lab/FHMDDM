@@ -4,7 +4,7 @@
 -linearpredictor(mpGLMs)
 -spikcountderivatives!(memoryforhessian, mpGLMs, sameacrosstrials, trial)
 -conditionallikelihood!(pY, 𝛂, 𝐋, mpGLMs, ntimesteps, τ₀)
--∇∇conditional_log_likelihood!(∇logpy, ∇∇logpy, glmderivatives, indexθ, 𝐋, mpGLM, 𝛚, d𝛚_db, d²𝛚_db², τ)
+-∇∇conditional_log_likelihood!(∇logpy, ∇∇logpy, indexθ, 𝐋, mpGLM, 𝛚, d𝛚_db, d²𝛚_db², τ)
 """
 
 """
@@ -37,7 +37,7 @@ end
 
 Derivatives related to the spike count response at each time step in a trial
 
-The quantities that are computed include the first- and second-order partial derivatives of the log-likelihood of each neuron's spike count response (`∇logpy` and `∇∇logpy`) and the gradient of the likelihood of the population spike count response (`∇pY`) . 
+The quantities that are computed include the first- and second-order partial derivatives of the log-likelihood of each neuron's spike count response (`∇logpy` and `∇∇logpy`) and the gradient of the likelihood of the population spike count response (`∇pY`) .
 
 MODIFIED ARGUMENT
 -`memoryforhessian`: a structure containing quantities used in each trial
@@ -121,7 +121,7 @@ function scaledlikelihood!(pY::Vector{<:Matrix{<:AbstractFloat}}, 𝛂::Vector{<
 end
 
 """
-	∇∇loglikelihood!(∇logpy, ∇∇logpy, glmderivatives, indexθ, 𝐋, mpGLM, 𝛚, d𝛚_db, d²𝛚_db², τ)
+	∇∇loglikelihood!(∇logpy, ∇∇logpy, indexθ, 𝐋, mpGLM, 𝛚, d𝛚_db, d²𝛚_db², τ)
 
 Gradient and Hessian of the conditional log-likelihood of one particular neuron at single timestep
 
@@ -141,7 +141,6 @@ UNMODIFIED ARGUMENT
 """
 function ∇∇loglikelihood!(∇logpy::Vector{<:Matrix{<:Real}},
 						∇∇logpy::Matrix{<:Matrix{<:Real}},
-						glmderivatives::GLMDerivatives,
 						indexθ::GLMθ,
 						𝐋::Matrix{<:Vector{<:Real}},
 						mpGLM::MixturePoissonGLM,
