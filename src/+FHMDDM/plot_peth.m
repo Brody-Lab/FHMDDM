@@ -73,3 +73,5 @@ if ~isempty(P.linestyle_predicted_mean)
 end
 ylabel('spikes/s')
 xlabel(['time from ' char(P.referenceevent), ' (s)'])
+xlim([0, max(time_s)])
+xticks(xlim)

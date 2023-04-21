@@ -67,6 +67,9 @@ function GLMθ(indices𝐮::Indices𝐮, options::Options)
 	θ = GLMθ(fit_b = options.fit_b,
 			 fit_c = options.fit_c,
 			 fit_β = options.fit_β,
+		     c_q = options.c_q,
+		     c_l = options.c_l,
+		     c_u = options.c_u,
 		 	 𝐮 = fill(NaN, n𝐮),
 			 indices𝐮=indices𝐮)
 	randomizeparameters!(θ, options)

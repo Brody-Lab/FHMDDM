@@ -159,19 +159,11 @@ RETURN
 """
 function couplingprobability(mpGLM::MixturePoissonGLM)
 	r = mpGLM.θ.c[1]*mpGLM.sf_mpGLM
-	q,l,u = coupling_probability_parameters()
-	real2native(r,q,l,u)
+	real2native(r, mpGLM.θ.c_q, mpGLM.θ.c_l, mpGLM.θ.c_u)
 end
 function differentiate_π_wrt_c(mpGLM::MixturePoissonGLM)
 	r = mpGLM.θ.c[1]*mpGLM.sf_mpGLM
-	q,l,u = coupling_probability_parameters()
-	mpGLM.sf_mpGLM*differentiate_native_wrt_real(r,q,l,u)
-end
-function coupling_probability_parameters()
-	q = 0.90
-	l = 0.81
-	u = 0.99
-	return q, l, u
+	mpGLM.sf_mpGLM*differentiate_native_wrt_real(r, mpGLM.θ.c_q, mpGLM.θ.c_l, mpGLM.θ.c_u)
 end
 
 """

@@ -77,6 +77,10 @@ Model settings
 	B_l::TF=10.0
 	B_q::TF=15.0
 	B_u::TF=20.0
+	"coupling probability"
+	c_l::TF=0.01
+	c_q::TF=0.90
+	c_u::TF=0.99
 	"adaptation change rate"
 	k_l::TF=1e-4
 	k_q::TF=1e-3
@@ -263,11 +267,14 @@ end
 
 Parameters of a mixture of Poisson generalized linear model
 """
-@with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}}
+@with_kw struct GLMθ{B<:Bool, F<:AbstractFloat, IU<:Indices𝐮, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}}
     "nonlinearity in accumulator transformation"
 	b::VR=[0.0]
 	"coupling parameter"
 	c::VR=[0.0]
+	c_q::F
+	c_l::F
+	c_u::F
 	"order by which parameters are concatenated"
 	concatenationorder::VS = [:𝐮, :v, :β, :b, :c]
 	"whether the nonlinearity parameter is fit"
