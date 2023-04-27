@@ -75,8 +75,7 @@ function CVIndices(model::Model, kfold::integertype) where {integertype<:Integer
     trainingtimesteps = map(k->map(trialset->integertype[], model.trialsets), 1:kfold)
     for i in eachindex(model.trialsets)
         ntrials = length(model.trialsets[i].trials)
-        ntestingtrials = cld(ntrials, kfold)
-        partitionedtrials = collect(Base.Iterators.partition(shuffle(1:ntrials), ntestingtrials))
+		testindices, trainindices = cvpartition(ntrials, kfold)
         timesteps = map(trial->collect(1:trial.ntimesteps), model.trialsets[i].trials)
         count = 0
         for m in eachindex( model.trialsets[i].trials)
@@ -84,8 +83,8 @@ function CVIndices(model::Model, kfold::integertype) where {integertype<:Integer
             count +=  model.trialsets[i].trials[m].ntimesteps
         end
         for k=1:kfold
-            testingtrials[k][i] = sort(partitionedtrials[k])
-            trainingtrials[k][i] = sort(vcat(partitionedtrials[vcat(1:k-1, k+1:kfold)]...))
+            testingtrials[k][i] = testindices[k]
+            trainingtrials[k][i] = trainindices[k]
             testingtimesteps[k][i] =  vcat(timesteps[testingtrials[k][i]]...)
             trainingtimesteps[k][i] =  vcat(timesteps[trainingtrials[k][i]]...)
         end
@@ -104,6 +103,23 @@ function CVIndices(model::Model, kfold::integertype) where {integertype<:Integer
                   trainingtimesteps = trainingtimesteps,
                   testingtimesteps = testingtimesteps)
     end
+end
+
+"""
+	cvpartition(N,kfold)
+
+Partition `N` samples into `kfold` cross-validation folds
+
+RETURN
+-`testindices`: a nested array whose each k-th element is a vector of integers indicating the samples used for testing in the k-th fold
+-`trainindices`: indices of the samples used for training
+"""
+function cvpartition(N::Integer, kfold::Integer)
+	ntesting = cld(N, kfold)
+	partitions = collect(Base.Iterators.partition(shuffle(1:N), ntesting))
+	testindices = collect(sort(partition) for partition in partitions)
+	trainindices = collect(sort(vcat(partitions[vcat(1:k-1, k+1:kfold)]...)) for k = 1:kfold)
+	return testindices, trainindices
 end
 
 """

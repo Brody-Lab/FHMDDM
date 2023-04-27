@@ -78,9 +78,9 @@ Model settings
 	B_q::TF=15.0
 	B_u::TF=20.0
 	"coupling probability"
-	c_l::TF=0.01
-	c_q::TF=0.90
-	c_u::TF=0.99
+	c_l::TF=0.0
+	c_q::TF=0.5
+	c_u::TF=1.0
 	"adaptation change rate"
 	k_l::TF=1e-4
 	k_q::TF=1e-3
@@ -1239,4 +1239,19 @@ Results of cross-validation
 	psthsets::VVP
 	"summaries of the training models"
 	trainingsummaries::VS
+end
+
+"""
+	PoissonGLMDerivatives
+
+Object containing quantities for in-place computation
+"""
+@with_kw struct PoissonGLMDerivatives{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, VI<:Vector{<:Integer}}
+	𝐗::MR
+	𝐲::VI
+	𝐰::VR=rand(size(𝐗,2))
+	Δt::R=0.01
+	ℓ::VR=fill(NaN,1)
+	∇ℓ::VR=fill(NaN,length(𝐰))
+	∇∇ℓ::MR=fill(NaN,length(𝐰),length(𝐰))
 end

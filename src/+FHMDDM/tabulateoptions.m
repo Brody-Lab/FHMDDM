@@ -24,7 +24,7 @@ function options = tabulateoptions(analysispath)
     fitnames = string(fitnames);
     [~, options.fitname] = cellfun(@(x) fileparts(char(x)), options.outputpath, 'uni', 0);
     options.fitname = string(options.fitname);
-    [~, sortindex] = intersect(options.fitname, fitnames);
+    [~, sortindex] = intersect(fitnames, options.fitname);
     options = options(sortindex, :);
     options.fitpath = fitpath(sortindex);
 end
