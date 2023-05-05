@@ -15,88 +15,78 @@ function fit_basic_glms!(model::Model)
 			mpGLM.θ.c[1] = Inf
 			mpGLM.θ.v[1] = 0
 			mpGLM.θ.β[1] = 0
-			maximizeloglikelihood!(mpGLM)
+			maximizelikelihood!(mpGLM)
+			basicglm = PoissonGLM(Δt=mpGLM.Δt, 𝐗=mpGLM.𝐗[:,1:end-1], 𝐲=mpGLM.𝐲)
+			maximizelikelihood!(basicglm)
+			mpGLM.θ.𝐮 .= basicglm.𝐰
 		end
 	end
 end
 
 """
-	maximizeloglikelihood!(mpGLM)
+    maximizelikelihood!(glm::PoissonGLM)
 
-Learn the weights of the latent variable-independent inputs
+Learn the maximum likelihood parameters of a Poisson generalized linear model
 """
-function maximizeloglikelihood!(mpGLM::MixturePoissonGLM)
-	mpGLM.θ.𝐮 .= maximizeloglikelihood(mpGLM.Δt, mpGLM.𝐗[:,1:end-1], mpGLM.𝐲)
+function maximizelikelihood!(glm::PoissonGLM; iterations::Integer=20)
+    f(𝐰) = negativeloglikelihood!(glm, 𝐰)
+    ∇f!(∇, 𝐰) = ∇negativeloglikelihood!(∇, glm, 𝐰)
+    ∇∇f!(∇∇, 𝐰) = ∇∇negativeloglikelihood!(∇∇, glm, 𝐰)
+    results = Optim.optimize(f, ∇f!, ∇∇f!, rand(size(glm.𝐗,2)), NewtonTrustRegion(), Optim.Options(iterations=20))
+	glm.𝐰 .= Optim.minimizer(results)
+	return nothing
 end
 
 """
-    maximizeloglikelihood(Δt, 𝐗, 𝐲)
-
-Learn the projection weights that maximize the log-likelihood of poisson observations
-
-ARGUMENT
--`Δt`: time step duration, in seconds
--`𝐗`: design matrix. Rows correspond to samples, and columns to regressors
-
-RETURN
--optimal weights
-"""
-function maximizeloglikelihood(Δt::AbstractFloat, 𝐗::Matrix{<:AbstractFloat}, 𝐲::Vector{<:Integer})
-    derivatives = PoissonGLMDerivatives(Δt=Δt, 𝐗=𝐗, 𝐲=𝐲)
-    f(𝐰) = negativeloglikelihood!(derivatives, 𝐰)
-    ∇f!(∇, 𝐰) = ∇negativeloglikelihood!(∇, derivatives, 𝐰)
-    ∇∇f!(∇∇, 𝐰) = ∇∇negativeloglikelihood!(∇∇, derivatives, 𝐰)
-    results = Optim.optimize(f, ∇f!, ∇∇f!, rand(size(𝐗,2)), NewtonTrustRegion())
-	Optim.minimizer(results)
-end
-
-"""
-	negativeloglikelihood!(derivatives,𝐰)
+	negativeloglikelihood!(glm,𝐰)
 
 Negative log-likelihood of the model given projection weights `𝐰`
 
-The object `derivatives` is modified if `𝐰` differs from `derivatives.𝐰`
+The object `glm` is modified if `𝐰` differs from `glm.𝐰`
 """
-function negativeloglikelihood!(derivatives::PoissonGLMDerivatives, 𝐰::Vector{<:Real})
-    if (𝐰 != derivatives.𝐰) || isnan(derivatives.ℓ[1])
-        derivatives.𝐰 .= 𝐰
-        ∇∇loglikelihood!(derivatives)
-    end
-    -derivatives.ℓ[1]
+function negativeloglikelihood!(glm::PoissonGLM, 𝐰::Vector{<:Real})
+    update!(glm, 𝐰)
+    -glm.ℓ[1]
 end
 
 """
-	∇negativeloglikelihood!(∇, derivatives, 𝐰)
+	∇negativeloglikelihood!(∇, glm, 𝐰)
 
 Compute in `∇` the gradient of the negative of the log-likelihood with respect to `𝐰`
 """
-function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat}, derivatives::PoissonGLMDerivatives, 𝐰::Vector{<:Real})
-    if (𝐰 != derivatives.𝐰) || isnan(derivatives.ℓ[1])
-        derivatives.𝐰 .= 𝐰
-        ∇∇loglikelihood!(derivatives)
-    end
+function ∇negativeloglikelihood!(∇::Vector{<:AbstractFloat}, glm::PoissonGLM, 𝐰::Vector{<:Real})
+    update!(glm, 𝐰)
     for i in eachindex(∇)
-        ∇[i] = -derivatives.∇ℓ[i]
+        ∇[i] = -glm.∇ℓ[i]
     end
+	return nothing
 end
 
 """
-	∇∇negativeloglikelihood!(∇∇, derivatives, 𝐰)
+	∇∇negativeloglikelihood!(∇∇, glm, 𝐰)
 
 Compute in `∇∇` the hessian of the negative of the log-likelihood with respect to `𝐰`
 """
-function ∇∇negativeloglikelihood!(∇∇::Matrix{<:AbstractFloat}, derivatives::PoissonGLMDerivatives, 𝐰::Vector{<:Real})
-    if (𝐰 != derivatives.𝐰) || isnan(derivatives.ℓ[1])
-        derivatives.𝐰 .= 𝐰
-        ∇∇loglikelihood!(derivatives)
-    end
+function ∇∇negativeloglikelihood!(∇∇::Matrix{<:AbstractFloat}, glm::PoissonGLM, 𝐰::Vector{<:Real})
+    update!(glm, 𝐰)
     for i in eachindex(∇∇)
-        ∇∇[i] = -derivatives.∇∇ℓ[i]
+        ∇∇[i] = -glm.∇∇ℓ[i]
     end
+	return nothing
 end
 
 """
-	∇∇loglikelihood!(derivatives)
+	update!(glm::PoissonGLM, 𝐰)
+"""
+function update!(glm::PoissonGLM, 𝐰::Vector{<:Real})
+	if (𝐰 != glm.𝐰) || isnan(glm.ℓ[1])
+		glm.𝐰 .= 𝐰
+		∇∇loglikelihood!(glm)
+	end
+end
+
+"""
+	∇∇loglikelihood!(glm)
 
 Compute the log-likelihood of a Poisson GLM, its gradient, and its hessian
 
@@ -105,19 +95,19 @@ EXAMPLE
 julia> using FHMDDM, ForwardDiff, Random
 julia> Random.seed!(1234)
 julia> 𝐰₀ = rand(10);
-julia> derivatives = FHMDDM.PoissonGLMDerivatives(Δt=0.01, 𝐗=rand(100,10), 𝐲 = floor.(Int, rand(100).*3), 𝐰 = 𝐰₀)
-julia> FHMDDM.∇∇loglikelihood!(derivatives)
-julia> f(x) = FHMDDM.loglikelihood(derivatives, x)
+julia> glm = FHMDDM.PoissonGLM(Δt=0.01, 𝐗=rand(100,10), 𝐲 = floor.(Int, rand(100).*3), 𝐰 = 𝐰₀)
+julia> FHMDDM.∇∇loglikelihood!(glm)
+julia> f(x) = FHMDDM.loglikelihood(glm, x)
 julia> fauto = f(𝐰₀)
 julia> gauto = ForwardDiff.gradient(f, 𝐰₀)
 julia> hauto = ForwardDiff.hessian(f, 𝐰₀)
-julia> println("   |Δℓ|: ", abs(fauto-derivatives.ℓ[1]))
-julia> println("   max(|Δgradient|): ", maximum(abs.(gauto.-derivatives.∇ℓ)))
-julia> println("   max(|Δhessian|): ", maximum(abs.(hauto.-derivatives.∇∇ℓ)))
+julia> println("   |Δℓ|: ", abs(fauto-glm.ℓ[1]))
+julia> println("   max(|Δgradient|): ", maximum(abs.(gauto.-glm.∇ℓ)))
+julia> println("   max(|Δhessian|): ", maximum(abs.(hauto.-glm.∇∇ℓ)))
 ```
 """
-function ∇∇loglikelihood!(derivatives::PoissonGLMDerivatives)
-	@unpack Δt, ℓ, ∇ℓ, ∇∇ℓ, 𝐰, 𝐗, 𝐲 = derivatives
+function ∇∇loglikelihood!(glm::PoissonGLM)
+	@unpack Δt, ℓ, ∇ℓ, ∇∇ℓ, 𝐰, 𝐗, 𝐲 = glm
     𝐋 = 𝐗*𝐰
     d²𝐥_d𝐋², d𝐥_d𝐋, 𝐥 = similar(𝐋), similar(𝐋), similar(𝐋)
     for t in eachindex(𝐋)
@@ -130,15 +120,42 @@ function ∇∇loglikelihood!(derivatives::PoissonGLMDerivatives)
 end
 
 """
-	loglikelihood(derivatives, 𝐰)
+	loglikelihood(glm::PoissonGLM)
+"""
+loglikelihood(glm::PoissonGLM) = loglikelihood(glm, glm.𝐰)
+
+"""
+	loglikelihood(glm, 𝐰)
 
 ForwardDiff-compatible computation of Poisson log-likelihood
 """
-function loglikelihood(derivatives::PoissonGLMDerivatives, 𝐰::Vector{<:Real})
-	𝐋 = derivatives.𝐗*𝐰
+function loglikelihood(glm::PoissonGLM, 𝐰::Vector{<:Real})
+	𝐋 = glm.𝐗*𝐰
 	ℓ = 0
-	for (L,y) in zip(𝐋,derivatives.𝐲)
-		ℓ += poissonloglikelihood(derivatives.Δt, L, y)
+	for (L,y) in zip(𝐋,glm.𝐲)
+		ℓ += log(poissonlikelihood(glm.Δt, L, y))
+	end
+	return ℓ
+end
+
+"""
+	loglikelihood(Δt, kfold, 𝐗, 𝐲)
+
+Out-of-sample log-likelihood of a basic Poisson GLM
+
+ARGUMENT
+-`glm`: an object containing the quantities of a basic GLM
+-`kfold`: number of cross-validation folds
+"""
+function loglikelihood(glm::PoissonGLM, kfold::Integer)
+	@unpack Δt, 𝐗, 𝐲 = glm
+    testindices, trainindices = cvpartition(kfold, size(𝐗,1))
+	ℓ = 0
+	for k = 1:kfold
+		trainglm = PoissonGLM(Δt=Δt, 𝐗=𝐗[trainindices[k],:], 𝐲=𝐲[trainindices[k]])
+		maximizelikelihood!(trainglm)
+		testglm = PoissonGLM(Δt=Δt, 𝐰=trainglm.𝐰, 𝐗=𝐗[testindices[k],:], 𝐲=𝐲[testindices[k]])
+		ℓ += loglikelihood(testglm)
 	end
 	return ℓ
 end

@@ -115,8 +115,8 @@ for n = 1:nneurons
         FHMDDM.prepareaxes
         set(gca, 'position', [0.1, 0.2, 0.6, 0.5])
         handles = nan(2,1);
-        handles(1) = plot(stereoclicktimes_s, frobsv(:,n), 'ko');
-        handles(2) = plot(stereoclicktimes_s, frpred(:,n), 'o');
+        handles(1) = plot(stereoclicktimes_s, frobsv(:,n), 'k.', 'markersize', 10);
+        handles(2) = plot(stereoclicktimes_s, frpred(:,n), '.', 'markersize', 10);
         xlabel('trial start time (s)')
         ylabel('spikes/s')
         hlegend = legend(handles, {'observed', 'prediction'});
@@ -126,10 +126,14 @@ for n = 1:nneurons
 end
 %% generate a text file
 fileID = fopen([reportfolder '/report_' modelname '.md'], 'w');
-fprintf(fileID, '\n# psychometric\n');
-fprintf(fileID, [markdownpath_prefix '/psychometric.svg" height="300">\n']);
-fprintf(fileID, '\n# PSTH goodness-of-fit\n');
-fprintf(fileID, [markdownpath_prefix '/R2.svg" height="200">\n']);
+if P.plot_psychometric
+    fprintf(fileID, '\n# psychometric\n');
+    fprintf(fileID, [markdownpath_prefix '/psychometric.svg" height="300">\n']);
+end
+if P.plot_R2
+    fprintf(fileID, '\n# PSTH goodness-of-fit\n');
+    fprintf(fileID, [markdownpath_prefix '/R2.svg" height="200">\n']);
+end
 for n = 1:nneurons
     fprintf(fileID, '\n## neuron %02i\n', n);
     if P.plot_peth_choice

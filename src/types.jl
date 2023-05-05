@@ -283,7 +283,7 @@ Parameters of a mixture of Poisson generalized linear model
 	fit_c::B
 	"whether to fit separate encoding weights for when the accumulator at the bound"
 	fit_β::B
-	"state-independent linear filter of inputs from the spike history and time in the trial"
+	"linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
 	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
 	indices𝐮::IU
@@ -1242,16 +1242,53 @@ Results of cross-validation
 end
 
 """
-	PoissonGLMDerivatives
+	PoissonGLM
 
-Object containing quantities for in-place computation
+Object containing the data and parameters of a Poisson GLM and also the quantities for estimating its parmaeters
 """
-@with_kw struct PoissonGLMDerivatives{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, VI<:Vector{<:Integer}}
+@with_kw struct PoissonGLM{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, TI<:Integer, VI<:Vector{<:Integer}}
+	"design matrix"
+	𝐗::MR
+	"Poisson observations"
+	𝐲::VI
+	"number of weights"
+	n𝐰::TI = size(𝐗,2)
+	"weights"
+	𝐰::VR=rand(n𝐰)
+	"time step"
+	Δt::R=0.01
+	"log-likelihood"
+	ℓ::VR=fill(NaN,1)
+	"gradient"
+	∇ℓ::VR=fill(NaN,n𝐰)
+	"hessian"
+	∇∇ℓ::MR=fill(NaN,n𝐰,n𝐰)
+end
+
+"""
+	GainMixtureGLM
+
+Object containing the data and parameters of a mixture-of-gain Poisson GLM and also the quantities for estimating its parmaeters
+"""
+@with_kw struct GainMixtureGLM{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, VVR<:Vector{<:Vector{<:Real}}, TI<:Integer, VI<:Vector{<:Integer}}
+	"time step"
+	Δt::R
+	"design matrix. the first column corresponds to the gain"
 	𝐗::MR
 	𝐲::VI
-	𝐰::VR=rand(size(𝐗,2))
-	Δt::R=0.01
-	ℓ::VR=fill(NaN,1)
-	∇ℓ::VR=fill(NaN,length(𝐰))
-	∇∇ℓ::MR=fill(NaN,length(𝐰),length(𝐰))
+	𝐆::VR = 𝐗[:,1]
+	𝐠::VR = fill(NaN,2)
+	𝐔::MR = 𝐗[:,2:end]
+	𝐮::VR = fill(NaN, size(𝐗,2)-1)
+	n𝐠::TI = length(𝐠)
+	n𝐮::TI = length(𝐮)
+	nweights::TI=n𝐠+n𝐮
+	ntimesteps::TI=length(𝐲)
+	𝛄::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
+	π::VR=fill(NaN,1)
+	Q::VR=fill(NaN, 1)
+	∇Q::VR=fill(NaN, nweights)
+	∇∇Q::MR=fill(NaN, nweights, nweights)
+	γₖdℓ_dLₖ::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
+	γₖd²ℓ_dLₖ²::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
 end
