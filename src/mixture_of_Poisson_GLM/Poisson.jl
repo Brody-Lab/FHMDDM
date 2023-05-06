@@ -22,12 +22,18 @@ end
 Likelihood of observation `y` given intensity `λΔt`
 """
 function poissonlikelihood(λΔt::Real, y::Integer)
-	if y==0
-		exp(-λΔt)
-	elseif y==1
-		λΔt*exp(-λΔt)
+	if isnan(λΔt)
+		λΔt
 	else
-		λΔt^y * exp(-λΔt) / factorial(y)
+		if y==0
+			exp(-λΔt)
+		elseif y==1
+			λΔt*exp(-λΔt)
+		elseif y < 21
+			λΔt^y * exp(-λΔt) / factorial(y)
+		else
+			pdf(Poisson(λΔt),y)
+		end
 	end
 end
 

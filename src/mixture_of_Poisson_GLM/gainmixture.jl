@@ -160,7 +160,7 @@ julia> testℓbasic = FHMDDM.loglikelihood(basicglm,5)
 
 ```
 """
-function maximizelikelihood!(glm::GainMixtureGLM; iterations::Integer=20, nstarts::Integer=10)
+function maximizelikelihood!(glm::GainMixtureGLM; iterations::Integer=20, nstarts::Integer=10, πthreshold::Real=1e-3)
 	basicglm = PoissonGLM(Δt=glm.Δt, 𝐗=glm.𝐗, 𝐲=glm.𝐲)
 	maximizelikelihood!(basicglm)
 	best𝐠 = fill(NaN,glm.n𝐠)
@@ -172,9 +172,12 @@ function maximizelikelihood!(glm::GainMixtureGLM; iterations::Integer=20, nstart
 		glm.𝐮 .= basicglm.𝐰[2:end]
 	    glm.π[1] = rand()
 	    for i = 1:iterations
-	        posteriors!(glm)
+	        posteriors!(glm; πthreshold=πthreshold)
 	        ∑𝛄 = map(sum, glm.𝛄)
 	        glm.π[1] = ∑𝛄[1]/sum(∑𝛄)
+			if (glm.π[1] <= πthreshold) || (glm.π[1] >= 1-πthreshold)
+				break
+			end
 	        maximizeECLL!(glm; iterations=iterations)
 	    end
 		ℓ = loglikelihood(glm)
@@ -190,7 +193,7 @@ function maximizelikelihood!(glm::GainMixtureGLM; iterations::Integer=20, nstart
 	glm.π[1] = bestπ
 	ℓbasic = loglikelihood(basicglm)
 	if bestℓ < ℓbasic
-		@warn "The in-sample log-likelihood of the mixture-of-gain GLM is lower that of a GLM without any mixture" bestℓ ℓbasic
+		@debug "The in-sample log-likelihood of the mixture-of-gain GLM is lower that of a GLM without any mixture" bestℓ ℓbasic
 	end
 	return nothing
 end
@@ -216,18 +219,26 @@ end
 
 Posterior probability of the gain state
 """
-function posteriors!(glm::GainMixtureGLM)
+function posteriors!(glm::GainMixtureGLM; πthreshold::Real=1e-3)
 	@unpack Δt, 𝐠, 𝛄, 𝐗, π, 𝐮, 𝐲 = glm
 	𝐋 = collect(𝐗*vcat(g,𝐮) for g in 𝐠)
-    for t = eachindex(𝐲)
-        py_c1 = poissonlikelihood(Δt,𝐋[1][t],𝐲[t])
-        py_c2 = poissonlikelihood(Δt,𝐋[2][t],𝐲[t])
-        pyc1 = π[1]*py_c1
-        pyc2 = (1-π[1])*py_c2
-        py = pyc1+pyc2
-        𝛄[1][t] = pyc1/py
-        𝛄[2][t] = pyc2/py
-    end
+	if π[1] < πthreshold
+		𝛄[1] .= πthreshold
+		𝛄[2] .= 1.0-πthreshold
+	elseif π[1] > 1.0-πthreshold
+		𝛄[1] .= 1.0-πthreshold
+		𝛄[2] .= πthreshold
+	else
+	    for t = eachindex(𝐲)
+	        py_c1 = poissonlikelihood(Δt,𝐋[1][t],𝐲[t])
+	        py_c2 = poissonlikelihood(Δt,𝐋[2][t],𝐲[t])
+	        pyc1 = π[1]*py_c1
+	        pyc2 = (1-π[1])*py_c2
+	        py = pyc1+pyc2
+	        𝛄[1][t] = pyc1/py
+	        𝛄[2][t] = pyc2/py
+	    end
+	end
     return nothing
 end
 
