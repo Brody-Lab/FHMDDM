@@ -1357,3 +1357,72 @@ Results of cross-validation
 	"summaries of the training models"
 	trainingsummaries::VS
 end
+
+
+"""
+	PoissonGLM
+
+Object containing the data and parameters of a Poisson GLM and also the quantities for estimating its parmaeters
+"""
+@with_kw struct PoissonGLM{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, TI<:Integer, VI<:Vector{<:Integer}}
+	"design matrix"
+	𝐗::MR
+	"Poisson observations"
+	𝐲::VI
+	"number of weights"
+	n𝐰::TI = size(𝐗,2)
+	"weights"
+	𝐰::VR=rand(n𝐰)
+	"time step"
+	Δt::R=0.01
+	"log-likelihood"
+	ℓ::VR=fill(NaN,1)
+	"gradient"
+	∇ℓ::VR=fill(NaN,n𝐰)
+	"hessian"
+	∇∇ℓ::MR=fill(NaN,n𝐰,n𝐰)
+end
+
+"""
+	GainMixtureGLM
+
+Object containing the data and parameters of a mixture-of-gain Poisson GLM and also the quantities for estimating its parmaeters
+"""
+@with_kw struct GainMixtureGLM{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, VVR<:Vector{<:Vector{<:Real}}, TI<:Integer, VI<:Vector{<:Integer}}
+	"time step"
+	Δt::R
+	"design matrix. the first column corresponds to the gain"
+	𝐗::MR
+	"spike train"
+	𝐲::VI
+	"slowly-varying baseline"
+	𝐆::VR = 𝐗[:,1]
+	"weight of the baseline. Each element corresponds to the weight of the baseline at different states"
+	𝐠::VR = fill(NaN,2)
+	"other inputs"
+	𝐔::MR = 𝐗[:,2:end]
+	"weight of the other inputs"
+	𝐮::VR = fill(NaN, size(𝐗,2)-1)
+	"number of baseline-related parameters"
+	n𝐠::TI = length(𝐠)
+	"number of weights for other inputs "
+	n𝐮::TI = length(𝐮)
+	"total number of weights"
+	nweights::TI=n𝐠+n𝐮
+	"number of time steps"
+	ntimesteps::TI=length(𝐲)
+	"posterior probability of the baseline state"
+	𝛄::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
+	"prior probability of the baseline state"
+	π::VR=fill(NaN,1)
+	"expectation of the conditional log-likelihood under the posterior probability of the baseline state"
+	Q::VR=fill(NaN, 1)
+	"gradient of the expectation of the conditional log-likelihood"
+	∇Q::VR=fill(NaN, nweights)
+	"hessian of the expectation of the conditional log-likelihood"
+	∇∇Q::MR=fill(NaN, nweights, nweights)
+	"product between the posterior probability in each state and the derivative of the conditional log-likelihood with respect to the conditional linear predictor. Element `γₖdℓ_dLₖ[k][t]` corresponds to the k-th state and the t-th time step"
+	γₖdℓ_dLₖ::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
+	"product between the posterior probability in each state and the second derivative of the conditional log-likelihood with respect to the conditional linear predictor. Element `γₖd²ℓ_dLₖ²[k][t]` corresponds to the k-th state and the t-th time step"
+	γₖd²ℓ_dLₖ²::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
+end
