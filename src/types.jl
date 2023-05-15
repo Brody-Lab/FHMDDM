@@ -116,9 +116,9 @@ Model settings
 	ψ_q::TF=1e-2
 	ψ_u::TF=1-1e-4
 	"variance of the diffusion noise (i.e., zero-meaned, independent and identically distributed gaussian noise added at each time step)"
-	σ²ₐ_l::TF=1e-4
-	σ²ₐ_q::TF=1e-3
-	σ²ₐ_u::TF=1e-2
+	σ²ₐ_l::TF=0.1
+	σ²ₐ_q::TF=1.0
+	σ²ₐ_u::TF=10.0
 	"variance of the initial probability of the accumulator variable"
 	σ²ᵢ_l::TF=1e-1
 	σ²ᵢ_q::TF=1e0
