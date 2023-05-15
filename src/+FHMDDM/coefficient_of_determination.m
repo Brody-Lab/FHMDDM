@@ -13,8 +13,14 @@ validateattributes(peth, {'struct'},{'scalar'})
 validateattributes(indices, {'numeric', 'logical'}, {'vector'})
 [SSresidual, SStotal] = deal(0);
 for condition = conditions
-    pred = peth.(condition).predicted(indices);
-    obsv = peth.(condition).observed(indices);
+    n = min(numel(peth.(condition).predicted), numel(peth.(condition).observed));
+    if n < numel(indices)
+        indices_condition = indices(1:n);
+    else
+        indices_condition = indices;
+    end
+    pred = peth.(condition).predicted(indices_condition);
+    obsv = peth.(condition).observed(indices_condition);
     SSresidual = SSresidual + sum(((pred - obsv)).^2);
     SStotal = SStotal + sum((mean(obsv) - obsv).^2);
 end

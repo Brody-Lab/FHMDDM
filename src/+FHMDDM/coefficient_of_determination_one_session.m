@@ -13,6 +13,8 @@ function R2 = coefficient_of_determination_one_session(outputpath, varargin)
 validateattributes('outputpath', {'char'}, {'row'})
 parser = inputParser;
 addParameter(parser, 'resultsfolder', 'results', @(x) ischar(x))
+addParameter(parser, 'conditions', ["leftchoice", "rightchoice"], @(x) isstring(x))
+
 parse(parser, varargin{:});
 P = parser.Results; 
 PSTH = load(fullfile(outputpath, [P.resultsfolder filesep 'pethsets_stereoclick.mat']));
@@ -21,5 +23,5 @@ time_s = PSTH.time_s;
 indices = time_s<=1;
 R2 = nan(nneurons,1);
 for n = 1:nneurons
-    R2(n) = FHMDDM.coefficient_of_determination(["leftchoice", "rightchoice"], indices, PSTH.pethsets{1}{n});
+    R2(n) = FHMDDM.coefficient_of_determination(P.conditions, indices, PSTH.pethsets{1}{n});
 end

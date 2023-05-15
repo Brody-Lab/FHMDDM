@@ -10,21 +10,29 @@ function options = tabulateoptions(analysispath)
     [~, analysisname] = fileparts(analysispath);
     fitpath = FHMDDM.find_fit_paths(analysisname); 
     options = readtable(fullfile(analysispath, 'options.csv'), 'Delimiter', ',');
-    if ~isvar(options, 'outputpath')
+    if ~contains(options.Properties.VariableNames, 'outputpath')
         options.outputpath = cellfun(@(x,y) string([x '/' y]), options.outputfolder, options.fitname);
     else
         options.outputpath = string(options.outputpath);
     end
-    if ~isvar(options, 'datapath')
-        options.datapath = cellfun(@(x,y) string([x '/' y]), options.datafolder, options.recording_id);
+    if ~contains(options.Properties.VariableNames, 'datapath')
+        options.datapath = cellfun(@(x,y) string([x '/' y '.mat']), options.datafolder, options.recording_id);
     else
         options.datapath = string(options.datapath);
+    end
+    for i = 1:size(options,1)
+        options.datafolder{i} = strrep(options.datafolder{i}, '/mnt/cup/labs/brody', 'X:');
+        options.datafolder{i} = strrep(options.datafolder{i}, '/', '\');
     end
     [~, fitnames] = cellfun(@(x) fileparts(char(x)), fitpath, 'uni', 0);
     fitnames = string(fitnames);
     [~, options.fitname] = cellfun(@(x) fileparts(char(x)), options.outputpath, 'uni', 0);
     options.fitname = string(options.fitname);
-    [~, sortindex] = intersect(fitnames, options.fitname);
+    [~,~,sortindex] = intersect(fitnames, options.fitname);
     options = options(sortindex, :);
-    options.fitpath = fitpath(sortindex);
+    options.fitpath = fitpath;
+    for i = 1:size(options,1)
+        options.datapath{i} = strrep(options.datapath{i}, '/mnt/cup/labs/brody', 'X:');
+        options.datapath{i} = strrep(options.datapath{i}, '/', '\');
+    end
 end

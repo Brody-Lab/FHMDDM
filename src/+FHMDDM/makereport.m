@@ -22,6 +22,7 @@ addParameter(parser, 'plot_peth_unconditioned', true, @(x) islogical(x) && issca
 addParameter(parser, 'plot_psychometric', true, @(x) islogical(x) && isscalar(x))
 addParameter(parser, 'plot_R2', true, @(x) islogical(x) && isscalar(x))
 addParameter(parser, 'plot_trial_varying_firing_rates', true, @(x) islogical(x) && isscalar(x))
+addParameter(parser, 'markdownfile', false, @(x) islogical(x) && isscalar(x))
 parse(parser, varargin{:});
 P = parser.Results; 
 reportfolder = fullfile(analysisfolder, ['report_' modelname]);
@@ -44,7 +45,7 @@ if P.plot_psychometric
     Deltaclicks = cellfun(@(x) numel(x.clicktimes.R) - numel(x.clicktimes.L), trialsets{1}.trials);
     Echoices = cellfun(@(x) x.rightchoice, expectedemissions{1});
     FHMDDM.plot_psychometric(choices, Deltaclicks, Echoices)
-    psychometricpath =  fullfile(reportfolder, 'psychometric.svg');
+    psychometricpath =  fullfile(reportfolder, 'psychometric.png');
     saveas(gcf, psychometricpath)
 end
 %% trial varying firing rates
@@ -75,7 +76,7 @@ if P.plot_R2
     set(h, 'facecolor', 'k', 'facealpha', 0.2)
     ylabel('neurons')
     xlabel('coefficient of determination (R^2)')
-    saveas(gcf,  fullfile(reportfolder, 'R2.svg'));
+    saveas(gcf,  fullfile(reportfolder, 'R2.png'));
 end
 %% one neuron at a time
 PSTH = load(fullfile(outputpath, [P.resultsfolder  '\pethsets_stereoclick.mat']));
@@ -96,7 +97,7 @@ for n = 1:nneurons
             'observed 95%CI, left choice', 'prediction, right choice', ...
             'prediction, left choice'});
         set(hlegend, 'position', [0.575 0.5, 0.35, 0.2]);
-        saveas(gcf, [reportfolder, filesep 'psth_conditioned_on_choice_neuron_' num2str(n, '%02i') '.svg'])
+        saveas(gcf, [reportfolder, filesep 'psth_conditioned_on_choice_neuron_' num2str(n, '%02i') '.png'])
     end
     if P.plot_peth_unconditioned
         clf
@@ -108,7 +109,7 @@ for n = 1:nneurons
         handles = get(gca, 'Children');
         hlegend = legend(handles([2 1]), {'observed 95%CI', 'prediction'});
         set(hlegend, 'position', [0.575 0.5, 0.35, 0.15]);
-        saveas(gcf, [reportfolder, filesep 'psth_unconditioned_neuron_' num2str(n, '%02i') '.svg'])
+        saveas(gcf, [reportfolder, filesep 'psth_unconditioned_neuron_' num2str(n, '%02i') '.png'])
     end
     if P.plot_trial_varying_firing_rates
         clf
@@ -121,32 +122,35 @@ for n = 1:nneurons
         ylabel('spikes/s')
         hlegend = legend(handles, {'observed', 'prediction'});
         set(hlegend, 'position', [0.75 0.3, 0.2, 0.15]);
-        saveas(gcf, [reportfolder, filesep 'trial_varying_fr_neuron_' num2str(n, '%02i') '.svg'])
+        saveas(gcf, [reportfolder, filesep 'trial_varying_fr_neuron_' num2str(n, '%02i') '.png'])
     end
 end
 %% generate a text file
-fileID = fopen([reportfolder '/report_' modelname '.md'], 'w');
-if P.plot_psychometric
-    fprintf(fileID, '\n# psychometric\n');
-    fprintf(fileID, [markdownpath_prefix '/psychometric.svg" height="300">\n']);
-end
-if P.plot_R2
-    fprintf(fileID, '\n# PSTH goodness-of-fit\n');
-    fprintf(fileID, [markdownpath_prefix '/R2.svg" height="200">\n']);
-end
-for n = 1:nneurons
-    fprintf(fileID, '\n## neuron %02i\n', n);
-    if P.plot_peth_choice
-        fprintf(fileID, [markdownpath_prefix '/psth_conditioned_on_choice_neuron_' num2str(n, '%02i') ...
-            '.svg" height="300">\n']);
+if P.markdownfile
+   
+    fileID = fopen([reportfolder '/report_' modelname '.md'], 'w');
+    if P.plot_psychometric
+        fprintf(fileID, '\n# psychometric\n');
+        fprintf(fileID, [markdownpath_prefix '/psychometric.png" height="300">\n']);
     end
-    if P.plot_peth_unconditioned
-        fprintf(fileID, [markdownpath_prefix '/psth_unconditioned_neuron_' num2str(n, '%02i') ...
-            '.svg" height="300">\n']);
+    if P.plot_R2
+        fprintf(fileID, '\n# PSTH goodness-of-fit\n');
+        fprintf(fileID, [markdownpath_prefix '/R2.png" height="200">\n']);
     end
-    if P.plot_trial_varying_firing_rates
-        fprintf(fileID, [markdownpath_prefix '/trial_varying_fr_neuron_' num2str(n, '%02i') ...
-            '.svg" height="300">\n']);
+    for n = 1:nneurons
+        fprintf(fileID, '\n## neuron %02i\n', n);
+        if P.plot_peth_choice
+            fprintf(fileID, [markdownpath_prefix '/psth_conditioned_on_choice_neuron_' num2str(n, '%02i') ...
+                '.png" height="300">\n']);
+        end
+        if P.plot_peth_unconditioned
+            fprintf(fileID, [markdownpath_prefix '/psth_unconditioned_neuron_' num2str(n, '%02i') ...
+                '.png" height="300">\n']);
+        end
+        if P.plot_trial_varying_firing_rates
+            fprintf(fileID, [markdownpath_prefix '/trial_varying_fr_neuron_' num2str(n, '%02i') ...
+                '.png" height="300">\n']);
+        end
     end
+    fclose(fileID);
 end
-fclose(fileID);
