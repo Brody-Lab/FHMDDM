@@ -92,9 +92,9 @@ Model settings
 	B_q::TF=15.0
 	B_u::TF=20.0
 	"adaptation change rate"
-	k_l::TF=1e-4
-	k_q::TF=1e-3
-	k_u::TF=1e3
+	k_l::TF=10.0
+	k_q::TF=100.0
+	k_u::TF=1000.0
 	"feedback"
 	λ_l::TF = -5.0
 	λ_q::TF = 0.0
@@ -105,7 +105,7 @@ Model settings
 	μ₀_u::TF= 5.0
 	"adaptation strength"
 	ϕ_l::TF=1e-4
-	ϕ_q::TF=1-1e-3
+	ϕ_q::TF=1e-3
 	ϕ_u::TF=1.0-1e-4
 	"prior probability of the coupled state"
 	πᶜ₁_l::TF=1e-4
@@ -120,9 +120,9 @@ Model settings
 	σ²ₐ_q::TF=1.0
 	σ²ₐ_u::TF=10.0
 	"variance of the initial probability of the accumulator variable"
-	σ²ᵢ_l::TF=1e-1
-	σ²ᵢ_q::TF=1e0
-	σ²ᵢ_u::TF=1e1
+	σ²ᵢ_l::TF=0.1
+	σ²ᵢ_q::TF=1.0
+	σ²ᵢ_u::TF=10.0
 	"variance of the variance of per-click noise"
 	σ²ₛ_l::TF = 0.1
 	σ²ₛ_q::TF = 5.0
