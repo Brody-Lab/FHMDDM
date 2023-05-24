@@ -155,7 +155,16 @@ OUTPUT
 function Model(model::Model, outputpath::String, sample::Sample)
 	newtrialsets = 	map(model.trialsets, sample.trialsets) do trialset, trialsetsample
 						newtrials =	map(trialset.trials, trialsetsample.trials) do trial, trialsample
-										Trial(((fieldname == :choice) ? trialsample.choice : getfield(trial, fieldname) for fieldname in fieldnames(Trial))...)
+										values = map(fieldnames(Trial)) do fieldname
+													if fieldname == :choice
+														trialsample.choice
+													elseif fieldname == :spiketrains
+														trialsample.spiketrains
+													else
+														getfield(trial, fieldname)
+													end
+												end
+										Trial(values...)
 									end
 						new_mpGLMs = map(trialset.mpGLMs, eachindex(trialset.mpGLMs)) do old_mpGLM, n
 										values = map(fieldnames(MixturePoissonGLM)) do fieldname
