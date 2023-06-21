@@ -21,8 +21,8 @@ function options = tabulateoptions(analysispath)
         options.datapath = string(options.datapath);
     end
     for i = 1:size(options,1)
-        options.datafolder{i} = strrep(options.datafolder{i}, '/mnt/cup/labs/brody', 'X:');
-        options.datafolder{i} = strrep(options.datafolder{i}, '/', '\');
+        options.datapath{i} = strrep(options.datapath{i}, '/mnt/cup/labs/brody', 'X:');
+        options.datapath{i} = strrep(options.datapath{i}, '/', '\');
     end
     [~, fitnames] = cellfun(@(x) fileparts(char(x)), fitpath, 'uni', 0);
     fitnames = string(fitnames);
