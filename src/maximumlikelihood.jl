@@ -2,7 +2,6 @@
 	functions
 
 -maximizelikelihood!(model, optimizer::Optim.FirstOrderOptimizer)
--maximizelikelihood!(model, optimizer::Flux.Optimise.AbstractOptimiser)
 -loglikelihood(model)
 -loglikelihood!(model, memory, concatenatedparameters)
 """
@@ -65,53 +64,6 @@ function maximizelikelihood!(model::Model,
 			losses[i] = traces[i].value
 		end
 	end
-    return losses, gradientnorms
-end
-
-"""
-    maximizelikelihood!(model, optimizer)
-
-Optimize the parameters of the factorial hidden Markov drift-diffusion model using an algorithm implemented by Flux.jl
-
-MODIFIED ARGUMENT
-- a structure containing information for a factorial hidden Markov drift-diffusion model
-
-UNMODIFIED ARGUMENT
--`optimizer`: optimization algorithm implemented by Flux.jl
-
-OPTIONAL ARGUMENT
--`iterations`: maximum number of iterations
-
-RETURN
--see documentation for `maximizelikelihood!(model, optimizer)`
-```
-"""
-function maximizelikelihood!(model::Model, optimizer::Flux.Optimise.AbstractOptimiser; iterations::Integer = 3000)
-	memory = Memoryforgradient(model)
-	θ = concatenateparameters(model)
-	∇ = similar(θ)
-	local x, min_err, min_θ
-	min_err = typemax(eltype(θ)) #dummy variables
-	min_θ = copy(θ)
-	losses, gradientnorms = fill(NaN, iterations+1), fill(NaN, iterations+1)
-	optimizationtime = 0.0
-	for i = 1:iterations
-		iterationtime = @timed begin
-			x = -loglikelihood!(model, memory, θ)
-			∇negativeloglikelihood!(∇, memory, model, θ)
-			losses[i] = x
-			gradientnorms[i] = norm(∇)
-			if x < min_err  # found a better solution
-				min_err = x
-				min_θ = copy(θ)
-			end
-			Flux.update!(optimizer, θ, ∇)
-		end
-		optimizationtime += iterationtime[2]
-		println("iteration=", i, ", loss= ", losses[i], ", gradient norm= ", gradientnorms[i], ", time(s)= ", optimizationtime)
-	end
-	sortparameters!(model, min_θ, memory.indexθ)
-	real2native!(model.θnative, model.options, model.θreal)
     return losses, gradientnorms
 end
 

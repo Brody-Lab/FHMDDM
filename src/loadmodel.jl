@@ -97,7 +97,14 @@ RETURN a struct containing data, parameters, and hyperparameters of a factorial 
 ARGUMENT
 -`options`: a struct containing the fixed hyperparameters of the model
 """
-function Model(options::Options)
+Model(options::Options) = Model(options, loadtrialsets(options))
+
+"""
+	loadtrialsets(options)
+
+RETURN a vector of objects of the type `Trialset`
+"""
+function loadtrialsets(options::Options)
 	data = read(matopen(options.datapath))
 	singletrialset = haskey(data, "trials")
 	if singletrialset
@@ -110,11 +117,10 @@ function Model(options::Options)
 	end
 	options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
 	if singletrialset
-		trialsets = [Trialset(options, data["trials"], 1)]
+		[Trialset(options, data["trials"], 1)]
 	else
-		trialsets = map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
+		map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
 	end
-	Model(options, trialsets)
 end
 
 """

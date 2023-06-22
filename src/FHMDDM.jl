@@ -14,7 +14,7 @@ using   Bootstrap,
         StatsFuns
 import  CSV,
         DataFrames,
-        Flux
+        MLBase
 export  analyzeandsave,
         Characterization,
         concatenateparameters,
@@ -64,6 +64,7 @@ include("mixture_of_Poisson_GLM/temporal_basis_functions.jl")
 include("parameterlearning.jl")
 include("parametersorting.jl")
 include("perievent_time_histogram.jl")
+include("psychophysical_kernel/exponential_kernel_model.jl")
 include("sampling.jl")
 include("save.jl")
 include("tests.jl")

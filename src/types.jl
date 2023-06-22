@@ -1426,3 +1426,129 @@ Object containing the data and parameters of a mixture-of-gain Poisson GLM and a
 	"product between the posterior probability in each state and the second derivative of the conditional log-likelihood with respect to the conditional linear predictor. Element `γₖd²ℓ_dLₖ²[k][t]` corresponds to the k-th state and the t-th time step"
 	γₖd²ℓ_dLₖ²::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
 end
+
+"""
+	ExponentialKernelModel
+
+Logistic model of the behavioral choice that assumes an exponential psychophysical kernel
+"""
+@with_kw struct ExponentialKernelModel{BA1<:BitArray{1},
+										TI<:Integer,
+										F<:AbstractFloat,
+										VF<:Vector{<:AbstractFloat},
+										MF<:Matrix{<:AbstractFloat},
+										VVF<:Vector{<:Vector{<:AbstractFloat}},
+										VR<:Vector{<:Real}}
+	"parameters of the model"
+	𝛃::VR=rand(4)
+	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
+	𝐝::BA1
+	"duration of each time step, in seconds"
+	Δt::F
+	"excess click input at each time step. 𝐄[i][t] corresponds to the excess click input at the t-th time step on the i-th trial at"
+	𝐄::VVF
+	"hessian matrix"
+	hessian::MF = fill(NaN, length(𝛃), length(𝛃))
+	"expected input"
+	𝛌::VF
+	"absolute values of the expected input"
+	𝛌abs::VF=abs.(𝛌)
+	"maximum number of time steps"
+	T::TI
+	"time steps"
+	𝛕::VF = collect(Δt:Δt:T*Δt)
+end
+
+"""
+	EKCrossValidation
+
+Trained exponential kernel models and out-of-sample predictions
+"""
+@with_kw struct EKCrossValidation{BA1<:BitArray{1},
+								TI<:Integer,
+								VF<:Vector{<:AbstractFloat},
+								VVI<:Vector{<:Vector{<:Integer}},
+								VM<:Vector{<:ExponentialKernelModel}}
+
+	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
+	𝐝::BA1
+	"number of cross-validation folds"
+	kfold::TI
+	"expected input"
+	𝛌::VF
+	"out-of-sample probability of a right choice"
+	𝐩right::VF=fill(NaN, size(𝐝))
+	"out-of-sample log-likelihood of each choice"
+	ℓ::VF=fill(NaN, size(𝐝))
+	"out-of-sample log-likelihood predicted by a Bernoulli model"
+	ℓbernoulli::VF=fill(NaN, size(𝐝))
+	"model containing the data for training"
+	trainingmodels::VM
+	"models containing only the test data"
+	testingmodels::VM
+	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
+	testingtrials::VVI
+	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
+	trainingtrials::VVI
+end
+
+
+"""
+	LogisticChoiceModel
+
+Logistic model of the behavioral choice that includes only a bias parameter and a weight for the expected input
+"""
+@with_kw struct LogisticChoiceModel{BA1<:BitArray{1},
+									TI<:Integer,
+									VVI<:Vector{<:Vector{<:Integer}},
+									F<:AbstractFloat,
+									VF<:Vector{<:AbstractFloat},
+									VR<:Vector{<:Real}}
+	"parameters of the model. `𝛃[k]` correspond to the k-th cross-validation fold"
+	𝛃::VR=rand(2)
+	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
+	𝐝::BA1
+	"duration of each time step, in seconds"
+	Δt::F
+	"expected input"
+	𝛌::VF
+	"maximum number of time steps"
+	T::TI
+	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
+	testingtrials::VVI
+	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
+	trainingtrials::VVI
+end
+
+"""
+	LCCrossValidation
+
+Trained logistic choice models and out-of-sample predictions
+"""
+@with_kw struct LCCrossValidation{BA1<:BitArray{1},
+								TI<:Integer,
+								VF<:Vector{<:AbstractFloat},
+								VVI<:Vector{<:Vector{<:Integer}},
+								VM<:Vector{<:LogisticChoiceModel}}
+
+	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
+	𝐝::BA1
+	"number of cross-validation folds"
+	kfold::TI
+	"expected input"
+	𝛌::VF
+	"out-of-sample probability of a right choice"
+	𝐩right::VF=fill(NaN, size(𝐝))
+	"out-of-sample log-likelihood of each choice"
+	ℓ::VF=fill(NaN, size(𝐝))
+	"out-of-sample log-likelihood predicted by a Bernoulli model"
+	ℓbernoulli::VF=fill(NaN, size(𝐝))
+	"model containing the data for training"
+	trainingmodels::VM
+	"models containing only the test data"
+	testingmodels::VM
+	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
+	testingtrials::VVI
+	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
+	trainingtrials::VVI
+end

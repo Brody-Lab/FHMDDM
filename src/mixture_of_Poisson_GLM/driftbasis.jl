@@ -125,30 +125,3 @@ function gaussianmse(testindices::Vector{<:Vector{<:Integer}}, trainindices::Vec
     end
     mse/sum(length.(testindices))
 end
-
-"""
-    cvpartition(kfold, n)
-
-Training and test indices for k-fold cross-valiation
-
-ARGMENT
--`kfold`: number of folds
--`n`: total number of samples
-
-RETURN
--`testindices`: a nest array whose each element is a vector of indices for the test set of a fold
--`trainindices`: a nest array whose each element is a vector of indices for the training set of a fold
-"""
-function cvpartition(kfold::integertype, n::integertype) where {integertype<:Integer}
-    @assert kfold > 1
-    @assert n >= kfold
-    trainindices = map(k->integertype[], 1:kfold)
-    testindices = map(k->integertype[], 1:kfold)
-    ntestmax = cld(n, kfold)
-    partitioned = collect(Base.Iterators.partition(shuffle(1:n), ntestmax))
-    for k=1:kfold
-        testindices[k] = sort(partitioned[k])
-        trainindices[k] = sort(vcat(partitioned[vcat(1:k-1, k+1:kfold)]...))
-    end
-    return testindices, trainindices
-end
