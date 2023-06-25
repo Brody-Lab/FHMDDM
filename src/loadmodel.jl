@@ -124,6 +124,25 @@ function loadtrialsets(options::Options)
 end
 
 """
+	loadtrials(options)
+
+RETURN a vector of elements of type `Trial`
+
+ARGUMENT
+-`options`: a struct containing the fixed hyperparameters of the model
+"""
+function loadtrials(options::Options)
+	data = read(matopen(options.datapath))
+	singletrialset = haskey(data, "trials")
+	if singletrialset
+		trials = data["trials"]
+	else
+		trials = vcat((trialset["trials"] for trialset in vec(data["trialsets"]))...)
+	end
+	processtrials(options, trials, 1)
+end
+
+"""
     Model(options, trialsets)
 
 RETURN a struct containing data, parameters, and hyperparameters of a factorial hidden Markov drift-diffusion model
@@ -145,25 +164,37 @@ function Model(options::Options, trialsets::Vector{<:Trialset})
 end
 
 """
-    Trialset(options, trialset)
+    Trialset(options, trials, trialsetindex)
 
 Create a composite containing the data from one trialset
 
-INPUT
--`nneurons_across_trialsets`: total number of neurons across trialsets
+ARGUMENT
 -`options`: user-specified hyperparameters of the model
--`trialset`: a dictionary contain MATLAB-exported data corresponding to a single trial-set
+-`trials`: a vector of objects of the type `Dict`
+-`trialsetindex`: index of the trialset
 
 OUTPUT
 -a composite containing the stimulus timing, behavioral choice and timing, spike times recorded during the trials of a trialset
 """
 function Trialset(options::Options, trials, trialsetindex::Integer)
-    trials = vec(trials)
-	ntimesteps_each_trial = collect(convert(Int, trial["ntimesteps"]) for trial in trials)
-	preceding_timesteps = vcat(0, cumsum(ntimesteps_each_trial[1:end-1]))
-	trials = collect(Trial(m, options, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
+	trials = processtrials(options, trials, trialsetindex)
 	mpGLMs = MixturePoissonGLM(options, trials)
     Trialset(mpGLMs=mpGLMs, trials=trials)
+end
+
+"""
+	processtrials(options, trials, trialsetindex)
+
+RETURN a vector of objects of type `Trial`
+
+ARGUMENT
+-see above `Trialset(options, trials, trialsetindex)`
+"""
+function processtrials(options::Options, trials, trialsetindex::Integer)
+	trials = vec(trials)
+	ntimesteps_each_trial = collect(convert(Int, trial["ntimesteps"]) for trial in trials)
+	preceding_timesteps = vcat(0, cumsum(ntimesteps_each_trial[1:end-1]))
+	collect(Trial(m, options, preceding_timesteps[m], trials[m], trialsetindex) for m = 1:length(trials))
 end
 
 """

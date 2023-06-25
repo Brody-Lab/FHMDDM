@@ -96,9 +96,9 @@ Model settings
 	k_q::TF=100.0
 	k_u::TF=1000.0
 	"feedback"
-	λ_l::TF = -5.0
+	λ_l::TF = -1.0
 	λ_q::TF = 0.0
-	λ_u::TF = 5.0
+	λ_u::TF = 2.0
 	"bias"
 	μ₀_l::TF=-5.0
 	μ₀_q::TF= 0.0
@@ -1428,115 +1428,56 @@ Object containing the data and parameters of a mixture-of-gain Poisson GLM and a
 end
 
 """
-	ExponentialKernelModel
+	PsychophysicalKernelModel
 
-Logistic model of the behavioral choice that assumes an exponential psychophysical kernel
+Model inferring the temporal weights of the stimulus fluctuations
 """
-@with_kw struct ExponentialKernelModel{BA1<:BitArray{1},
+@with_kw struct PsychophysicalKernelModel{BA1<:BitArray{1},
 										TI<:Integer,
 										F<:AbstractFloat,
-										VF<:Vector{<:AbstractFloat},
 										MF<:Matrix{<:AbstractFloat},
-										VVF<:Vector{<:Vector{<:AbstractFloat}},
 										VR<:Vector{<:Real}}
-	"parameters of the model"
-	𝛃::VR=rand(4)
+	"maximum lapse rate"
+	α::F
 	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
 	𝐝::BA1
 	"duration of each time step, in seconds"
 	Δt::F
-	"excess click input at each time step. 𝐄[i][t] corresponds to the excess click input at the t-th time step on the i-th trial at"
-	𝐄::VVF
-	"hessian matrix"
-	hessian::MF = fill(NaN, length(𝛃), length(𝛃))
-	"expected input"
-	𝛌::VF
-	"absolute values of the expected input"
-	𝛌abs::VF=abs.(𝛌)
+	"input matrix"
+	𝐗::MF
+	"temporal basis functions"
+	Φ::MF
 	"maximum number of time steps"
-	T::TI
-	"time steps"
-	𝛕::VF = collect(Δt:Δt:T*Δt)
+	T::TI=size(Φ,1)
+	"number of parameters"
+	nparameters::TI = size(𝐗,2)+1
+	"parameters of the model. First parameter is used to compute the lapse rate; the second to compute the lapse; and the rest of the parameters to compute the weight of each temporal basis function."
+	𝛃::VR = 1.0 .- 2.0.*rand(nparameters)
+	"hessian matrix"
+	hessian::MF = fill(NaN, nparameters, nparameters)
 end
 
 """
-	EKCrossValidation
+	PKMCrossValidation
 
 Trained exponential kernel models and out-of-sample predictions
 """
-@with_kw struct EKCrossValidation{BA1<:BitArray{1},
+@with_kw struct PKMCrossValidation{BA1<:BitArray{1},
 								TI<:Integer,
+								F<:AbstractFloat,
 								VF<:Vector{<:AbstractFloat},
+								MI<:Matrix{<:Integer},
+								MF<:Matrix{<:AbstractFloat},
 								VVI<:Vector{<:Vector{<:Integer}},
-								VM<:Vector{<:ExponentialKernelModel}}
+								VVF<:Vector{<:Vector{<:AbstractFloat}},
+								VModel<:Vector{<:PsychophysicalKernelModel}}
 
 	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
 	𝐝::BA1
-	"number of cross-validation folds"
-	kfold::TI
-	"expected input"
-	𝛌::VF
-	"out-of-sample probability of a right choice"
-	𝐩right::VF=fill(NaN, size(𝐝))
-	"out-of-sample log-likelihood of each choice"
-	ℓ::VF=fill(NaN, size(𝐝))
-	"out-of-sample log-likelihood predicted by a Bernoulli model"
-	ℓbernoulli::VF=fill(NaN, size(𝐝))
-	"model containing the data for training"
-	trainingmodels::VM
-	"models containing only the test data"
-	testingmodels::VM
-	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
-	testingtrials::VVI
-	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
-	trainingtrials::VVI
-end
-
-
-"""
-	LogisticChoiceModel
-
-Logistic model of the behavioral choice that includes only a bias parameter and a weight for the expected input
-"""
-@with_kw struct LogisticChoiceModel{BA1<:BitArray{1},
-									TI<:Integer,
-									VVI<:Vector{<:Vector{<:Integer}},
-									F<:AbstractFloat,
-									VF<:Vector{<:AbstractFloat},
-									VR<:Vector{<:Real}}
-	"parameters of the model. `𝛃[k]` correspond to the k-th cross-validation fold"
-	𝛃::VR=rand(2)
-	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
-	𝐝::BA1
-	"duration of each time step, in seconds"
+	"time step duration, in seconds"
 	Δt::F
-	"expected input"
-	𝛌::VF
-	"maximum number of time steps"
-	T::TI
-	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
-	testingtrials::VVI
-	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
-	trainingtrials::VVI
-end
-
-"""
-	LCCrossValidation
-
-Trained logistic choice models and out-of-sample predictions
-"""
-@with_kw struct LCCrossValidation{BA1<:BitArray{1},
-								TI<:Integer,
-								VF<:Vector{<:AbstractFloat},
-								VVI<:Vector{<:Vector{<:Integer}},
-								VM<:Vector{<:LogisticChoiceModel}}
-
-	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
-	𝐝::BA1
 	"number of cross-validation folds"
 	kfold::TI
-	"expected input"
-	𝛌::VF
 	"out-of-sample probability of a right choice"
 	𝐩right::VF=fill(NaN, size(𝐝))
 	"out-of-sample log-likelihood of each choice"
@@ -1544,11 +1485,23 @@ Trained logistic choice models and out-of-sample predictions
 	"out-of-sample log-likelihood predicted by a Bernoulli model"
 	ℓbernoulli::VF=fill(NaN, size(𝐝))
 	"model containing the data for training"
-	trainingmodels::VM
+	trainingmodels::VModel
 	"models containing only the test data"
-	testingmodels::VM
+	testingmodels::VModel
 	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
 	testingtrials::VVI
 	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
 	trainingtrials::VVI
+	"click input per time step expected from the random processes used to generate the clicks. Each element of the vector corresponds to a trial"
+	𝛌Δt::VF
+	"input matrix"
+	𝐗::MF
+	"click input on each time step (columns) on each trial (rows)"
+	𝐂::MI
+	"excess click input on each time step on each trial"
+	𝐄::MF
+	"number of time steps"
+	T::TI
+	"psychophysical kernel estimated in each cross-validation fold"
+	psychophysicalkernel::VVF=collect(fill(NaN, T) for k = 1:kfold)
 end
