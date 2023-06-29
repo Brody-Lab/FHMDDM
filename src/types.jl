@@ -1505,3 +1505,85 @@ Trained exponential kernel models and out-of-sample predictions
 	"psychophysical kernel estimated in each cross-validation fold"
 	psychophysicalkernel::VVF=collect(fill(NaN, T) for k = 1:kfold)
 end
+
+
+"""
+	PericommitmentKernel
+
+Model inferring the weight of the stimulus fluctuations on the behavioral choice before and after decision commitment
+"""
+@with_kw struct PericommitmentKernel{BA1<:BitArray{1},
+										TI<:Integer,
+										VI<:Vector{<:Integer},
+										MI<:Matrix{<:Integer},
+										VF<:Vector{<:AbstractFloat},
+										F<:AbstractFloat,
+										MF<:Matrix{<:AbstractFloat},
+										VR<:Vector{<:Real}}
+	"maximum lapse rate"
+	α::F
+	"click input on each time step (columns) on each trial (rows)"
+	𝐂::MI
+	"time step on each of the decision commitment relative to stimulus onset"
+	commitment_timesteps::VI
+	"behavioral choices represented as a one-dimensional bit array. A true bit indicates a right choice."
+	𝐝::BA1
+	"duration of each time step, in seconds"
+	Δt::F
+	"excess click input on each time step on each trial"
+	𝐄::MF
+	"click input per time step expected from the random processes used to generate the clicks. Each element of the vector corresponds to a trial"
+	𝛌Δt::VF
+	"temporal basis functions"
+	Φ::MF
+	"time, in seconds, of each time step relative to stimulus onset"
+	times_s::VF
+	"number of time steps after decision commitment to consider"
+	Tpost::TI
+	"number of time steps before decision commitment to consider"
+	Tpre::TI
+	"input matrix"
+	𝐗::MF
+	"number of parameters"
+	nparameters::TI = size(𝐗,2)+1
+	"parameters of the model. First parameter is used to compute the lapse rate; the second to compute the lapse; and the rest of the parameters to compute the weight of each temporal basis function."
+	𝛃::VR = 1.0 .- 2.0.*rand(nparameters)
+	"hessian matrix"
+	hessian::MF = fill(NaN, nparameters, nparameters)
+end
+
+"""
+	PKMCrossValidation
+
+Trained exponential kernel models and out-of-sample predictions
+"""
+@with_kw struct PCPKCrossValidation{TI<:Integer,
+								VF<:Vector{<:AbstractFloat},
+								VVI<:Vector{<:Vector{<:Integer}},
+								VVF<:Vector{<:Vector{<:AbstractFloat}},
+								Mod<:PericommitmentKernel,
+								VMod<:Vector{<:PericommitmentKernel}}
+
+	"object containing the data before partitioning"
+	model::Mod
+	"model containing the data for training"
+	trainingmodels::VMod
+	"models containing only the test data"
+	testingmodels::VMod
+	"`testingtrials[k]` indexes the trials from the k-th fold used for testing"
+	testingtrials::VVI
+	"`trainingtrials[k]` indexes the trials from the k-th fold used for training"
+	trainingtrials::VVI
+	"number of cross-validation folds"
+	kfold::TI=length(trainingmodels)
+	"out-of-sample log-likelihood of each choice"
+	ℓ::VF=fill(NaN, size(model.𝐝))
+	"out-of-sample log-likelihood predicted by a Bernoulli model"
+	ℓbernoulli::VF=fill(NaN, size(model.𝐝))
+	"weight of the stochastic deviations from the expected stimulus input"
+	Φ𝐰::VVF=collect(fill(NaN, length(model.times_s)) for k = 1:kfold)
+	"out-of-sample probability of a right choice"
+	𝐩right::VF=fill(NaN, size(model.𝐝))
+	"psychophysical kernel estimated in each cross-validation fold"
+	psychophysicalkernel::VVF=collect(fill(NaN, length(model.times_s)) for k = 1:kfold)
+end

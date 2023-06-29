@@ -4,6 +4,7 @@
 Return an object containing cross-validated models for estimating the psychophysical kernel
 
 ARGUMENT
+-`nfunctions`: number of temporal basis functions
 -`trial`: A vector whose elements are of the type `Trial`
 
 OPTIONAL ARGUMENT
