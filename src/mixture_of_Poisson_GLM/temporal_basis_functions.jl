@@ -489,7 +489,7 @@ ARGUMENT
 RETURN
 -`Φ`: Matrix whose element Φ[i,j] corresponds to the value of the j-th temporal basis function at the i-th timestep from beginning of the trial
 """
-function raisedcosines(centers::Vector{<:AbstractFloat}, ω::AbstractFloat, t::Vector{<:AbstractFloat})
+function raisedcosines(centers::Vector{<:AbstractFloat}, ω::AbstractFloat, t::Vector{<:Real})
     T = t .- centers'
     (cos.(max.(-π, min.(π, ω.*T))) .+ 1)/2
 end

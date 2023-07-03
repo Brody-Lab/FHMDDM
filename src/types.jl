@@ -1532,8 +1532,12 @@ Model inferring the weight of the stimulus fluctuations on the behavioral choice
 	Δt::F
 	"excess click input on each time step on each trial"
 	𝐄::MF
+	"distortion parameter"
+	η::F
 	"click input per time step expected from the random processes used to generate the clicks. Each element of the vector corresponds to a trial"
 	𝛌Δt::VF
+    "unorthogonalized basis functions"
+	Φ₀::MF
 	"temporal basis functions"
 	Φ::MF
 	"time, in seconds, of each time step relative to stimulus onset"
