@@ -29,7 +29,7 @@ function bases = raisedcosines(ncosines, nbins, varargin)
 
 parser = inputParser;
 addParameter(parser, 'compression', NaN,  ...
-             @(x) validateattributes(x, {'numeric'}, {'scalar', 'positive'}))
+             @(x) validateattributes(x, {'numeric'}, {'scalar'}))
 addParameter(parser, 'begins_at_0', false,  ...
              @(x) validateattributes(x, {'logical'}, {'scalar'}))
 addParameter(parser, 'ends_at_0', false,  ...
@@ -41,7 +41,7 @@ addParameter(parser, 'zeroindex', 1,  ...
 parse(parser, varargin{:});
 P = parser.Results; 
 binindinces = (1:nbins) - P.zeroindex;
-if ~isnan(P.compression)
+if P.compression > 0
     y = asinh(binindinces*P.compression);
 else
     y = binindinces;
@@ -60,13 +60,9 @@ else
     Delta_centers = yrange / (ncosines-1);
     centers = y(1):Delta_centers:y(end);
 end
-
-
-
 if P.overlap
     bases = (cos(max(-pi, min(pi, (y'-centers)*pi/Delta_centers/2))) + 1)/2;
 else
     bases = (cos(max(-pi, min(pi, (y'-centers)*pi/Delta_centers))) + 1)/2;
 end
-
 bases = bases./max(bases, [], 1);
