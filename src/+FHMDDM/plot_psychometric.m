@@ -50,7 +50,7 @@ if isempty(P.axes)
 else
     axes(P.axes)
 end
-FHMDDM.prepareaxes
+FHMDDM.stylizeaxes
 groupindices = discretize(Deltaclicks, [-inf, -30:10:30, inf]);
 groupDeltaclicks = splitapply(@mean, Deltaclicks, groupindices);
 [obsv, obsvci] = splitapply(@(x) binofit(sum(x), numel(x)), choices, groupindices);
@@ -65,7 +65,7 @@ if ~isempty(P.predicted_mean_linespec)
     handles(2) = plot(groupDeltaclicks, pred, P.predicted_mean_linespec, 'linewidth', 1.5);
 end
 if P.legend && ~isempty(P.predicted_mean_linespec)
-    hlegend = legend(handles, {'observed 95%CI', 'predicted'}, 'location', 'best');
+    hlegend = legend(handles, {'obsv. 95%CI', 'predicted'}, 'location', 'best');
     set(hlegend, 'position', [0.575 0.5, 0.35, 0.2]);
 end
 absxlim = ceil(max(groupDeltaclicks)/10)*10;

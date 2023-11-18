@@ -53,7 +53,7 @@ if isempty(P.axes)
 else
     axes(P.axes)
 end
-FHMDDM.prepareaxes
+FHMDDM.stylizeaxes
 Colors = FHMDDM.colors;
 nbins = numel(time_s);
 if P.show_observed_CI
