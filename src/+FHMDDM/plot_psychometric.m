@@ -42,11 +42,12 @@ addParameter(parser, 'legend', true, @(x) islogical(x) && isscalar(x))
 addParameter(parser, 'observed_CI_facecolor', zeros(1,3))
 addParameter(parser, 'observed_mean_linespec', '', @(x) ischar(x))
 addParameter(parser, 'predicted_mean_linespec', 'k-', @(x) ischar(x))
+addParameter(parser, 'resultsfolder', 'results', @(x) ischar(x))
 parse(parser, varargin{:});
 P = parser.Results; 
 if isempty(P.axes)
-    figure('pos', [100 100 450 250])
-    set(gca, 'position', [0.15, 0.2, 0.4, 0.7])
+    figure('pos', [100 100 500 500])
+    set(gca, 'position', [0.15, 0.2, 0.8, 0.5])
 else
     axes(P.axes)
 end
@@ -55,23 +56,25 @@ groupindices = discretize(Deltaclicks, [-inf, -30:10:30, inf]);
 groupDeltaclicks = splitapply(@mean, Deltaclicks, groupindices);
 [obsv, obsvci] = splitapply(@(x) binofit(sum(x), numel(x)), choices, groupindices);
 pred = splitapply(@mean, Echoices, groupindices);
-handles = nan(2,1);
-handles(1) = FHMDDM.shadeplot(groupDeltaclicks, obsvci(:,1), obsvci(:,2), ...
-    'facecolor', P.observed_CI_facecolor);
+handles = [];
+if ~all(P.observed_CI_facecolor == 1)
+    handles = [handles; FHMDDM.shadeplot(groupDeltaclicks, obsvci(:,1), obsvci(:,2), ...
+        'facecolor', P.observed_CI_facecolor)];
+end
 if ~isempty(P.observed_mean_linespec)
     plot(groupDeltaclicks, obsv, P.observed_mean_linespec);
 end
 if ~isempty(P.predicted_mean_linespec)
-    handles(2) = plot(groupDeltaclicks, pred, P.predicted_mean_linespec, 'linewidth', 1.5);
+    handles = [handles; plot(groupDeltaclicks, pred, P.predicted_mean_linespec, 'linewidth', 1.5)];
 end
 if P.legend && ~isempty(P.predicted_mean_linespec)
-    hlegend = legend(handles, {'obsv. 95%CI', 'predicted'}, 'location', 'best');
-    set(hlegend, 'position', [0.575 0.5, 0.35, 0.2]);
+    hlegend = legend(handles, {'obsv. 95%CI', 'predicted'}, 'location', 'best', 'AutoUpdate', 'off');
+    set(hlegend, 'position', [0.35 0.75, 0.5, 0.2]);
 end
 absxlim = ceil(max(groupDeltaclicks)/10)*10;
 xlim([-absxlim, absxlim])
 xticks([-absxlim, 0, absxlim])
 ylim([0,1])
 yticks([0 1])
-ylabel('fraction chose right')
+ylabel('fraction\newlinechose\newlineright', 'rotation', 0)
 xlabel('#right - #left clicks')
