@@ -4,7 +4,7 @@ if nargin < 1
 else
     a = varargin{:};
 end
-set(a, 'FontSize',27)
+set(a, 'FontSize',18)
 set(a, 'ActivePositionProperty', 'outerposition')
 set(a, 'Color', 'None')
 set(a, 'TickDir', 'out')

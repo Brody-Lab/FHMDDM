@@ -46,8 +46,8 @@ addParameter(parser, 'resultsfolder', 'results', @(x) ischar(x))
 parse(parser, varargin{:});
 P = parser.Results; 
 if isempty(P.axes)
-    figure('pos', [100 100 500 500])
-    set(gca, 'position', [0.15, 0.2, 0.8, 0.5])
+    figure('pos', [100 100 300 325])
+    set(gca, 'position', [0.15, 0.15, 0.8, 0.5])
 else
     axes(P.axes)
 end
@@ -69,7 +69,7 @@ if ~isempty(P.predicted_mean_linespec)
 end
 if P.legend && ~isempty(P.predicted_mean_linespec)
     hlegend = legend(handles, {'obsv. 95%CI', 'predicted'}, 'location', 'best', 'AutoUpdate', 'off');
-    set(hlegend, 'position', [0.35 0.75, 0.5, 0.2]);
+    set(hlegend, 'position', [0.42 0.72, 0.5, 0.15]);
 end
 absxlim = ceil(max(groupDeltaclicks)/10)*10;
 xlim([-absxlim, absxlim])

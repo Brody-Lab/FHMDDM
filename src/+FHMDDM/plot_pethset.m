@@ -58,7 +58,7 @@ addParameter(parser, 'referenceevent', 'stereoclick', @(x) validateattributes(x,
 parse(parser, varargin{:});
 P = parser.Results; 
 if isempty(P.figure)
-    gcf;
+    figure('position', [100 100 1800 420])
 else
     figure(P.figure)
 end
