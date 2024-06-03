@@ -29,6 +29,85 @@ function analyzeandsave(computehessian::Bool, foldername::String, model::Model)
 	save(characterization, folderpath)
 	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
 	save(psthsets, folderpath)
+	posteriors_individual_brain_areas(foldername, model)
+end
+
+"""
+	posteriors_individual_brain_areas(foldername, model)
+
+Compute and save separate posterior probabilities for neurons in separate brain regions
+
+ARGUMENT
+-`foldername`: name of the folder save the results
+-`model`: struct containing the data, parametes, and hyperparameters
+"""
+function posteriors_individual_brain_areas(foldername::String, model::Model)
+	brainareas = vcat((collect(mpGLM.brainarea for mpGLM in trialset.mpGLMs) for trialset in model.trialsets)...)
+	uniqueareas = unique(brainareas)
+	if length(uniqueareas) > 1
+		for brainarea in uniqueareas
+			paccumulator_choicespikes = posterior_accumulator_distribution(model; brainarea=brainarea, conditionedon="choices_spikes")
+			paccumulator_spikes = posterior_accumulator_distribution(model; brainarea=brainarea, conditionedon="spikes")
+			folderpath = joinpath(model.options.outputpath, foldername, "individual_brain_areas", brainarea)
+			if !isdir(folderpath)
+				mkpath(folderpath)
+				@assert isdir(folderpath)
+			end
+			dict = Dict("paccumulator_choicespikes"=>paccumulator_choicespikes)
+		    matwrite(joinpath(folderpath, "paccumulator_choicespikes.mat"), dict)
+			dict = Dict("paccumulator_spikess"=>paccumulator_spikes)
+		    matwrite(joinpath(folderpath, "paccumulator_spikes.mat"), dict)
+		end
+	end
+end
+
+"""
+	posteriors_individual_brain_areas(cvindices, foldername, testmodels)
+
+Compute and save separate posterior probabilities for neurons in separate brain regions
+
+ARGUMENT
+-`cvindices`: a vector containing the trial indices for each folder
+-`foldername`: name of the folder save the results
+-`testmodels`: a vector of models containing only the test data
+"""
+function posteriors_individual_brain_areas(cvindices::Vector{<:CVIndices}, foldername::String, testmodels::Vector{<:Model})
+	brainareas = vcat((collect(mpGLM.brainarea for mpGLM in trialset.mpGLMs) for trialset in testmodels[1].trialsets)...)
+	uniqueareas = unique(brainareas)
+	if length(uniqueareas) > 1
+		for brainarea in uniqueareas
+			paccumulator_choicespikes = collect(posterior_accumulator_distribution(testmodel; brainarea=brainarea, conditionedon="choices_spikes") for testmodel in testmodels)
+			paccumulator_choicespikes = sorttrials(cvindices, paccumulator_choicespikes)
+			paccumulator_spikes = collect(posterior_accumulator_distribution(testmodel; brainarea=brainarea, conditionedon="spikes") for testmodel in testmodels)
+			paccumulator_spikes = sorttrials(cvindices, paccumulator_spikes)
+			folderpath = joinpath(testmodels[1].options.outputpath, "individual_brain_areas", brainarea)
+			if !isdir(folderpath)
+				mkpath(folderpath)
+				@assert isdir(folderpath)
+			end
+			dict = Dict("paccumulator_choicespikes"=>paccumulator_choicespikes)
+		    matwrite(joinpath(folderpath, "paccumulator_choicespikes.mat"), dict)
+			dict = Dict("paccumulator_spikess"=>paccumulator_spikes)
+		    matwrite(joinpath(folderpath, "paccumulator_spikes.mat"), dict)
+		end
+	end
+end
+
+"""
+	sorttrials(cvindices, output_each_fold)
+
+Sort output from each cross-validation fold into the original indices
+
+ARGUMENT
+-`cvindices`: a vector object containing indices for cross-validation
+-`output_each_fold`: Nested array organized as `output_each_fold[k][i][m]` corresponding to fold `k`, trialset `i`, and trial `m`
+"""
+function sorttrials(cvindices::Vector{<:CVIndices}, output_each_fold)
+	ntrialsets = length(cvindices[1].testingtrials)
+	trialindices = collect(sortperm(vcat((cvindex.testingtrials[i] for cvindex in cvindices)...)) for i=1:ntrialsets)
+	map(1:ntrialsets) do i
+		vcat((output[i] for output in output_each_fold)...)[trialindices[i]]
+	end
 end
 
 """

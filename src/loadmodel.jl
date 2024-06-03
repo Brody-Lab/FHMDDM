@@ -105,7 +105,9 @@ Model(options::Options) = Model(options, loadtrialsets(options))
 RETURN a vector of objects of the type `Trialset`
 """
 function loadtrialsets(options::Options)
-	data = read(matopen(options.datapath))
+	file = matopen(options.datapath)
+	data = read(file)
+	close(file)
 	singletrialset = haskey(data, "trials")
 	if singletrialset
 		nneurons = length(data["trials"][1]["spiketrains"][1])

@@ -43,6 +43,9 @@ function MixturePoissonGLM(options::Options, trials::Vector{<:Trial})
 	d𝛏_dB=(2collect(1:options.Ξ) .- options.Ξ .- 1)./(options.Ξ-1)
 	stereoclick_times_s = collect(trial.stereoclick_time_s for trial in trials)
 	nneurons = length(trials[1].spiketrains)
+	file = matopen(options.datapath)
+	neuronsinfo = read(file, "neurons")
+	close(file)
 	map(1:nneurons) do n
 		𝐲 = vcat((trial.spiketrains[n] for trial in trials)...)
 		@assert length(𝐲)==sum(trialdurations)
@@ -51,7 +54,8 @@ function MixturePoissonGLM(options::Options, trials::Vector{<:Trial})
 		𝐗=hcat(𝐔gain, 𝐔postspike, 𝐔poststereoclick, 𝐔premovement, 𝐔postphotostimulus, 𝐕)
 		indices𝐮 = Indices𝐮(size(𝐔gain,2), size(Φpostspike,2), size(Φpoststereoclick,2), size(Φpremovement,2), size(Φpostphotostimulus,2))
 		glmθ = GLMθ(indices𝐮, size(𝐕,2), options)
-		MixturePoissonGLM(Δt=options.Δt,
+		MixturePoissonGLM(brainarea = neuronsinfo[n]["brainarea"],
+						Δt=options.Δt,
 						d𝛏_dB=d𝛏_dB,
 						likelihoodscalefactor=options.sf_y,
 						Φaccumulator=Φaccumulator,
@@ -369,7 +373,8 @@ OUTPUT
 -an instance of `MixturePoissonGLM`
 """
 function subsample(mpGLM::MixturePoissonGLM, timesteps::Vector{<:Integer}, trialindices::Vector{<:Integer})
-    MixturePoissonGLM(Δt = mpGLM.Δt,
+    MixturePoissonGLM(brainarea = mpGLM.brainarea,
+    					Δt = mpGLM.Δt,
                         d𝛏_dB = mpGLM.d𝛏_dB,
 						likelihoodscalefactor=mpGLM.likelihoodscalefactor,
 						Φaccumulator = mpGLM.Φaccumulator,

@@ -339,12 +339,15 @@ Mixture of Poisson generalized linear model
 """
 @with_kw struct MixturePoissonGLM{TI<:Integer,
 								  F<:AbstractFloat,
+								  TS<:String,
 								  UI<:UnitRange{<:Integer},
                                   VF<:Vector{<:AbstractFloat},
 								  VI<:Vector{<:UInt8},
 								  Tθ<:GLMθ,
                                   MF<:Matrix{<:AbstractFloat}}
-    "size of the time bin"
+	"brain area"
+	brainarea::TS=""
+	"size of the time bin"
     Δt::F
 	"Normalized values of the accumulator"
     d𝛏_dB::VF

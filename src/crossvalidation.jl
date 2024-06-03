@@ -1,4 +1,35 @@
 """
+	crossvalidate_analyze_save(kfold, model)
+
+Perform cross-validation and save results
+
+ARGUMENT
+-`kfold`: number of cross-validation folds
+-`model`: a structure containing the settings, data, and parameters of a factorial hidden-Markov drift-diffusion model
+
+OPTIONAL ARGUMENT
+-`choicesonly`: whether to train on only the behavioral choices and ignore the spike trains
+
+OUTPUT
+-an instance of `CVResults`
+"""
+function crossvalidate_analyze_save(kfold::Integer, model::Model; choicesonly::Bool=false, foldername::String="crossvalidation")
+	cvindices = CVIndices(model, kfold)
+	trainingmodels = pmap(cvindices->train(cvindices, model;choicesonly=choicesonly), cvindices)
+	trainingsummaries = collect(ModelSummary(trainingmodel) for trainingmodel in trainingmodels)
+	testmodels = collect(test(cvindex, model, trainingmodel) for (cvindex, trainingmodel) in zip(cvindices, trainingmodels))
+	characterization = Characterization(cvindices, testmodels, trainingmodels)
+	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
+    cvresults = CVResults(cvindices=cvindices, characterization=characterization, psthsets=psthsets, trainingsummaries=trainingsummaries)
+	save(model.options)
+	save(model.options, model.trialsets)
+	folderpath = joinpath(model.options.outputpath, foldername)
+	save(cvresults, folderpath)
+	posteriors_individual_brain_areas(cvindices, foldername, testmodels)
+	return cvresults
+end
+
+"""
     crosssvalidate(model)
 
 Assess how well the factorial hidden Markov drift-diffusion model generalizes to independent datasets

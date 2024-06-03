@@ -364,10 +364,10 @@ MODIFIED ARGUMENT
 UNMODIFIED ARGUMENT
 -`model`: structure containing the data, parameters, and hyperparameters
 """
-function posterior_on_spikes!(memory::Memoryforgradient, model::Model)
+function posterior_on_spikes!(memory::Memoryforgradient, model::Model; brainarea::String="")
 	p𝐘 = memory.p𝐘𝑑
 	for i in eachindex(p𝐘)
-		scaledlikelihood!(p𝐘[i], model.trialsets[i])
+		scaledlikelihood!(p𝐘[i], model.trialsets[i]; brainarea=brainarea)
 	end
 	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
 	posteriors!(memory, P, model)
@@ -389,14 +389,21 @@ UNMODIFIED ARGUMENT
 RETURN
 -`nothing`
 """
-function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, trialset::Trialset)
+function scaledlikelihood!(p𝐘::Vector{<:Vector{<:Matrix{<:Real}}}, trialset::Trialset; brainarea::String="")
 	(Ξ,K) = size(p𝐘[1][end])
-	N = length(trialset.mpGLMs)
+	if brainarea == ""
+		mpGLMs = trialset.mpGLMs
+	else
+		brainareas = collect(mpGLM.brainarea for mpGLM in trialset.mpGLMs)
+		indices = brainareas .== brainarea
+		mpGLMs = trialset.mpGLMs[indices]
+	end
+	N = length(mpGLMs)
     for j = 1:Ξ
         for k = 1:K
-			𝐩 = scaledlikelihood(trialset.mpGLMs[1], j, k)
+			𝐩 = scaledlikelihood(mpGLMs[1], j, k)
             for n = 2:N
-			    scaledlikelihood!(𝐩, trialset.mpGLMs[n], j, k)
+			    scaledlikelihood!(𝐩, mpGLMs[n], j, k)
             end
             τ = 0
             for m in eachindex(p𝐘)
