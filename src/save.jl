@@ -55,7 +55,7 @@ function posteriors_individual_brain_areas(foldername::String, model::Model)
 			end
 			dict = Dict("paccumulator_choicespikes"=>paccumulator_choicespikes)
 		    matwrite(joinpath(folderpath, "paccumulator_choicespikes.mat"), dict)
-			dict = Dict("paccumulator_spikess"=>paccumulator_spikes)
+			dict = Dict("paccumulator_spikes"=>paccumulator_spikes)
 		    matwrite(joinpath(folderpath, "paccumulator_spikes.mat"), dict)
 		end
 	end
@@ -87,7 +87,7 @@ function posteriors_individual_brain_areas(cvindices::Vector{<:CVIndices}, folde
 			end
 			dict = Dict("paccumulator_choicespikes"=>paccumulator_choicespikes)
 		    matwrite(joinpath(folderpath, "paccumulator_choicespikes.mat"), dict)
-			dict = Dict("paccumulator_spikess"=>paccumulator_spikes)
+			dict = Dict("paccumulator_spikes"=>paccumulator_spikes)
 		    matwrite(joinpath(folderpath, "paccumulator_spikes.mat"), dict)
 		end
 	end
