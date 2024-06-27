@@ -4,8 +4,7 @@
 Model settings
 """
 @with_kw struct Options{TB<:Bool, TS<:String, TF<:AbstractFloat, TI<:Integer, TVF<:Vector{<:AbstractFloat}}
-	"response latency of the accumulator to the clicks"
-    a_latency_s::TF=1e-2
+
 	"value optimized when initializing the choice-related parameters"
 	choiceobjective::TS="posterior"
 	"Exponent used to compute the scale factor of the log-likelihood of the choices. The scale factor is computed by raising the product of the number of neurons and the average number of time steps in each trial to the exponent. An exponent of 0 means no scaling"
@@ -14,14 +13,8 @@ Model settings
     datapath::TS=""
 	"duration of each timestep in seconds"
     Δt::TF=0.01
-	"whether the transition probability of remaining in the first state is fitted"
-	fit_Aᶜ₁₁::TB=false
-	"whether the transition probability of remaining in the second state is fitted"
-	fit_Aᶜ₂₂::TB=false
 	"whether to fit the height of the sticky bounds"
 	fit_B::TB=true
-	"whether to fit the parameter for transforming the accumulator"
-	fit_b::TB=false
 	"whether to fit separate encoding weights for when the accumulator is at the bound"
 	fit_𝛃::TB=true
 	"whether to fit the exponential change rate of inter-click adaptation"
@@ -34,8 +27,6 @@ Model settings
 	fit_overdispersion::TB=false
 	"whether to fit the strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
 	fit_ϕ::TB=false
-	"whether the prior probability of the first state is fitted"
-	fit_πᶜ₁::TB=false
 	"whether to fit the behavioral lapse rate"
 	fit_ψ::TB=false
 	"whether to fit the variance of the Gaussian noise added at each time step"
@@ -48,12 +39,6 @@ Model settings
 	fit_wₕ::TB=false
 	"L2 norm of the gradient at which convergence of model's cost function is considered to have converged"
 	g_tol::TF=1e-8
-	"number of states of the coupling variable"
-	K::TI = 1; @assert (K==1 || K == 2)
-	"maximum and minimum of the L2 shrinkage penalty for each class of parameters. The penalty is initialized as (and if not being learned, set as) the geometric mean of the maximum and minimum."
-	"accumulator transformation"
-	L2_b_max::TF=1e1
-	L2_b_min::TF=1e-3
 	"latent variable parameter when fitting to only choices"
 	L2_choices_max::TF=1e0
 	L2_choices_min::TF=1e-4
@@ -188,6 +173,11 @@ Model settings
 	tbf_b_scalefactor::TF=1.0
     "number of states of the discrete accumulator variable"
     Ξ::TI=53; @assert isodd(Ξ) && Ξ > 1
+	"""
+	hyperparameters whose default value depends on other hyperparameters
+	"""
+	"response latency of the accumulator to the clicks"
+    a_latency_s::TF=dt
 end
 
 """
@@ -198,10 +188,6 @@ Parameters of the latent variables in the factorial hidden Markov drift-diffusio
 Not included are the weights of the linear filters of the mixture of Poisson generalized linear model of each neuron
 """
 @with_kw struct Latentθ{VR<:Vector{<:Real}}
-	"transition probability of the coupling variable to remain in the coupled state"
-	Aᶜ₁₁::VR=[NaN]
-	"transition probability of the coupling variable to remain in the uncoupled state"
-	Aᶜ₂₂::VR=[NaN]
 	"height of the sticky bounds"
 	B::VR=[NaN]
 	"exponential change rate of inter-click adaptation"
@@ -212,8 +198,6 @@ Not included are the weights of the linear filters of the mixture of Poisson gen
 	μ₀::VR=[NaN]
 	"strength of inter-click adaptation and sign of the adaptation (facilitation vs. depression)"
 	ϕ::VR=[NaN]
-	"prior probability of the coupling variable in the coupled state"
-	πᶜ₁::VR=[NaN]
 	"prior probability that the accumulator variable is not used to determine the behavioral choice"
 	ψ::VR=[NaN]
 	"multiplied by the width of the timestep `Δt`, this is the variance of the Gaussian noise added at each time step"
@@ -273,10 +257,8 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	movementtimestep::TI; @assert movementtimestep > 0
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"
     ntimesteps::TI
-	"time when the offset ramp of the photostimulus began"
-	photostimulus_decline_on_s::TF
-	"time when the onset ramp of the photostimulus began"
-	photostimulus_incline_on_s::TF
+	"time when the onset of a photostimulus"
+	photostimulus_s::TF
     "location of the reward baited in the previous trial (left:-1, right:1, no previous trial:0)"
     previousanswer::TI
 	"a nested array whose element `spiketrains[n][t]` is the spike train response of the n-th neuron on the t-th time step of the trial"
@@ -310,32 +292,49 @@ Parameters of a mixture of Poisson generalized linear model
 @with_kw struct GLMθ{B<:Bool, IU<:Indices𝐮, R<:Real, VR<:Vector{<:Real}, VS<:Vector{<:Symbol}, VVR<:Vector{<:Vector{<:Real}}}
 	"overdispersion parameter in real space. It is mapped into a nonnegative value using the softplus function."
 	a::VR=[-Inf]
-    "nonlinearity in accumulator transformation"
-	b::VR=[NaN]
-	"scale factor for the nonlinearity of accumulator transformation"
-	b_scalefactor::R
-	"order by which parameters are concatenated"
-	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :a, :b]
-	"whether the nonlinearity parameter is fit"
-	fit_b::B
-	"whether to fit separate encoding weights for when the accumulator at the bound"
-	fit_𝛃::B
-	"whether to fit an overdispersion parameter. If so, the count response model is negative binomial rather than Poisson"
-	fit_overdispersion::B
+	"encodinng weight of the accumulated evidence"
+	wA::VR=[1.0]
+	"encoding weight of the accumulated evidence at the absorbing bound"
+	wC::VR=[1.0]
 	"state-independent linear filter of inputs from the spike history and time in the trial"
     𝐮::VR
 	"Indices of the encoding weights of the temporal basis vectors of the filters that are independent of the accumulator"
 	indices𝐮::IU
-    "state-dependent linear filters of the inputs from the accumulator "
-    𝐯::VVR
-	"state-dependent linear filters of the time-varying input from the transformed accumulated evidence"
-	𝛃::VVR=deepcopy(𝐯)
+end
+
+"""
+	GLMoptions
+
+Hyperparameters for the observation model
+"""
+@with_kw struct GLMoptions
+	"order by which parameters are concatenated"
+	concatenationorder::VS = [:𝐮, :𝐯, :𝛃, :a]
+	"whether to fit separate encoding weights for when the decision variable at the bound"
+	fit_wC::B
+	"whether to fit an overdispersion parameter. If so, the count response model is negative binomial rather than Poisson"
+	fit_overdispersion::B
+	"scale factor multiplied to the likelihood to avoid underflow when computing the likelihood of the population response"
+	likelihoodscalefactor::F
+end
+
+"""
+"""
+@with_kw struct GLMbasisfunctions{}
+	"Values of the smooth temporal basis functions used to parametrize the post-spike filter"
+	postspike::MF
+	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the animal leaving the center and the neuron's probability of spiking. The timing is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. The columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
+	premovement::MF
+	"temporal basis vectors for the photostimulus"
+	postphotostimulus::MF
+	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
+	poststereoclick::MF
 end
 
 """
     MixturePoissonGLM
 
-Mixture of Poisson generalized linear model
+The observation model: mixture of Poisson generalized linear model
 """
 @with_kw struct MixturePoissonGLM{TI<:Integer,
 								  F<:AbstractFloat,
@@ -345,48 +344,25 @@ Mixture of Poisson generalized linear model
 								  VI<:Vector{<:UInt8},
 								  Tθ<:GLMθ,
                                   MF<:Matrix{<:AbstractFloat}}
-	"brain area"
-	brainarea::TS=""
+	"bias to the observation model that varies both across and within trials"
+	𝐛::VF
 	"size of the time bin"
     Δt::F
 	"Normalized values of the accumulator"
     d𝛏_dB::VF
-	"scale factor multiplied to the likelihood to avoid underflow when computing the likelihood of the population response"
-	likelihoodscalefactor::F
-	"Values of the smooth temporal basis functions used to parametrize the time-varying weight of accumulator. Columns correspond to temporal basis functions, and rows correspond to time steps, concatenated across trials."
-	Φaccumulator::MF
-	"values of the basis functions parametrizing the slow drift in gain on each trial"
-	Φgain::MF
-	"Values of the smooth temporal basis functions used to parametrize the post-spike filter"
-	Φpostspike::MF
-	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the animal leaving the center and the neuron's probability of spiking. The timing is represented by a delta function, and the delta function is convolved with a linear combination of the temporal basis functions to specify the filter, or the kernel, of the event. The columns correspond to temporal basis functions and rows correspond to time steps, concatenated across trials."
-	Φpremovement::MF
-	"temporal basis vectors for the photostimulus"
-	Φpostphotostimulus::MF
-	"time steps of the temporal basis vectors relative to the onset of the photostimulus"
-	Φpostphotostimulus_timesteps::UI
-	"Values of the smooth temporal basis functions used to parametrize the time-varying relationship between the timing of the stereoclick and the neuron's probability of spiking."
-	Φpoststereoclick::MF
 	"parameters"
 	θ::Tθ
-    "Input of the accumulator. The first column consists of ones. The subsequent columns, if any, correspond to the time-varying input of the accumulator. Element 𝐕[t,i] corresponds to the value of the i-th temporal basis function at the t-th time bin"
-    𝐕::MF
-	"design matrix. The first column are ones. The subsequent columns correspond to spike history-dependent inputs. These are followed by columns corresponding to the time-dependent input. The last set of columns are given by 𝐕"
+	"values of the basis functions"
+	Φ::
+	"design matrix"
 	𝐗::MF
-	"columns corresponding to the state-independent inputs"
-	𝐗columns_𝐮::UI = 1:(size(𝐗,2)-size(𝐕,2))
-	"columns corresponding to the input from the accumulator"
-	𝐗columns_𝐯::UI = (size(𝐗,2)-size(𝐕,2)+1):size(𝐗,2)
 	"number of accumulator states"
 	Ξ::TI=length(d𝛏_dB)
 	"Poisson observations"
     𝐲::VI
 end
 
-
-
 """
-
 Quantities and memory used for computing the conditional partial derivatives of spike count response generalized linear model
 """
 @with_kw struct GLMDerivatives{B<:Bool, F<:AbstractFloat, VF<:Vector{<:AbstractFloat}, MF<:Matrix{<:AbstractFloat}}
@@ -419,17 +395,27 @@ Quantities and memory used for computing the conditional partial derivatives of 
 end
 
 """
+	Neuron
+
+Information regarding a neuron
+"""
+@with_kw struct Neuron{TS<:String}
+	"brain area"
+	brainarea::TS=""
+end
+
+"""
     Trialset
 
 A group of trials in which a population of neurons were recorded simultaneously
 """
-@with_kw struct Trialset{VM<:Vector{<:MixturePoissonGLM}, TI<:Integer, VT<:Vector{<:Trial}}
-	"Mixture of Poisson GLM of each neuron in this trialset"
-    mpGLMs::VM=MixturePoissonGLM[]
-	"number of time steps summed across trials"
-	ntimesteps::TI=size(mpGLMs[1].𝐗,1)
+@with_kw struct Trialset{VN<:Vector{<:Neuron}, TI<:Integer, VT<:Vector{<:Trial}}
+	"Information regarding each neuron in this trialset"
+    neurons::VN=Neurons[]
 	"Information on the stimulus and behavior for each trial in this trial-set"
     trials::VT
+	"number of time steps summed across trials"
+	ntimesteps::TI=sum((trial.ntimesteps for trial in trials))
 	"Number of trials"
 	ntrials::TI=length(trials)
 end
@@ -478,7 +464,8 @@ A factorial hidden Markov drift-diffusion model
 					Tθ1<:Latentθ,
 					Tθ2<:Latentθ,
 					Tθ3<:Latentθ,
-					VT<:Vector{<:Trialset}}
+					VT<:Vector{<:Trialset},
+					VMPGLM<:Vector{<:MixturePoissonGLM}}
 	"settings of the model"
 	options::Toptions
 	"Gaussian prior on the parameters"
@@ -491,6 +478,8 @@ A factorial hidden Markov drift-diffusion model
 	θ₀native::Tθ3
 	"data used to constrain the model"
 	trialsets::VT
+	"probability distributions of the emissions given the latent and the inputs"
+	observationmodels::VMPGLM
 end
 
 """
@@ -784,13 +773,10 @@ Quantities that are same across trials and used in each trial
 """
 @with_kw struct Sameacrosstrials{MMR<:Matrix{<:Matrix{<:Real}},
 								VMR<:Vector{<:Matrix{<:Real}},
-								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
 								MR<:Matrix{<:Real},
-								TMR<:Transpose{<:Real, <:Matrix{<:Real}},
 								VR<:Vector{<:Real},
 								VVR<:Vector{<:Vector{<:Real}},
 								TVR<:Transpose{<:Real, <:Vector{<:Real}},
-								VTVR<:Vector{<:Transpose{<:Real, <:Vector{<:Real}}},
 								R<:Real,
 								VI<:Vector{<:Integer},
 								VVI<:Vector{<:Vector{<:Integer}},
@@ -802,14 +788,6 @@ Quantities that are same across trials and used in each trial
 	∇Aᵃsilent::VMR
 	"second-order partial derivatives of the transition matrix of the accumulator at a time step without auditory input. Element `∇∇Aᵃsilent[q,r][i,j]` corresponds to the derivative of the transition probability p{a(t)=ξ(i) ∣ a(t-1) = ξ(j)} with respect to the q-th parameter and r-th parameter that influence the accumulator transitions."
 	∇∇Aᵃsilent::MMR
-	"transition matrix of the coupling"
-	Aᶜ::MR
-	"transpose of the transition matrix of the coupling. Element Aᶜᵀ[i,j] corresponds to the transition probability p{c(t)=j ∣ c(t-1)=i}"
-	Aᶜᵀ::TMR=transpose(Aᶜ)
-	"first-order partial derivatives of the transition matrix of the coupling. Element ∇Aᶜ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=i ∣ c(t-1)=j} with respect to the q-th parameter that influence coupling transitions."
-	∇Aᶜ::VMR
-	"first-order partial derivatives of the transpose of the transition matrix of the coupling. Element ∇Aᶜᵀ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=j ∣ c(t-1)=i} with respect to the q-th parameter that influence coupling transitions."
-	∇Aᶜᵀ::VTMR = transpose.(∇Aᶜ)
 	"size of the time step"
 	Δt::R
 	"indices of the parameters that influence the prior probabilities of the accumulator"
@@ -818,10 +796,6 @@ Quantities that are same across trials and used in each trial
 	indexθ_paₜaₜ₋₁::VI
 	"indices of the parameters that influence the transition probabilities of the accumulator"
 	indexθ_paₜaₜ₋₁only::VI = setdiff(indexθ_paₜaₜ₋₁, indexθ_pa₁)
-	"indices of the parameters that influence the prior probabilities of the coupling"
-	indexθ_pc₁::VI
-	"indices of the parameters that influence the transition probabilities of the coupling variable"
-	indexθ_pcₜcₜ₋₁::VI
 	"indices of the parameters that influence the lapse rate"
 	indexθ_ψ::VI
 	"indices of the parameters in each Poisson mixture GLM in each trialset"
@@ -829,27 +803,13 @@ Quantities that are same across trials and used in each trial
 	"indices of the parameters in the Poisson mixture GLM in each trialset"
 	indexθ_pY::VVI
 	"indices of the parameters in each trialset"
-	indexθ_trialset::VVI = map(indexθ_pY->vcat(1:13, indexθ_pY), indexθ_pY)
-	"number of coupling states"
-	K::TI
-	"prior probability of the coupling"
-	πᶜ::VR
-	"transpose of the prior probability of the coupling. It is a row vector"
-	πᶜᵀ::TVR=transpose(πᶜ)
-	"first-order partial derivatives of the prior probability of the coupling. Element ∇πᶜ[q][i] corresponds to the derivative of prior probability p{c(t=1)=i} with respect to the q-th parameter that influence the prior probability of coupling."
-	∇πᶜ::VVR
-	"first-order partial derivatives of the transpose of the prior probability of the coupling."
-	∇πᶜᵀ::VTVR=transpose.(∇πᶜ)
+	indexθ_trialset::VVI = map(indexθ_pY->vcat(1:10, indexθ_pY), indexθ_pY)
 	"number of accumulator states"
 	Ξ::TI
 	"number of parameters that influence the prior probabilities of the accumulator"
 	nθ_pa₁::TI = length(indexθ_pa₁)
 	"number of parameters that influence the transition probabilities of the accumulator"
 	nθ_paₜaₜ₋₁::TI = length(indexθ_paₜaₜ₋₁)
-	"number of parameters that influence the prior probabilities of the coupling"
-	nθ_pc₁::TI = length(indexθ_pc₁)
-	"number of parameters that influence the transition probabilities of the coupling variable"
-	nθ_pcₜcₜ₋₁::TI = length(indexθ_pcₜcₜ₋₁)
 	"number of the parameters that influence the lapse rate"
 	nθ_ψ::TI = length(indexθ_ψ)
 	"number of parameters in the Poisson mixture GLM in each trialset"
@@ -864,10 +824,6 @@ Quantities that are same across trials and used in each trial
 	index_pa₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_pa₁] .= 1:nθ_pa₁; x; end
 	"whether a parameter influences the transition probability of the accumulator, and if so, the index of that parameter"
 	index_paₜaₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_paₜaₜ₋₁] .= 1:nθ_paₜaₜ₋₁; x; end
-	"whether a parameter influences the prior probability of the coupling, and if so, the index of that parameter"
-	index_pc₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_pc₁] .= 1:nθ_pc₁; x; end
-	"whether a parameter influences the transition probability of the coupling, and if so, the index of that parameter"
-	index_pcₜcₜ₋₁_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_pcₜcₜ₋₁] .= 1:nθ_pcₜcₜ₋₁; x; end
 	"whether a parameter influences the prior probability of the lapse, and if so, the index of that parameter"
 	index_ψ_in_θ::VI = let x = zeros(Int, nθ_alltrialsets); x[indexθ_ψ] .= 1:nθ_ψ; x; end
 	"whether a parameter influences the mixture of Poisson GLM, and if so, the index of that parameter"
@@ -963,14 +919,10 @@ Container of variables used by both the log-likelihood and gradient computation
 								TI<:Integer,
 								VI<:Vector{<:Integer},
 								VR<:Vector{<:Real},
-								TVR<:Transpose{<:Real, <:Vector{<:Real}},
 								MR<:Matrix{<:Real},
-								TMR<:Transpose{<:Real, <:Matrix{<:Real}},
 								VVR<:Vector{<:Vector{<:Real}},
 								VVθ<:Vector{<:Vector{<:GLMθ}},
 								VMR<:Vector{<:Matrix{<:Real}},
-								VTVR<:Vector{<:Transpose{<:Real, <:Vector{<:Real}}},
-								VTMR<:Vector{<:Transpose{<:Real, <:Matrix{<:Real}}},
 								VVVR<:Vector{<:Vector{<:Vector{<:Real}}},
 								VVMR<:Vector{<:Vector{<:Matrix{<:Real}}},
 								VMVR<:Vector{<:Matrix{<:Vector{<:Real}}},
@@ -984,14 +936,6 @@ Container of variables used by both the log-likelihood and gradient computation
 	Aᵃsilent::MR
 	"partial derivatives of the transition matrix of the accumulator variable in the absence of input"
 	∇Aᵃsilent::VMR
-	"transition matrix of the coupling"
-	Aᶜ::MR
-	"transpose of the transition matrix of the coupling. Element Aᶜᵀ[i,j] corresponds to the transition probability p{c(t)=j ∣ c(t-1)=i}"
-	Aᶜᵀ::TMR=transpose(Aᶜ)
-	"first-order partial derivatives of the transition matrix of the coupling. Element ∇Aᶜ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=i ∣ c(t-1)=j} with respect to the q-th parameter that influence coupling transitions."
-	∇Aᶜ::VMR
-	"first-order partial derivatives of the transpose of the transition matrix of the coupling. Element ∇Aᶜᵀ[q][i,j] corresponds to the derivative of the transition probability p{c(t)=j ∣ c(t-1)=i} with respect to the q-th parameter that influence coupling transitions."
-	∇Aᶜᵀ::VTMR = transpose.(∇Aᶜ)
 	"scaling factor of the log-likelihood of choices"
 	choiceLLscaling::R
 	"a vector of the concatenated values of the parameters being fitted"
@@ -1008,10 +952,6 @@ Container of variables used by both the log-likelihood and gradient computation
 	indexθ_pa₁::VI
 	"indices of the parameters that influence the transition probabilities of the accumulator"
 	indexθ_paₜaₜ₋₁::VI
-	"indices of the parameters that influence the prior probabilities of the coupling"
-	indexθ_pc₁::VI
-	"indices of the parameters that influence the transition probabilities of the coupling variable"
-	indexθ_pcₜcₜ₋₁::VI
 	"indices of the parameters that influence the lapse rate"
 	indexθ_ψ::VI
 	"posterior probabilities: element γ[s][j,k][t] corresponds to the p{a(t)=ξ(j),c(t)=k ∣ 𝐘} for the t-th time step in the s-th trialset"
@@ -1030,20 +970,8 @@ Container of variables used by both the log-likelihood and gradient computation
 	nθ_pa₁::TI = length(indexθ_pa₁)
 	"number of parameters that influence the transition probabilities of the accumulator"
 	nθ_paₜaₜ₋₁::TI = length(indexθ_paₜaₜ₋₁)
-	"number of parameters that influence the prior probabilities of the coupling"
-	nθ_pc₁::TI = length(indexθ_pc₁)
-	"number of parameters that influence the transition probabilities of the coupling variable"
-	nθ_pcₜcₜ₋₁::TI = length(indexθ_pcₜcₜ₋₁)
 	"number of the parameters that influence the lapse rate"
 	nθ_ψ::TI = length(indexθ_ψ)
-	"prior probability of the coupling"
-	πᶜ::VR
-	"transpose of the prior probability of the coupling. It is a row vector"
-	πᶜᵀ::TVR=transpose(πᶜ)
-	"first-order partial derivatives of the prior probability of the coupling. Element ∇πᶜ[q][i] corresponds to the derivative of prior probability p{c(t=1)=i} with respect to the q-th parameter that influence the prior probability of coupling."
-	∇πᶜ::VVR
-	"first-order partial derivatives of the transpose of the prior probability of the coupling."
-	∇πᶜᵀ::VTVR=transpose.(∇πᶜ)
 	"Conditional likelihood of the emissions (spikes and/or choice) at each time bin. For time bins of each trial other than the last, it is the product of the conditional likelihood of all spike trains. For the last time bin, it corresponds to the product of the conditional likelihood of the spike trains and the choice. Element p𝐘𝑑[i][m][t][j,k] corresponds to ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k) across N neural units at the t-th time bin in the m-th trial of the i-th trialset. The last element p𝐘𝑑[i][m][end][j,k] of each trial corresponds to p(𝑑 | aₜ = ξⱼ, zₜ=k) ∏ₙᴺ p(𝐲ₙ(t) | aₜ = ξⱼ, zₜ=k)"
 	p𝐘𝑑::VVVMR
 	"number of accumulator states"
@@ -1361,7 +1289,6 @@ Results of cross-validation
 	trainingsummaries::VS
 end
 
-
 """
 	PoissonGLM
 
@@ -1384,50 +1311,6 @@ Object containing the data and parameters of a Poisson GLM and also the quantiti
 	∇ℓ::VR=fill(NaN,n𝐰)
 	"hessian"
 	∇∇ℓ::MR=fill(NaN,n𝐰,n𝐰)
-end
-
-"""
-	GainMixtureGLM
-
-Object containing the data and parameters of a mixture-of-gain Poisson GLM and also the quantities for estimating its parmaeters
-"""
-@with_kw struct GainMixtureGLM{R<:Real, VR<:Vector{<:Real}, MR<:Matrix{<:Real}, VVR<:Vector{<:Vector{<:Real}}, TI<:Integer, VI<:Vector{<:Integer}}
-	"time step"
-	Δt::R
-	"design matrix. the first column corresponds to the gain"
-	𝐗::MR
-	"spike train"
-	𝐲::VI
-	"slowly-varying baseline"
-	𝐆::VR = 𝐗[:,1]
-	"weight of the baseline. Each element corresponds to the weight of the baseline at different states"
-	𝐠::VR = fill(NaN,2)
-	"other inputs"
-	𝐔::MR = 𝐗[:,2:end]
-	"weight of the other inputs"
-	𝐮::VR = fill(NaN, size(𝐗,2)-1)
-	"number of baseline-related parameters"
-	n𝐠::TI = length(𝐠)
-	"number of weights for other inputs "
-	n𝐮::TI = length(𝐮)
-	"total number of weights"
-	nweights::TI=n𝐠+n𝐮
-	"number of time steps"
-	ntimesteps::TI=length(𝐲)
-	"posterior probability of the baseline state"
-	𝛄::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
-	"prior probability of the baseline state"
-	π::VR=fill(NaN,1)
-	"expectation of the conditional log-likelihood under the posterior probability of the baseline state"
-	Q::VR=fill(NaN, 1)
-	"gradient of the expectation of the conditional log-likelihood"
-	∇Q::VR=fill(NaN, nweights)
-	"hessian of the expectation of the conditional log-likelihood"
-	∇∇Q::MR=fill(NaN, nweights, nweights)
-	"product between the posterior probability in each state and the derivative of the conditional log-likelihood with respect to the conditional linear predictor. Element `γₖdℓ_dLₖ[k][t]` corresponds to the k-th state and the t-th time step"
-	γₖdℓ_dLₖ::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
-	"product between the posterior probability in each state and the second derivative of the conditional log-likelihood with respect to the conditional linear predictor. Element `γₖd²ℓ_dLₖ²[k][t]` corresponds to the k-th state and the t-th time step"
-	γₖd²ℓ_dLₖ²::VVR=collect(fill(NaN, ntimesteps) for k=1:n𝐠)
 end
 
 """
@@ -1508,7 +1391,6 @@ Trained exponential kernel models and out-of-sample predictions
 	"psychophysical kernel estimated in each cross-validation fold"
 	psychophysicalkernel::VVF=collect(fill(NaN, T) for k = 1:kfold)
 end
-
 
 """
 	PericommitmentKernel
