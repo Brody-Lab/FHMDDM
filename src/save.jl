@@ -120,11 +120,14 @@ ARGUMENT
 -`trialsets`: data
 """
 function save(options::Options, trialsets::Vector{<:Trialset})
-    trialsets = map(trialsets) do trialset
+	neurons = map(trialsets[1].mpGLMs) do mpGLM
+		Dict("brainarea"=>mpGLM.brainarea)
+	end
+    trialsets_dict = map(trialsets) do trialset
 					trials = map(trial->dictionary(trial, options.a_latency_s), trialset.trials)
                 	Dict("trials"=>trials)
             	end
-    dict = Dict("trialsets"=>trialsets)
+    dict = Dict("trialsets"=>trialsets_dict, "neurons"=>neurons)
     filepath = joinpath(options.outputpath, "trialsets.mat")
     matwrite(filepath, dict)
 end
