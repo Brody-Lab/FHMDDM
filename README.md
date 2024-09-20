@@ -266,6 +266,8 @@ Once the scripts are prepared, run the Julia script on the cluster by calling `s
 ```
 sbatch /usr/people/zhihaol/Documents/tzluo/analyses/analysis_2023_02_08a_choiceLL_scaling_exponent/optimize.sh
 ```
+
+The expected run time on a on a node in the PNI cluster and on a "normal" desktop computer is a few hours.
 ## examining the results
 Code for plotting the results was written in MATLAB 2023a. To use the plotting tools, add the local copy of the folder [FHMDDM/src](https://github.com/Brody-Lab/FHMDDM/tree/master/src) into MATLAB's search path. First, let's tabulate the models and their options. Here we are assuming that the MATLAB script is saved in the same folder where the `options.csv` is located:
 ```
