@@ -34,6 +34,8 @@ After providing credentials, load a version of Julia and run it
 [<netID>spock ~]$ julia
 julia>
 ```
+This can also be done locally on a desktop computer. Visual Studio Code provides a nice editor for Julia code. 
+
 ## installing the FHMDDM repository
 
 In the Julia read-eval-print loop (REPL), enter the Pkg REPL by pressing `]` from the Julia REPL. To get back to the Julia REPL, press `backspace` or `^C`.
@@ -47,7 +49,7 @@ Add the `FHMDDM` repository
   Updating git-repo `https://github.com/Brody-Lab/FHMDDM.git`
   Username for 'https://github.com':
 ```
-Provide your github credentials. Having added a package, update your environment:
+This should take no more than 10 minutes. Having added a package, update your environment:
 ```
 (v1.6) pkg> up
 ```
@@ -89,7 +91,7 @@ Model
 If an error occurs and requires recompilation, Julia must be restarted.
 
 ##   creating a model with default options
-To create a model with the default model options, provide the absolute path of a data file ([the data format is discussed below](#data-format))
+To create a model with the default model options, provide the absolute path of a data file ([the data format is discussed below](#data-format), and an example data file is located [here](/assets/T176_2018_05_03.mat))
 ```
 julia> datapath = "/mnt/cup/labs/brody/tzluo/manuscript2023a/recordingsessions/2023_04_12/T176_2018_05_03.mat"
 ```
