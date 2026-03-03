@@ -33,8 +33,14 @@ ARGUMENT
 -`datapath`: absolute path of the binary MATLAB (``.mat`) file containing the data
 -`outputpath`: absolute path of the folder where the parameters and predictions of the model are to be stored
 """
-Model(datapath::String, outputpath::String) = Model(Options(Dict("datapath"=>datapath, "outputpath"=>outputpath)))
-
+# Model(datapath::String, outputpath::String) = Model(Options(Dict("datapath"=>datapath, "outputpath"=>outputpath)))
+Model(datapath::String, outputpath::String; do_shuffle::Bool=false, shuffle_seed::Int=0) =
+    Model(Options(Dict(
+        "datapath"=>datapath,
+        "outputpath"=>outputpath,
+        "do_shuffle"=>do_shuffle,
+        "shuffle_seed"=>shuffle_seed,
+    )))
 """
 	Options(csvpath, row)
 
@@ -182,6 +188,111 @@ function Trialset(options::Options, trials, trialsetindex::Integer)
 	trials = processtrials(options, trials, trialsetindex)
 	mpGLMs = MixturePoissonGLM(options, trials)
     Trialset(mpGLMs=mpGLMs, trials=trials)
+end
+
+# Match MATLAB idea: same click pattern => same "seed"
+# We build a stable string key from L/R click times (rounded to microseconds).
+function clickpattern_key(trialdict; digits::Int=6)
+    L = trialdict["clicktimes"]["L"]; L = (L isa AbstractFloat) ? [L] : vec(L)
+    R = trialdict["clicktimes"]["R"]; R = (R isa AbstractFloat) ? [R] : vec(R)
+
+    L = round.(L; digits=digits)
+    R = round.(R; digits=digits)
+
+    function vec2str(v)
+        isempty(v) && return ""
+        return join((@sprintf("%.*f", digits, x) for x in v), ",")
+    end
+    return "L:" * vec2str(L) * "|R:" * vec2str(R)
+end
+
+function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
+    raw_trials = vec(trials)  # <-- keep the Dicts for seedkey computation
+    trials = processtrials(options, raw_trials, trialsetindex) # original
+
+    if options.do_shuffle
+        rng = MersenneTwister(options.shuffle_seed)
+        
+        shuffle_rows = DataFrame(
+            trialsetindex = Int[],
+            region = String[],
+            seedkey = String[],
+            choice = Int[],                 # 0/1
+            original_trial_idx = Int[],
+            shuffled_trial_idx = Int[],
+        )
+
+        # --------- neuron indices grouped by region ----------
+        brainareas = [neurons[j]["brainarea"] for j in 1:length(neurons)]
+        inds_by_region = Dict{String, Vector{Int}}()
+        for (j, ba) in enumerate(brainareas)
+            push!(get!(inds_by_region, ba, Int[]), j)
+        end
+
+        # --------- trial indices grouped by choice ----------
+        left_trials  = findall(t -> t.choice == false, trials)  # choice is Bool in Trial
+        right_trials = findall(t -> t.choice == true,  trials)
+
+        # --------- trial indices grouped by click-pattern "seed" ----------
+        trial_seedkeys = [clickpattern_key(raw_trials[i]) for i in 1:length(raw_trials)]
+        uniq_keys = sort!(unique(trial_seedkeys))
+
+        
+        # helper: shuffle spike trains for a set of trials, but only for selected neurons
+        function shuffle_spikes!(trial_inds::Vector{Int}, neuron_inds::Vector{Int},
+                                region::String, seedkey::String, choice::Int)
+            if length(trial_inds) <= 1 || isempty(neuron_inds)
+                return
+            end
+
+            # snapshot original spike trains for these neurons
+            orig = Dict{Int, Vector{Vector{UInt8}}}()
+            for ti in trial_inds
+                orig[ti] = [copy(trials[ti].spiketrains[n]) for n in neuron_inds]
+            end
+
+            perm = copy(trial_inds)
+            shuffle!(rng, perm)
+
+            # record mapping: each dst gets spikes from src
+            for (dst, src) in zip(trial_inds, perm)
+                push!(shuffle_rows, (trialsetindex, region, seedkey, choice, dst, src))
+            end
+
+            # apply shuffle
+            for (dst, src) in zip(trial_inds, perm)
+                for (k, n) in enumerate(neuron_inds)
+                    trials[dst].spiketrains[n] = orig[src][k]
+                end
+            end
+        end
+
+        # --------- main: shuffle within {region, seed(clickpattern), choice} ----------
+        for region in sort!(collect(keys(inds_by_region)))
+            neuron_inds = inds_by_region[region]
+
+            for seedkey in uniq_keys
+                seed_trials = findall(i -> trial_seedkeys[i] == seedkey, 1:length(trials))
+
+                # intersect with each choice
+                lt = intersect(seed_trials, left_trials)
+                rt = intersect(seed_trials, right_trials)
+
+                shuffle_spikes!(lt, neuron_inds, region, seedkey, 0)
+                shuffle_spikes!(rt, neuron_inds, region, seedkey, 1)
+            end
+        end
+        shuffle_dir = joinpath(options.outputpath, "shuffle_maps")
+        isdir(shuffle_dir) || mkpath(shuffle_dir)
+
+        csvpath = joinpath(shuffle_dir, "trialset$(trialsetindex)_region_seed_choice_shuffle.csv")
+        CSV.write(csvpath, shuffle_rows)
+        @info "Wrote shuffle map" csvpath nrows=nrow(shuffle_rows)
+    end
+
+    # Continue as usual
+    mpGLMs = MixturePoissonGLM(options, trials) # original
+    return Trialset(mpGLMs=mpGLMs, trials=trials) # original
 end
 
 """

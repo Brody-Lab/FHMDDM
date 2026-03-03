@@ -139,7 +139,10 @@ Model settings
 	objective::TS="posterior"; @assert any(objective .== ["evidence", "posterior", "likelihood", "initialization"])
 	"absolute path of the folder where the model output, including the summary and predictions, are saved"
 	outputpath::TS=""
-	"coefficient multiplied to any scale factor of the temporal basis functions of a Poisson mixture GLM"
+    do_shuffle::TB=false
+    "seed for deterministic shuffle (only used when do_shuffle=true)"
+    shuffle_seed::TI=0
+    "coefficient multiplied to any scale factor of the temporal basis functions of a Poisson mixture GLM"
 	sf_tbf::TVF=[NaN]
     "scale factor of the conditional likelihood of the spiking of a neuron at a time step"
 	sf_y::TF=1.2
