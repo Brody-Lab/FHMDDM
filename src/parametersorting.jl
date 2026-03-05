@@ -404,11 +404,24 @@ function sortparameters!(model::Model, filepath::String)
 	sortparameters!(model.θnative, 	read(matfile, "thetanative"))
 	sortparameters!(model.θreal, 	read(matfile, "thetareal"))
 	sortparameters!(model.θ₀native, read(matfile, "theta0native"))
-	thetaglm = read(matfile, "thetaglm")
-	for (trialset, thetaglm) in zip(model.trialsets, thetaglm)
-		for (mpGLM, thetaglm) in zip(trialset.mpGLMs, thetaglm)
-			sortparameters!(mpGLM.θ, thetaglm)
-		end
+	# thetaglm = read(matfile, "thetaglm")
+    thetaglm_all = read(matfile, "thetaglm")   # Vector{Any}, one per trialset
+
+	for (trialset, thetaglm_ts) in zip(model.trialsets, thetaglm_all)
+        # thetaglm_ts is MatlabStructArray with fields like "a","b","u",...
+        keys = String.(thetaglm_ts.names)  # fieldnames in the MAT struct array
+        
+        for (n, mpGLM) in enumerate(trialset.mpGLMs)
+            d = Dict{String,Any}()
+            for k in keys
+                v = thetaglm_ts[k]         # vector-like, indexed by neuron
+                d[k] = v[n]
+            end
+            sortparameters!(mpGLM.θ, d)
+        end
+		# for (mpGLM, thetaglm) in zip(trialset.mpGLMs, thetaglm)
+		# 	sortparameters!(mpGLM.θ, thetaglm)
+		# end
 	end
 	model.gaussianprior.𝛂 .= vec(read(matfile, "penaltycoefficients"))
     precisionmatrix!(model.gaussianprior)
