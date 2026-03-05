@@ -261,7 +261,7 @@ Information on the sensory stimulus and behavior each trial
 
 Spike trains are not included. In sampled data, the generatives values of the latent variables are stored.
 """
-@with_kw struct Trial{TB<:Bool, TC<:Clicks, TF<:AbstractFloat, TI<:Integer, TVVI<:Vector{<:Vector{<:Integer}}}
+@with_kw struct Trial{TB<:Bool, TC<:Clicks, TF<:AbstractFloat, TI<:Integer, TIS<:Integer, TVVI<:Vector{<:Vector{<:Integer}}}
     "information on the auditory clicks"
     clicks::TC
     "behavioral choice"
@@ -270,8 +270,10 @@ Spike trains are not included. In sampled data, the generatives values of the la
 	γ::TF
 	"index of the trial in the trialset"
 	index_in_trialset::TI
+    "index of the trial in the session (stable id from MATLAB)"
+    index_in_session::TIS               # NEW FIELD
 	"time of leaving the center port, relative to the time of the stereoclick, in seconds"
-	movementtime_s::TF; @assert movementtime_s > 0
+    movementtime_s::TF; @assert movementtime_s > 0
 	"time of leaving the center port, relative to the time of the stereoclick, in time steps"
 	movementtimestep::TI; @assert movementtimestep > 0
     "number of time steps in this trial. The duration of each trial is from the onset of the stereoclick to the end of the fixation period"

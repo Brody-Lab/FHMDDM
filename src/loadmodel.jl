@@ -1,3 +1,4 @@
+using Random, Printf, CSV, DataFrames
 """
 	contents
 
@@ -125,10 +126,16 @@ function loadtrialsets(options::Options)
 	end
 	options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
 	if singletrialset
-		[Trialset(options, data["trials"], 1)]
+		# [Trialset(options, data["trials"], 1)]
+        neurons = data["neurons"]   # or whatever key it is in your .mat
+        [Trialset(options, data["trials"], neurons, 1)]
 	else
-		map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
-	end
+		# map((trialset, trialsetindex)->Trialset(options, trialset["trials"], trialsetindex), vec(data["trialsets"]), 1:length(data["trialsets"]))
+        map((trialset, trialsetindex) -> begin
+            neurons = trialset["neurons"] 
+            Trialset(options, trialset["trials"], neurons, trialsetindex)
+        end, vec(data["trialsets"]), 1:length(data["trialsets"]))
+    end
 end
 
 """
@@ -184,11 +191,11 @@ ARGUMENT
 OUTPUT
 -a composite containing the stimulus timing, behavioral choice and timing, spike times recorded during the trials of a trialset
 """
-function Trialset(options::Options, trials, trialsetindex::Integer)
-	trials = processtrials(options, trials, trialsetindex)
-	mpGLMs = MixturePoissonGLM(options, trials)
-    Trialset(mpGLMs=mpGLMs, trials=trials)
-end
+# function Trialset(options::Options, trials, trialsetindex::Integer)
+# 	trials = processtrials(options, trials, trialsetindex)
+# 	mpGLMs = MixturePoissonGLM(options, trials)
+#     Trialset(mpGLMs=mpGLMs, trials=trials)
+# end
 
 # Match MATLAB idea: same click pattern => same "seed"
 # We build a stable string key from L/R click times (rounded to microseconds).
@@ -205,21 +212,21 @@ function clickpattern_key(trialdict; digits::Int=6)
     end
     return "L:" * vec2str(L) * "|R:" * vec2str(R)
 end
-
 function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
     raw_trials = vec(trials)  # <-- keep the Dicts for seedkey computation
     trials = processtrials(options, raw_trials, trialsetindex) # original
 
     if options.do_shuffle
+        @warn "Trialset WITH neurons called" do_shuffle=options.do_shuffle outputpath=options.outputpath pwd=pwd() ntrials=length(trials) nneurons=length(neurons)
         rng = MersenneTwister(options.shuffle_seed)
-        
+
         shuffle_rows = DataFrame(
             trialsetindex = Int[],
             region = String[],
             seedkey = String[],
             choice = Int[],                 # 0/1
-            original_trial_idx = Int[],
-            shuffled_trial_idx = Int[],
+            original_trial_idx = Int[],     # NOW: index_in_session
+            shuffled_trial_idx = Int[],     # NOW: index_in_session
         )
 
         # --------- neuron indices grouped by region ----------
@@ -237,10 +244,9 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
         trial_seedkeys = [clickpattern_key(raw_trials[i]) for i in 1:length(raw_trials)]
         uniq_keys = sort!(unique(trial_seedkeys))
 
-        
         # helper: shuffle spike trains for a set of trials, but only for selected neurons
         function shuffle_spikes!(trial_inds::Vector{Int}, neuron_inds::Vector{Int},
-                                region::String, seedkey::String, choice::Int)
+                                 region::String, seedkey::String, choice::Int)
             if length(trial_inds) <= 1 || isempty(neuron_inds)
                 return
             end
@@ -254,12 +260,14 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
             perm = copy(trial_inds)
             shuffle!(rng, perm)
 
-            # record mapping: each dst gets spikes from src
+            # record mapping using index_in_session (stable id)
             for (dst, src) in zip(trial_inds, perm)
-                push!(shuffle_rows, (trialsetindex, region, seedkey, choice, dst, src))
+                dst_id = Int(trials[dst].index_in_session)
+                src_id = Int(trials[src].index_in_session)
+                push!(shuffle_rows, (trialsetindex, region, seedkey, choice, dst_id, src_id))
             end
 
-            # apply shuffle
+            # apply shuffle (still done by in-memory indices)
             for (dst, src) in zip(trial_inds, perm)
                 for (k, n) in enumerate(neuron_inds)
                     trials[dst].spiketrains[n] = orig[src][k]
@@ -282,6 +290,7 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
                 shuffle_spikes!(rt, neuron_inds, region, seedkey, 1)
             end
         end
+
         shuffle_dir = joinpath(options.outputpath, "shuffle_maps")
         isdir(shuffle_dir) || mkpath(shuffle_dir)
 
@@ -330,10 +339,15 @@ function Trial(index_in_trialset::Integer, options::Options, preceding_timesteps
 	ntimesteps = convert(Int, trial["ntimesteps"])
 	clicks = Clicks(options.a_latency_s, options.Δt, leftclicks, ntimesteps, rightclicks)
 	spiketrains = collect(convert.(UInt8, vec(spiketrain)) for spiketrain in vec(trial["spiketrains"]))
-	Trial(choice=trial["choice"],
+
+    # Eva: trial id from MATLAB
+    idx_session = convert(Int, trial["index_in_session"])
+    
+    Trial(choice=trial["choice"],
 		  clicks=clicks,
 		  γ=trial["gamma"],
 		  index_in_trialset = index_in_trialset,
+          index_in_session = idx_session, # <-- EVA NEW FIELD
 		  movementtime_s=trial["movementtime_s"],
 		  movementtimestep=ceil(Int, (trial["movementtime_s"]-trial["stereoclick_time_s"])/options.Δt),
 		  ntimesteps=ntimesteps,
