@@ -30,6 +30,7 @@ function analyzeandsave(computehessian::Bool, foldername::String, model::Model)
 	psthsets = poststereoclick_time_histogram_sets(characterization.expectedemissions, model)
 	save(psthsets, folderpath)
 	posteriors_individual_brain_areas(foldername, model)
+    posteriors_leaveOneOut_individual_brain_areas(foldername, model)
 end
 
 """
@@ -40,6 +41,7 @@ Compute and save separate posterior probabilities for neurons in separate brain 
 ARGUMENT
 -`foldername`: name of the folder save the results
 -`model`: struct containing the data, parametes, and hyperparameters
+Eva: this is the function that gets called!
 """
 function posteriors_individual_brain_areas(foldername::String, model::Model)
 	brainareas = vcat((collect(mpGLM.brainarea for mpGLM in trialset.mpGLMs) for trialset in model.trialsets)...)
@@ -49,6 +51,27 @@ function posteriors_individual_brain_areas(foldername::String, model::Model)
 			paccumulator_choicespikes = posterior_accumulator_distribution(model; brainarea=brainarea, conditionedon="choices_spikes")
 			paccumulator_spikes = posterior_accumulator_distribution(model; brainarea=brainarea, conditionedon="spikes")
 			folderpath = joinpath(model.options.outputpath, foldername, "individual_brain_areas", brainarea)
+			if !isdir(folderpath)
+				mkpath(folderpath)
+				@assert isdir(folderpath)
+			end
+			dict = Dict("paccumulator_choicespikes"=>paccumulator_choicespikes)
+		    matwrite(joinpath(folderpath, "paccumulator_choicespikes.mat"), dict)
+			dict = Dict("paccumulator_spikes"=>paccumulator_spikes)
+		    matwrite(joinpath(folderpath, "paccumulator_spikes.mat"), dict)
+		end
+	end
+end
+
+function posteriors_leaveOneOut_individual_brain_areas(foldername::String, model::Model)
+	brainareas = vcat((collect(mpGLM.brainarea for mpGLM in trialset.mpGLMs) for trialset in model.trialsets)...)
+	uniqueareas = unique(brainareas)
+	if length(uniqueareas) > 1
+		for brainarea in uniqueareas
+            @info "Computing leave-one-out posteriors excluding brainarea=$brainarea"
+			paccumulator_choicespikes = posterior_accumulator_distribution_leave_one_out(model; brainarea=brainarea, conditionedon="choices_spikes")
+			paccumulator_spikes = posterior_accumulator_distribution_leave_one_out(model; brainarea=brainarea, conditionedon="spikes")
+			folderpath = joinpath(model.options.outputpath, foldername, "leaveOneOut_individual_brain_areas", brainarea)
 			if !isdir(folderpath)
 				mkpath(folderpath)
 				@assert isdir(folderpath)

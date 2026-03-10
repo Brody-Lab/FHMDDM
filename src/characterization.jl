@@ -133,6 +133,71 @@ function posterior_accumulator_distribution(model::Model; brainarea::String="", 
 	end
 end
 
+function posterior_accumulator_distribution_leave_one_out(model::Model; brainarea::String="", conditionedon::String="choices_spikes")
+	memory = Memoryforgradient(model)
+	@unpack options, θnative, trialsets = model
+	@unpack K, Ξ = options
+	@unpack p𝑑_a, p𝐘𝑑 = memory
+	for i in eachindex(p𝐘𝑑)
+		for m in eachindex(p𝐘𝑑[i])
+			for t in eachindex(p𝐘𝑑[i][m])
+				p𝐘𝑑[i][m][t] .= 1.0
+			end
+		end
+    end
+	if occursin("choice", conditionedon)
+		for i in eachindex(p𝐘𝑑)
+			for m in eachindex(p𝐘𝑑[i])
+				conditionallikelihood!(p𝑑_a[i][m], trialsets[i].trials[m].choice, θnative.ψ[1])
+				p𝐘𝑑[i][m][end] .*= p𝑑_a[i][m]
+			end
+	    end
+	end
+	if occursin("spike", conditionedon)
+		for i in eachindex(p𝐘𝑑)
+			if brainarea == ""
+				error("For leave-one-out posterior, please specify a brainarea to exclude.")
+            end
+            brainareas = collect(mpGLM.brainarea for mpGLM in trialsets[i].mpGLMs)
+            indices = brainareas .!= brainarea # changes
+            mpGLMs = trialsets[i].mpGLMs[indices]
+			N = length(mpGLMs)
+
+            # If excluding this region leaves no neurons, skip spike conditioning
+			# and leave p𝐘𝑑 at 1.0 (or you could error instead if preferred).
+			if N == 0
+				@warn "No mpGLMs remain after excluding brainarea=$brainarea in trialset $i. Spike likelihood is skipped for this trialset."
+				continue
+			end
+
+		    for j = 1:Ξ
+		        for k = 1:K
+					𝐩 = scaledlikelihood(mpGLMs[1], j, k)
+		            for n = 2:N
+					    scaledlikelihood!(𝐩, mpGLMs[n], j, k)
+		            end
+		            τ = 0
+		            for m in eachindex(p𝐘𝑑[i])
+		                for t in eachindex(p𝐘𝑑[i][m])
+		                    τ += 1
+		                    p𝐘𝑑[i][m][t][j,k] *= 𝐩[τ]
+		                end
+		            end
+		        end
+		    end
+		end
+	end
+	P = update_for_latent_dynamics!(memory, model.options, model.θnative)
+	posteriors!(memory, P, model)
+	fb = sortbytrial(memory.γ, model)
+	map(fb) do fb
+		map(fb) do fb
+			map(fb) do fb
+				dropdims(sum(fb, dims=2), dims=2)
+			end
+		end
+	end
+end
 
 """
 	loglikelihood_each_trial(model)

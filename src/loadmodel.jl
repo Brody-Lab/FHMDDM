@@ -41,6 +41,8 @@ Model(datapath::String, outputpath::String; do_shuffle::Bool=false, shuffle_seed
         "outputpath"=>outputpath,
         "do_shuffle"=>do_shuffle,
         "shuffle_seed"=>shuffle_seed,
+        "sf_tbf" => [14.977000193201077],
+        "tbf_postspike_hz" => NaN,
     )))
 """
 	Options(csvpath, row)
@@ -79,8 +81,8 @@ function Options(options::Dict)
 						else
 							joinpath(options["outputfolder"], options["fitname"])
 						end
-					elseif fieldname == :sf_tbf
-						getfield(defaults,fieldname)
+					# elseif fieldname == :sf_tbf
+					# 	getfield(defaults,fieldname)
 					else
 						defaultvalue = getfield(defaults,fieldname)
 						if String(fieldname) ∈ keyset
@@ -124,7 +126,10 @@ function loadtrialsets(options::Options)
 			nneurons += length(trialset["trials"][1]["spiketrains"][1])
 		end
 	end
-	options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
+	# options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
+    if isnan(options.sf_tbf[1])
+        options.sf_tbf[1] = nneurons^options.choiceLL_scaling_exponent
+    end
 	if singletrialset
 		# [Trialset(options, data["trials"], 1)]
         neurons = data["neurons"]   # or whatever key it is in your .mat
@@ -212,6 +217,25 @@ function clickpattern_key(trialdict; digits::Int=6)
     end
     return "L:" * vec2str(L) * "|R:" * vec2str(R)
 end
+
+function copy_raw_trialdict(trial::Dict)
+    out = Dict{String,Any}()
+    for (k, v) in trial
+        if v isa Dict
+            inner = Dict{String,Any}()
+            for (kk, vv) in v
+                inner[kk] = vv isa AbstractArray ? copy(vv) : vv
+            end
+            out[k] = inner
+        elseif v isa AbstractArray
+            out[k] = copy(v)
+        else
+            out[k] = v
+        end
+    end
+    return out
+end
+
 function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
     raw_trials = vec(trials)  # <-- keep the Dicts for seedkey computation
     trials = processtrials(options, raw_trials, trialsetindex) # original
@@ -219,6 +243,8 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
     if options.do_shuffle
         @warn "Trialset WITH neurons called" do_shuffle=options.do_shuffle outputpath=options.outputpath pwd=pwd() ntrials=length(trials) nneurons=length(neurons)
         rng = MersenneTwister(options.shuffle_seed)
+        target_region = "M1"
+        m1_srcmap = Dict{Int,Int}()   # dst trial idx in memory -> src trial idx in memory
 
         shuffle_rows = DataFrame(
             trialsetindex = Int[],
@@ -227,10 +253,20 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
             choice = Int[],                 # 0/1
             original_trial_idx = Int[],     # NOW: index_in_session
             shuffled_trial_idx = Int[],     # NOW: index_in_session
+
+            original_stereoclick_time_s = Float64[],
+            shuffled_stereoclick_time_s = Float64[],
+
+            original_movementtime_s = Float64[],
+            shuffled_movementtime_s = Float64[],
+
+            original_ntimesteps = Int[],
+            shuffled_ntimesteps = Int[],
         )
 
         # --------- neuron indices grouped by region ----------
         brainareas = [neurons[j]["brainarea"] for j in 1:length(neurons)]
+        @info "brainareas present" brainareas=sort(unique(brainareas))
         inds_by_region = Dict{String, Vector{Int}}()
         for (j, ba) in enumerate(brainareas)
             push!(get!(inds_by_region, ba, Int[]), j)
@@ -264,7 +300,34 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
             for (dst, src) in zip(trial_inds, perm)
                 dst_id = Int(trials[dst].index_in_session)
                 src_id = Int(trials[src].index_in_session)
-                push!(shuffle_rows, (trialsetindex, region, seedkey, choice, dst_id, src_id))
+                dst_raw = raw_trials[dst]
+                src_raw = raw_trials[src]
+
+                # if !haskey(region_srcmap, region)
+                #     region_srcmap[region] = Dict{Int,Int}()
+                # end
+                # region_srcmap[region][dst] = src
+                if region == target_region
+                    m1_srcmap[dst] = src
+                end
+
+                push!(shuffle_rows, (
+                    trialsetindex,
+                    region,
+                    seedkey,
+                    choice,
+                    dst_id,
+                    src_id,
+
+                    Float64(dst_raw["stereoclick_time_s"]),
+                    Float64(src_raw["stereoclick_time_s"]),
+
+                    Float64(dst_raw["movementtime_s"]),
+                    Float64(src_raw["movementtime_s"]),
+
+                    Int(dst_raw["ntimesteps"]),
+                    Int(src_raw["ntimesteps"]),
+                ))
             end
 
             # apply shuffle (still done by in-memory indices)
@@ -289,6 +352,39 @@ function Trialset(options::Options, trials, neurons, trialsetindex::Integer)
                 shuffle_spikes!(lt, neuron_inds, region, seedkey, 0)
                 shuffle_spikes!(rt, neuron_inds, region, seedkey, 1)
             end
+        end
+
+        # --------- rebuild trials using M1 timing substitution only *** ----------
+        if haskey(inds_by_region, target_region)
+            raw_copy = [copy_raw_trialdict(rt) for rt in raw_trials]
+
+            for (dst, src) in m1_srcmap
+                raw_copy[dst]["stereoclick_time_s"] = raw_trials[src]["stereoclick_time_s"]
+                raw_copy[dst]["movementtime_s"] = raw_trials[src]["movementtime_s"]
+                raw_copy[dst]["error_s"] = raw_trials[src]["error_s"]
+                raw_copy[dst]["first_bin_left_edge_s"] = raw_trials[src]["first_bin_left_edge_s"]
+                raw_copy[dst]["ntimesteps"] = raw_trials[src]["ntimesteps"]
+                raw_copy[dst]["left_reward_s"] = raw_trials[src]["left_reward_s"]
+                raw_copy[dst]["right_reward_s"] = raw_trials[src]["right_reward_s"]
+                raw_copy[dst]["photostimulus_incline_on_s"] = raw_trials[src]["photostimulus_incline_on_s"]
+                raw_copy[dst]["photostimulus_decline_on_s"] = raw_trials[src]["photostimulus_decline_on_s"]
+
+                # new
+                raw_copy[dst]["previousanswer"] = raw_trials[src]["previousanswer"]
+                # raw_copy[dst]["rewarded"] = raw_trials[src]["rewarded"]
+            end
+
+            rebuilt_trials = processtrials(options, raw_copy, trialsetindex)
+
+            # restore the already-shuffled spike trains for ALL neurons
+            # (because we want the spike shuffle you already performed)
+            for ti in eachindex(trials)
+                for n in eachindex(trials[ti].spiketrains)
+                    rebuilt_trials[ti].spiketrains[n] = copy(trials[ti].spiketrains[n])
+                end
+            end
+            trials = rebuilt_trials
+            @info "Applied timing substitution" target_region=target_region nmapped=length(m1_srcmap)
         end
 
         shuffle_dir = joinpath(options.outputpath, "shuffle_maps")
